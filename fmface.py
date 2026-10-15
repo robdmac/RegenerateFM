@@ -8,6 +8,7 @@ import base64
 import binascii
 import html
 import hmac
+import io
 import json
 import os
 import re
@@ -31,6 +32,9 @@ PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 ID_RE = re.compile(r"^[0-9]{1,20}$")
 LOCATION_TOKEN_RE = re.compile(r"^[0-9a-f]{32}$")
 MAX_BODY = 32_768
+# Football Manager draws portraits at 256×256; the image API's smallest
+# square output is 1024×1024, so generated faces are scaled down to this.
+PORTRAIT_SIZE = 256
 # An in-game "Update face" request carries the current portrait as a PNG.
 MAX_REFERENCE = 8 << 20
 MAX_AUTO_BODY = MAX_BODY + MAX_REFERENCE * 4 // 3 + 4096
@@ -349,11 +353,29 @@ def _image_request(key: str, endpoint: str, body: bytes, content_type: str,
         raise RuntimeError("Image API returned invalid image data.") from exc
     if not png.startswith(PNG_SIGNATURE):
         raise RuntimeError("Image API returned data that is not a PNG.")
+    png = fit_portrait(png)
     if metadata is not None:
         metadata.update(model=settings["model"], quality=settings["quality"], size=settings["size"])
         if isinstance(result.get("usage"), dict):
             metadata["usage"] = result["usage"]
     return png
+
+
+def fit_portrait(png: bytes) -> bytes:
+    """Scale a generated portrait to FM's 256×256, keeping its transparency."""
+    from PIL import Image  # Pillow: python3-pil, or pip install Pillow
+
+    try:
+        with Image.open(io.BytesIO(png)) as image:
+            image.load()
+            if image.size == (PORTRAIT_SIZE, PORTRAIT_SIZE):
+                return png
+            image = image.convert("RGBA").resize((PORTRAIT_SIZE, PORTRAIT_SIZE), Image.LANCZOS)
+    except OSError as exc:
+        raise RuntimeError("Image API returned a PNG that could not be read.") from exc
+    output = io.BytesIO()
+    image.save(output, "PNG", optimize=True)
+    return output.getvalue()
 
 
 def generate_png(env: dict[str, str], prompt: str, *, metadata: dict | None = None) -> bytes:

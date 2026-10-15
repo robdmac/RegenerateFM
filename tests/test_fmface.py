@@ -17,6 +17,15 @@ import fmface
 from http.server import ThreadingHTTPServer
 
 from fmface import FaceHandler, PNG_SIGNATURE, generate_png, load_env, profile_prompt, save_portrait, validate_id
+from PIL import Image
+
+
+def real_png(size=1024, colour=(200, 120, 90, 255)):
+    output = io.BytesIO()
+    image = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    image.paste(colour, (size // 4, size // 4, 3 * size // 4, 3 * size // 4))
+    image.save(output, "PNG")
+    return output.getvalue()
 
 
 class PortraitTests(unittest.TestCase):
@@ -310,7 +319,7 @@ class PortraitTests(unittest.TestCase):
             open_url.assert_not_called()
 
     def test_image_quality_is_sent_and_usage_can_be_collected(self):
-        png = PNG_SIGNATURE + b"test image"
+        png = real_png()
         usage = {"input_tokens": 100, "output_tokens": 200, "total_tokens": 300}
         body = {"data": [{"b64_json": base64.b64encode(png).decode()}], "usage": usage}
         for configured, expected in ((None, "medium"), ("low", "low")):
@@ -319,7 +328,12 @@ class PortraitTests(unittest.TestCase):
                 env["OPENAI_IMAGE_QUALITY"] = configured
             metadata = {}
             with patch("fmface.urllib.request.urlopen", return_value=io.BytesIO(json.dumps(body).encode())) as request:
-                self.assertEqual(generate_png(env, "test portrait", metadata=metadata), png)
+                saved = generate_png(env, "test portrait", metadata=metadata)
+            # Stored at FM's portrait size, with the transparency kept.
+            with Image.open(io.BytesIO(saved)) as image:
+                self.assertEqual((image.size, image.mode), ((256, 256), "RGBA"))
+                self.assertEqual(image.getpixel((0, 0))[3], 0)
+                self.assertEqual(image.getpixel((128, 128)), (200, 120, 90, 255))
             payload = json.loads(request.call_args.args[0].data)
             self.assertEqual(payload["quality"], expected)
             self.assertEqual(payload["size"], "1024x1024")
@@ -352,7 +366,7 @@ class PortraitTests(unittest.TestCase):
 
     def test_edit_request_sends_existing_portrait_and_settings(self):
         reference = PNG_SIGNATURE + b"current face"
-        png = PNG_SIGNATURE + b"updated face"
+        png = real_png(256)
         body = {"data": [{"b64_json": base64.b64encode(png).decode()}]}
         env = {"OPENAI_API_KEY": "test-only", "OPENAI_IMAGE_QUALITY": "low"}
         with patch("fmface.urllib.request.urlopen", return_value=io.BytesIO(json.dumps(body).encode())) as request:
