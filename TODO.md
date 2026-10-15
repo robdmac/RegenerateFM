@@ -37,8 +37,8 @@
   popup opens.
 - **FM24 Overview dropdown item:** add Generate and Update face to the player
   Overview dropdown (code-generated; needs DLL work like the Squad menu item).
-- **FM26 Actions menu timing:** opened about 5 s after a profile loads, the
-  menu can lack the FM Face items until it is reopened.
+- **FM26 Actions menu timing:** done (2026-10-16). The items are added as soon
+  as the profile header exists and the ID is read on click.
 - **Release build:** done (2026-10-16). Plugin version 0.8.0 was rebuilt into
   `hotreload/bin` and installed in FM26, and `dist/fmface-0.8.0.zip` was made.
   The unpacked zip passes all tests and holds no key or token. Not yet

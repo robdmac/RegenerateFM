@@ -789,3 +789,15 @@ The FM24 companion now requires the native DLL and has no X11 code.
 - [x] **All Players view (LA Galaxy, 37 rows):** 34 players read and 13 lack
       faces. 3 undrawn players whose names FM24 hasn't loaded are left out, and
       the confirmation says so instead of refusing the whole command.
+
+## FM26 Actions menu timing: 2026-10-16
+
+- [x] The FM Face items are added whenever the profile header exists. The
+      person ID is read when an item is chosen (and must match the ID shown
+      when the menu opened, if one was shown); a profile still loading gets
+      "The profile is still loading. Choose it again." Update face is greyed
+      out only once the portrait is known to be the silhouette.
+- [x] Live, with the recording stand-in (no API call, nothing saved): Actions
+      opened 0.6 s after Craig MacGillivray's profile showed both items, and
+      Update face sent the update prompt (age 32, MK Dons kit) with his
+      173×250 photo.

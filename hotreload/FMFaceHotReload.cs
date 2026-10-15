@@ -1279,11 +1279,35 @@ namespace FMFaceHotReload
 
         // FM26 shows "person_default" (a silhouette) when a person has no face:
         // neither a generated one nor a game photo.
-        private static bool HasFace(VisualElement picture)
+        private static bool HasFace(VisualElement picture) => FaceState(picture) == true;
+
+        // True or false once the portrait has loaded; null while it is still loading.
+        private static bool? FaceState(VisualElement picture)
         {
             var image = picture == null ? null : FindNamed(picture, "PersonImage")?.TryCast<SI.UI.Image>();
             var address = image?.m_imageAddressableID?.ToString();
-            return !string.IsNullOrEmpty(address) && address != "person_default";
+            return string.IsNullOrEmpty(address) ? (bool?)null : address != "person_default";
+        }
+
+        // An Actions menu choice: act on the profile open now. ``expected`` is the
+        // ID the header showed when the menu opened, if it showed one yet.
+        private void GenerateOpenProfile(long? expected, bool update)
+        {
+            var root = CurrentRoot();
+            var header = FindNamed(root, "ReportHeader");
+            if (header == null || !HeaderId(TextValues(header), out long personId))
+            {
+                Log.LogWarning("The profile's ID is not shown yet; no image request was made");
+                ShowBusyNotice("The profile is still loading. Choose it again.");
+                return;
+            }
+            if (expected.HasValue && expected.Value != personId)
+            {
+                Log.LogWarning("The profile changed after the Actions menu opened; no image request was made");
+                return;
+            }
+            bool staff = !IsPlayerOverview(root) && !IsPlayerHeader(header);
+            Generate(personId, staff, update);
         }
 
         // The face FM26 is showing, as base64 PNG, for "Update face". The local
@@ -1620,8 +1644,9 @@ namespace FMFaceHotReload
                     Instance.ClosePortraitMenu();
                     var root = CurrentRoot();
                     var header = FindNamed(root, "ReportHeader");
-                    if (header == null || !IsActionTarget(context.Target, header) ||
-                        !HeaderId(TextValues(header), out long personId))
+                    // The ID is read again on click: just after a profile opens the
+                    // header can be drawn before its ID text arrives.
+                    if (header == null || !IsActionTarget(context.Target, header))
                         return;
                     var contributor = Instance._menuContributor.TryCast<IMenuContributor>();
                     context.AddContributor(contributor);
@@ -1669,20 +1694,20 @@ namespace FMFaceHotReload
             {
                 var root = CurrentRoot();
                 var header = FindNamed(root, "ReportHeader");
-                if (header == null || !IsActionTarget(context.Target, header) ||
-                    !HeaderId(TextValues(header), out long personId))
+                if (header == null || !IsActionTarget(context.Target, header))
                     return;
-                bool staff = !IsPlayerOverview(root) && !IsPlayerHeader(header);
+                long? personId = HeaderId(TextValues(header), out long shownId) ? shownId : (long?)null;
                 context.Description.AddItem(parent, "Generate face",
-                    (Il2CppSystem.Action)(System.Action)(() => Instance.Generate(personId, staff)));
+                    (Il2CppSystem.Action)(System.Action)(() => Instance.GenerateOpenProfile(personId, false)));
                 var update = context.Description.AddItem(parent, "Update face",
-                    (Il2CppSystem.Action)(System.Action)(() => Instance.Generate(personId, staff, true)));
+                    (Il2CppSystem.Action)(System.Action)(() => Instance.GenerateOpenProfile(personId, true)));
                 // Updating needs a face to start from: a generated one or the game's photo.
-                if (!HasFace(FindNamed(header, "PersonPicture")))
+                // While the picture is still loading, leave it enabled; the click checks again.
+                if (FaceState(FindNamed(header, "PersonPicture")) == false)
                     context.Description.SetEnabled(update, false);
                 _bound = true;
-                Instance.Log.LogInfo("FM Face action contributed to " + (staff ? "staff" : "player") +
-                                     " Actions menu for " + personId);
+                Instance.Log.LogInfo("FM Face actions contributed to the Actions menu for " +
+                                     (personId?.ToString() ?? "a profile still loading"));
             }
 
             public void UnbindFromMenu()
