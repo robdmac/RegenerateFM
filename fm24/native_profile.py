@@ -302,11 +302,13 @@ def _position(pid: int, record: int) -> str:
     return POSITIONS[ratings.index(best)]
 
 
-def read_open_profile(pid: int | None = None) -> tuple[str, dict]:
+def read_open_profile(pid: int | None = None, *, identity_only: bool = False) -> tuple[str, dict]:
     """Read native FM24 prompt fields for the uniquely selected profile.
 
     Biography rich text is decoded separately after the selected person has
-    been verified from the canonical record.
+    been verified from the canonical record. ``identity_only`` stops after the
+    verified name, age and club, which is all "Update face" needs; another
+    club's player can have attributes that are not fully known.
     """
     pid = pid or find_game_pid()
     titles, ages = _scan_ui(pid)
@@ -334,9 +336,13 @@ def read_open_profile(pid: int | None = None) -> tuple[str, dict]:
                 for title in names if title.endswith(" - " + club)}
         if len(jobs) != 1 or not next(iter(jobs)):
             raise MemoryUnavailable("Could not verify the FM24 staff job title.")
+        if identity_only:
+            return person_id, {"type": "staff", "name": identity.name, "age": age, "club": club}
         return person_id, {"type": "staff", "name": identity.name,
                            "age": age, "nationality": nation,
                            "jobTitle": jobs.pop(), "club": club}
+    if identity_only:
+        return person_id, {"type": "player", "name": identity.name, "age": age, "club": club}
     raw = read_process_bytes(pid, record - 0x6d, 54)
     height_cm = struct.unpack("<H", read_process_bytes(pid, record - 0x136, 2))[0]
     rated_position = _position(pid, record)

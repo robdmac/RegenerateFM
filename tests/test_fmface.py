@@ -6,6 +6,7 @@ import os
 import re
 import threading
 import unittest
+import urllib.error
 import urllib.request
 import uuid
 import xml.etree.ElementTree as ET
@@ -331,6 +332,93 @@ class PortraitTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "OPENAI_IMAGE_QUALITY"):
                 generate_png({"OPENAI_API_KEY": "test-only", "OPENAI_IMAGE_QUALITY": "typo"}, "portrait")
             request.assert_not_called()
+
+    def test_update_prompt_keeps_the_person_and_changes_age_and_kit(self):
+        prompt = fmface.update_prompt({"name": "Lionel Messi", "age": 38, "club": "Inter Miami",
+                                       "position": "Striker"})
+        self.assertIn("Lionel Messi's current portrait", prompt)
+        self.assertIn("at age 38", prompt)
+        self.assertIn("home kit and colours of Inter Miami", prompt)
+        self.assertIn("updated version of the supplied picture of Lionel Messi", prompt)
+        self.assertIn("transparent background", prompt)
+        # New-face variety instructions would fight the supplied likeness.
+        self.assertNotIn("distinctive facial proportions", prompt)
+        staff = fmface.update_prompt({"type": "staff", "name": "Alex Morgan", "age": 61})
+        self.assertIn("unbranded dark jacket", staff)
+        with self.assertRaisesRegex(ValueError, "club"):
+            fmface.update_prompt({"name": "Lionel Messi", "age": 38})
+        with self.assertRaisesRegex(ValueError, "age"):
+            fmface.update_prompt({"name": "Lionel Messi", "age": 3, "club": "Inter Miami"})
+
+    def test_edit_request_sends_existing_portrait_and_settings(self):
+        reference = PNG_SIGNATURE + b"current face"
+        png = PNG_SIGNATURE + b"updated face"
+        body = {"data": [{"b64_json": base64.b64encode(png).decode()}]}
+        env = {"OPENAI_API_KEY": "test-only", "OPENAI_IMAGE_QUALITY": "low"}
+        with patch("fmface.urllib.request.urlopen", return_value=io.BytesIO(json.dumps(body).encode())) as request:
+            self.assertEqual(fmface.edit_png(env, "update this portrait", reference), png)
+        sent = request.call_args.args[0]
+        self.assertEqual(sent.full_url, "https://api.openai.com/v1/images/edits")
+        self.assertTrue(sent.headers["Content-type"].startswith("multipart/form-data; boundary=fmface-"))
+        self.assertIn(b'name="image[]"; filename="portrait.png"', sent.data)
+        self.assertIn(reference, sent.data)
+        self.assertIn(b'name="quality"\r\n\r\nlow\r\n', sent.data)
+        self.assertIn(b'name="background"\r\n\r\ntransparent\r\n', sent.data)
+        self.assertIn(b"update this portrait", sent.data)
+        with patch("fmface.urllib.request.urlopen") as request:
+            with self.assertRaisesRegex(ValueError, "PNG"):
+                fmface.edit_png(env, "update", b"GIF89a")
+            request.assert_not_called()
+
+    def test_auto_update_uses_saved_face_then_game_picture_and_refuses_without_one(self):
+        profile = {"name": "Lionel Messi", "age": 38, "club": "Inter Miami"}
+        with tempfile.TemporaryDirectory() as tmp:
+            prior_env, prior_reload = FaceHandler.env, FaceHandler.reload_env
+            FaceHandler.env = {"FM_GRAPHICS_DIR": tmp}
+            FaceHandler.reload_env = False
+            server = ThreadingHTTPServer(("127.0.0.1", 0), FaceHandler)
+            worker = threading.Thread(target=server.serve_forever, daemon=True)
+            worker.start()
+            url = f"http://127.0.0.1:{server.server_port}/generate-auto"
+
+            def update(reference=None):
+                request = self._auto_request(url, "7458500", profile, tmp)
+                payload = json.loads(request.data)
+                payload["mode"] = "update"
+                if reference is not None:
+                    payload["referencePng"] = base64.b64encode(reference).decode()
+                request.data = json.dumps(payload).encode()
+                return urllib.request.urlopen(request)
+
+            try:
+                game_picture = PNG_SIGNATURE + b"game photo"
+                with patch("fmface.edit_png") as edit, patch("fmface.generate_png") as generate:
+                    with self.assertRaises(urllib.error.HTTPError) as refused:
+                        update()
+                    self.assertIn("no face to update", json.load(refused.exception)["error"])
+                    edit.assert_not_called()
+                    edit.return_value = PNG_SIGNATURE + b"first update"
+                    with update(game_picture) as response:
+                        self.assertTrue(json.load(response)["ok"])
+                    self.assertEqual(edit.call_args.args[2], game_picture)
+                    self.assertIn("at age 38", edit.call_args.args[1])
+                    # Now FM Face's saved full-size face is the starting point.
+                    edit.return_value = PNG_SIGNATURE + b"second update"
+                    with update(game_picture) as response:
+                        self.assertTrue(json.load(response)["ok"])
+                    self.assertEqual(edit.call_args.args[2], PNG_SIGNATURE + b"first update")
+                    generate.assert_not_called()
+                self.assertEqual((Path(tmp) / "7458500.png").read_bytes(), PNG_SIGNATURE + b"second update")
+                with patch("fmface.edit_png") as edit:
+                    with self.assertRaises(urllib.error.HTTPError) as invalid:
+                        update(b"GIF89a not a png")
+                    self.assertEqual(invalid.exception.code, 400)
+                    edit.assert_not_called()
+            finally:
+                server.shutdown()
+                server.server_close()
+                worker.join(timeout=3)
+                FaceHandler.env, FaceHandler.reload_env = prior_env, prior_reload
 
     def test_web_page_renders_without_api_key(self):
         from io import BytesIO

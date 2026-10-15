@@ -563,3 +563,88 @@ table's display name instead.
 
 Not yet run: a billed squad batch through this path, and Stop after current
 face with it.
+
+## Update face: 2026-10-15
+
+**Update face** sits below the generate command in each menu. It sends the
+person's current face to the image edit endpoint (`/v1/images/edits`, the
+same model, size, quality and transparent background) with a prompt that keeps
+the person and changes only their age and kit. No billed request has been made
+through it yet.
+
+- [x] FM24 skin popup shows **Generate new face** and **Update face**. A gdb
+      capture showed both rows post `FMFG`; the event's `slct` property holds
+      `FMFG` or `FMFU`. The DLL logs `item=generate|update`.
+- [x] FM24 preview, Messi (7458500): DLL `item=update`. The companion built the
+      update prompt (age 35, Inter Miami kit) and found the bundled photo
+      `pictures/players/normal/usa/inter miami/lionel messi.jpg` with its mask.
+- [x] FM24 preview, Edison Azcona (2000045863): the existing FM Face portrait
+      was found. **Generate new face** still sent the full profile prompt.
+- [x] Lookup: 12,295 bundled person mappings in `graphics.fmf`, about 0.4 s
+      for the first lookup and then cached. FM Face's folder wins, then the
+      user's other graphics, then the bundled photos.
+- [x] FM26 (stand-in server, no API): **Update face** appears below
+      **Generate face** in Actions and below **Generate new face** in the
+      portrait menu. Max Crocombe's photo was captured (191×250 RGBA,
+      correct orientation and colours, transparent background), sent, saved
+      and reloaded in game. For Ryan Kelly (silhouette) both items were
+      greyed out and clicking them sent nothing. The FM26 graphics folder was
+      restored byte-identical afterwards.
+- [x] FM26: `ImageConversion.EncodeToPNG` fails in the IL2CPP interop layer
+      ("Instances of abstract classes cannot be created"), so the plugin
+      reads the pixels back and encodes the PNG itself.
+- [ ] FM24's skin popup cannot grey out a row. For a person with no face, the
+      companion refuses before any request.
+- [ ] Billed update requests in both games, checking likeness and that the
+      kit and age change.
+
+## In-game dialogs and progress (native DLL): 2026-10-15
+
+FM24 itself now shows FM Face's progress, confirmations, results and errors
+(see the native README). All checks were in preview mode with no API
+requests. Each was live on the Inter Miami save, plus LA Galaxy's squad
+table, which has 4 players with no face.
+
+- [x] RE: FM24's quit question is opened by `0xbdef100` (via `0x10bfcc0`)
+      with record keys titl/text/acte/noet/widt/heig and the manager as
+      owner. A gdb trace showed No posts `NOEX` to the manager.
+- [x] Yes/No question: Yes and No each returned to the companion
+      (`FMFACE24_DIALOG_YES`/`_NO`).
+- [x] OK message: the No button is hidden and Yes is relabelled OK. The squad
+      command on Inter Miami showed "All 29 squad players already have
+      portraits." in FM24.
+- [x] Squad batch on LA Galaxy, run in-process with the companion's code
+      (the Squad-menu item exists only on your own squad):
+  - [x] **No** at "Preview faces?" made no requests.
+  - [x] **Yes** showed a progress dialog, updated in place for all 4
+        players, which then became "Previewed 4 squad faces." with OK.
+  - [x] **Stop after this face**, chosen during face 2, finished that face
+        and stopped before face 3.
+- [x] Text updates fail safely after a skin reload: the dialog is gone, so
+      `PROGRESS_NOT_SET` is logged; no crash.
+- [x] Portrait progress on Messi: Generating…, Loading…, Failed, then
+      cleared, all inside the FM Face popup. When no profile was open, the
+      companion fell back to the X11 overlay.
+- [x] Companion error, from Update face on another club's player, shown in
+      an FM24 OK dialog.
+- [x] A DLL notice with the companion stopped ("companion unavailable")
+      appeared as an FM24 dialog, not a Windows message box.
+- [ ] Billed batch: a dialog per face after each reload, and Stop between
+      faces.
+
+## Billed native squad batch and Update face read: 2026-10-15
+
+- [x] Billed batch on LA Galaxy (4 of 22 missing), run through the native squad
+      code with the companion's `generate_for_profile`. The FM24 Yes/No
+      confirmation was answered Yes. Mauricio Cuevas (20049243) and Julián Aude
+      (14223129) were generated (24 s and 19 s), saved and reloaded in game,
+      both in LA Galaxy's white home kit. The progress dialog reopened for face
+      2 after face 1's skin reload. Stop during face 2 finished that face, and
+      no third request was made.
+- [x] Fixed: a stopped batch now ends with "Stopped after n of m squad faces."
+      Before, nothing was shown once the reload had closed the progress dialog.
+- [x] Update face reads only the verified name, age and club from memory (read
+      twice to catch navigation), so other clubs' players with partly known
+      attributes work. Preview: Brad Guzan (980785, Atlanta United), age 38,
+      Atlanta United kit, bundled photo `usa/atlanta/brad guzan.jpg`.
+- [ ] Billed Update face in either game.

@@ -31,5 +31,13 @@
     "stringInitRva": "0x192ef30",
     "stringFreeRva": "0x192e8a0",
     "valueFourccRva": "0x197d3d0"
+  },
+  "dialog": {
+    "showQueryRva": "0x10bfcc0",
+    "recordInitRva": "0x1973210",
+    "valueStringRva": "0x197d4f0",
+    "valueEventRva": "0x197d800",
+    "valueFloatRva": "0x197d460",
+    "applyPropertiesRva": "0x1906d70"
   }
 }

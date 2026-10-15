@@ -29,6 +29,7 @@ from read_profile import capture_window, read_identity
 from refresh import _activate_game, _click
 from menu_overlay import menu_bottom
 from live_memory import MemoryUnavailable, find_game_pid
+from native_dialog import DialogUnavailable, NativeProgress, notify, show_dialog
 from native_portrait import read_portrait_state
 from native_profile import squad_club, squad_player_profile
 from native_squad import read_full_squad
@@ -356,14 +357,38 @@ def scan_squad(window_id: str, engine: RapidOCR, *, limit: int | None = None,
     raise ValueError("FM24 squad scan exceeded 30 table pages.")
 
 
-def confirm_batch(missing: int, total: int, *, preview_only: bool = False) -> bool:
+def _zenity_info(text: str) -> None:
+    subprocess.run(["zenity", "--info", "--title=FM Face", "--text=" + text], check=False)
+
+
+def _zenity_error(text: str) -> None:
+    subprocess.run(["zenity", "--error", "--title=FM Face", "--text=" + text], check=False)
+
+
+def confirm_batch(missing: int, total: int, *, preview_only: bool = False,
+                  native: tuple[int, str] | None = None) -> bool:
+    """Ask before any request: in FM24's own dialog when ``native`` (the DLL's
+    port and token) is given and works, otherwise with zenity."""
     if not missing:
-        subprocess.run(["zenity", "--info", "--title=FM Face", "--text=All " + str(total) +
-                        " squad players already have portraits."], check=False)
+        text = f"All {total} squad players already have portraits."
+        if native:
+            notify(*native, text, _zenity_info)
+        else:
+            _zenity_info(text)
         return False
     action = "Preview faces" if preview_only else "Generate faces"
     bill = "No API requests will be made in preview mode." if preview_only else \
         "Each face makes one billed API request."
+    if native:
+        try:
+            return show_dialog(*native, "confirm", f"{action}?",
+                               f"{missing} of {total} squad players have no portrait. "
+                               f"{action} for the {missing} missing players? {bill}",
+                               timeout=600) == "yes"
+        except TimeoutError:
+            return False
+        except (DialogUnavailable, ValueError, OSError) as exc:
+            print(f"FM24 confirmation dialog unavailable ({exc}); using zenity.", flush=True)
     return subprocess.run([
         "zenity", "--question", "--title=FM Face", "--ok-label=" + action,
         "--cancel-label=Cancel", "--width=420",
@@ -469,6 +494,17 @@ def run_squad_batch(window_id: str, engine: RapidOCR, port: int, token: str,
                 dialog.close()
 
 
+def _finish(progress, native, text: str, fallback) -> None:
+    """The batch result: in the FM24 progress dialog if it is still open,
+    else a new FM24 message, else zenity."""
+    if isinstance(progress, NativeProgress):
+        progress.finish(text, fallback)
+        return
+    if progress:
+        progress.close()
+    notify(*(native or (None, "")), text, fallback)
+
+
 def run_native_squad_batch(window_id: str, handler, generate, describe=str, *, pid: int | None = None) -> None:
     """Native-menu squad command: read the roster, portrait state and every
     prompt from FM24's memory, then generate without opening any profile.
@@ -477,6 +513,8 @@ def run_native_squad_batch(window_id: str, handler, generate, describe=str, *, p
     squad table is scrolled only when it has not drawn every row yet.
     """
     batch_dialog = None
+    # FM24's own dialogs through the DLL's authenticated loopback listener.
+    native = (handler.reload_port, handler.token) if getattr(handler, "reload_port", None) else None
     try:
         print("FM24 squad scan started (game memory; no API requests).", flush=True)
         pid = pid or find_game_pid()
@@ -496,19 +534,29 @@ def run_native_squad_batch(window_id: str, handler, generate, describe=str, *, p
         state = read_full_squad(scroll, pid)
         missing = state.missing
         print(f"FM24 squad scan complete: {len(missing)} missing of {state.total} players.", flush=True)
-        if not confirm_batch(len(missing), state.total, preview_only=handler.preview_only):
+        if not confirm_batch(len(missing), state.total, preview_only=handler.preview_only, native=native):
             return
         club = squad_club(pid, [row.record for row in state.rows])
         # Every prompt is validated before the first billed request.
         for row in missing:
             squad_player_profile(pid, row.record, row.name, club, state.today)
-        batch_dialog = SquadProgress(window_id, "Stop after current face")
+        action = "Previewing" if handler.preview_only else "Generating"
+        try:
+            if not native:
+                raise DialogUnavailable("no native DLL port")
+            batch_dialog = NativeProgress(*native, "FM Face squad faces",
+                                          f"{action} {missing[0].name} (1/{len(missing)})")
+        except DialogUnavailable:
+            batch_dialog = SquadProgress(window_id, "Stop after current face")
         completed = 0
         for index, row in enumerate(missing):
             if batch_dialog.stopped.is_set():
                 print(f"FM24 squad batch stopped after {completed} faces.", flush=True)
+                _finish(batch_dialog, native,
+                        f"Stopped after {completed} of {len(missing)} squad faces.", _zenity_info)
+                batch_dialog = None
                 return
-            batch_dialog.update(f"Generating {row.name} ({index + 1}/{len(missing)})",
+            batch_dialog.update(f"{action} {row.name} ({index + 1}/{len(missing)})",
                                 round(index * 100 / len(missing)))
             # Read again just before the request: the record must still be this player.
             profile = squad_player_profile(pid, row.record, row.name, club, state.today)
@@ -528,14 +576,13 @@ def run_native_squad_batch(window_id: str, handler, generate, describe=str, *, p
                 if batch_dialog.stopped.is_set():
                     break
                 time.sleep(.3)
-        batch_dialog.close()
+        _finish(batch_dialog, native,
+                f"{'Previewed' if handler.preview_only else 'Generated'} {completed} squad faces.", _zenity_info)
         batch_dialog = None
-        subprocess.run(["zenity", "--info", "--title=FM Face",
-                        f"--text={'Previewed' if handler.preview_only else 'Generated'} "
-                        f"{completed} squad faces."], check=False)
     except (ValueError, OSError, RuntimeError, XError, MemoryUnavailable) as exc:
         print(f"FM24 squad batch stopped: {exc}", flush=True)
-        subprocess.run(["zenity", "--error", "--title=FM Face", "--text=" + str(exc)], check=False)
+        _finish(batch_dialog, native, f"Squad faces stopped: {exc}", _zenity_error)
+        batch_dialog = None
     finally:
         if batch_dialog:
             batch_dialog.close()

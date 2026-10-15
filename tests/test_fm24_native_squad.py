@@ -79,13 +79,17 @@ class FullSquadTests(unittest.TestCase):
             self.run_reads([state(range(4, 8), 9, (4, 7)), state(range(1, 5), 10, (1, 4))])
 
 
+# The real function; setUp replaces squad_batch.confirm_batch for batch tests.
+CONFIRM = squad_batch.confirm_batch
+
+
 class NativeBatchTests(unittest.TestCase):
     def setUp(self):
         self.full = state(range(1, 6), 5, (1, 5), indexed={"1", "2", "4"})
         self.dialogs = []
         for name, value in (("read_full_squad", lambda *a, **k: self.full),
                             ("squad_club", lambda *a: "Club"),
-                            ("confirm_batch", lambda missing, total, preview_only=False: True),
+                            ("confirm_batch", lambda missing, total, preview_only=False, native=None: True),
                             ("SquadProgress", lambda *a: SimpleNamespace(stopped=threading.Event(),
                                                                          update=lambda *a: None, close=lambda: None)),
                             ("subprocess", SimpleNamespace(run=lambda args, **k: self.dialogs.append(args[-1])))):
@@ -116,6 +120,77 @@ class NativeBatchTests(unittest.TestCase):
         self.run_batch(lambda person, profile: calls.append(person) or {"ok": True}, profile)
         self.assertEqual(calls, [])
         self.assertIn("Invalid FM24 player age", self.dialogs[-1])
+
+    def test_native_dll_shows_progress_and_result_inside_fm24(self):
+        shown, notices = [], []
+
+        class Progress:
+            def __init__(self, port, token, title, text):
+                shown.append((port, title, text))
+                self.stopped = threading.Event()
+
+            def update(self, message, percent=None):
+                shown.append(message)
+
+            def finish(self, text, fallback):
+                notices.append(("finish", text))
+
+            def close(self):
+                shown.append("closed")
+
+        handler = SimpleNamespace(preview_only=False, reload_port=8770, token="t" * 43)
+        with patch.object(squad_batch, "NativeProgress", Progress), \
+                patch.object(squad_batch, "notify", lambda port, token, text, fallback: notices.append((port, text))), \
+                patch.object(squad_batch, "squad_player_profile", side_effect=lambda *a: {"name": a[2]}), \
+                patch.object(squad_batch.time, "sleep"):
+            squad_batch.run_native_squad_batch(
+                "0x1", handler, lambda person, profile: {"ok": True, "playerId": person, "refreshed": True}, pid=1)
+        self.assertEqual(shown[0], (8770, "FM Face squad faces", "Generating Player 3 (1/2)"))
+        self.assertIn("Loaded Player 5 (2/2)", shown)
+        # The progress dialog itself becomes the result message.
+        self.assertEqual(notices, [("finish", "Generated 2 squad faces.")])
+        self.assertEqual(self.dialogs, [])
+
+    def test_stop_reports_how_many_faces_were_made(self):
+        notices, calls, dialogs = [], [], []
+
+        class Progress:
+            def __init__(self, *args):
+                self.stopped = threading.Event()
+                dialogs.append(self)
+
+            def update(self, message, percent=None):
+                pass
+
+            def finish(self, text, fallback):
+                notices.append(text)
+
+            def close(self):
+                pass
+
+        def generate(person, profile):
+            calls.append(person)
+            dialogs[0].stopped.set()  # Stop chosen during the first face
+            return {"ok": True, "playerId": person, "refreshed": True}
+
+        handler = SimpleNamespace(preview_only=False, reload_port=8770, token="t" * 43)
+        with patch.object(squad_batch, "NativeProgress", Progress), \
+                patch.object(squad_batch, "squad_player_profile", side_effect=lambda *a: {"name": a[2]}), \
+                patch.object(squad_batch.time, "sleep"):
+            squad_batch.run_native_squad_batch("0x1", handler, generate, pid=1)
+        self.assertEqual(calls, ["3"])
+        self.assertEqual(notices, ["Stopped after 1 of 2 squad faces."])
+
+    def test_native_confirmation_falls_back_to_zenity(self):
+        answers = []
+        with patch.object(squad_batch, "show_dialog", side_effect=squad_batch.DialogUnavailable("busy")), \
+                patch.object(squad_batch, "subprocess",
+                             SimpleNamespace(run=lambda args, **k: answers.append(args) or SimpleNamespace(returncode=0))):
+            self.assertTrue(CONFIRM(2, 5, native=(8770, "t")))
+        self.assertEqual(answers[0][0], "zenity")
+        with patch.object(squad_batch, "show_dialog", return_value="no") as dialog:
+            self.assertFalse(CONFIRM(2, 5, native=(8770, "t")))
+        self.assertIn("2 of 5 squad players have no portrait", dialog.call_args.args[4])
 
     def test_stops_at_first_failed_or_unreloaded_face(self):
         calls = []

@@ -133,7 +133,7 @@ class NativeBridgeTests(unittest.TestCase):
         done = threading.Event()
         seen = []
 
-        def generate(port, token, handler, *, expected_id=None):
+        def generate(port, token, handler, *, expected_id=None, mode="generate"):
             seen.append(expected_id)
             done.set()
             return {"ok": False, "error": "The open FM24 profile is now person 2000045865, not the "
@@ -146,6 +146,22 @@ class NativeBridgeTests(unittest.TestCase):
             self.assertEqual(bridge.reply(), b"FMFACE24 ACK 1 accepted")
             self.assertTrue(done.wait(2))
         self.assertEqual(seen, ["14240979"])
+
+    def test_update_row_requests_an_update_for_the_clicked_person(self):
+        done = threading.Event()
+        seen = []
+
+        def generate(port, token, handler, *, expected_id=None, mode="generate"):
+            seen.append((expected_id, mode))
+            done.set()
+            return {"ok": True, "preview": True, "playerId": expected_id, "prompt": "test"}
+
+        with patch.object(native_listener, "request_generation", side_effect=generate):
+            bridge = Bridge(self)
+            bridge.send(1, action="update", person="7458500")
+            self.assertEqual(bridge.reply(), b"FMFACE24 ACK 1 accepted")
+            self.assertTrue(done.wait(2))
+        self.assertEqual(seen, [("7458500", "update")])
 
     def test_profile_without_reported_person_is_refused(self):
         failures = []
@@ -225,6 +241,10 @@ class NativeSkinTests(unittest.TestCase):
             skin.modify_panel(SQUAD_PANEL, "squad")
         modified = skin.modify_panel(PLAYER_PANEL, "player")
         self.assertIn('select_event="FMFG"', modified)
+        # Both rows post FMFG; the DLL tells them apart by the row ID.
+        self.assertIn('<record id="FMFG">', modified)
+        self.assertIn('<record id="FMFU">', modified)
+        self.assertIn('value="Update face"', modified)
         with self.assertRaisesRegex(ValueError, "already"):
             skin.modify_panel(modified, "player")
 

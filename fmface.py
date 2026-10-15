@@ -31,27 +31,39 @@ PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 ID_RE = re.compile(r"^[0-9]{1,20}$")
 LOCATION_TOKEN_RE = re.compile(r"^[0-9a-f]{32}$")
 MAX_BODY = 32_768
+# An in-game "Update face" request carries the current portrait as a PNG.
+MAX_REFERENCE = 8 << 20
+MAX_AUTO_BODY = MAX_BODY + MAX_REFERENCE * 4 // 3 + 4096
 PHYSICAL_STATS = (
     "Acceleration", "Agility", "Balance", "Jumping Reach",
     "Natural Fitness", "Pace", "Stamina", "Strength",
 )
-PORTRAIT_STYLE = (
+PORTRAIT_FRAMING = (
     "Match the tight headshot framing of existing Football Manager squad photos. "
     "The head should fill the square image: crown-to-chin height about 80–85% of the image, "
     "with the full hairstyle and chin visible and only a small gap above the hair. "
     "Crop at the base of the neck, showing just the collar and a narrow sliver of the shirt; "
     "do not include the upper chest or broad shoulders. "
     "Keep the face centered, looking at the camera, with a natural, slight variation in head angle. "
-    "Follow the individual's supplied expression; otherwise use a relaxed neutral expression. "
+)
+PORTRAIT_PHOTOGRAPHY = (
     "Use everyday club media-day photography with restrained photographic processing, "
     "gently directional lighting and natural facial "
     "shadows and colour variation. Preserve skin texture, pores, small imperfections and "
     "age-appropriate lines, with natural facial asymmetry and no beauty retouching. "
+)
+PORTRAIT_BACKGROUND = (
+    "Use a genuinely transparent background with clean hair edges, "
+    "without a backdrop, halo or vignette. "
+)
+PORTRAIT_STYLE = (
+    PORTRAIT_FRAMING +
+    "Follow the individual's supplied expression; otherwise use a relaxed neutral expression. "
+    + PORTRAIT_PHOTOGRAPHY +
     "Give this individual distinctive facial proportions, nose, jaw, eyes, hairline and hairstyle "
     "consistent with the supplied appearance details and age. Allow varied hair lengths and "
     "textures and age-appropriate facial hair; avoid defaulting to a model-like face or the "
-    "same tousled brown haircut. Use a genuinely transparent background with clean hair edges, "
-    "without a backdrop, halo or vignette. "
+    "same tousled brown haircut. " + PORTRAIT_BACKGROUND
 )
 
 
@@ -181,6 +193,54 @@ def _appearance_prompt(name: str, age: int, person_id: str | None,
     return instruction
 
 
+def _kit_text(club: str) -> str:
+    if club.casefold() in ("free agent", "unattached", "no club"):
+        return "The player has no club; use a plain unbranded football shirt. "
+    return (
+        f"Make sure the player is wearing the home kit and colours of {club}, "
+        "with the club's recognisable shirt colours and kit pattern. "
+        "For a goalkeeper, use the club's goalkeeper kit. "
+    )
+
+
+def _profile_kind_and_age(profile: dict) -> tuple[str, str, int]:
+    if not isinstance(profile, dict):
+        raise ValueError("Profile is missing.")
+    kind = profile.get("type", "player")
+    if kind not in ("player", "staff"):
+        raise ValueError("Profile type must be player or staff.")
+    label = "Staff" if kind == "staff" else "Player"
+    age = profile.get("age")
+    if (isinstance(age, bool) or not isinstance(age, int) or
+            not 14 <= age <= (100 if kind == "staff" else 60)):
+        raise ValueError(f"{label} age is missing or invalid.")
+    return kind, label, age
+
+
+def update_prompt(profile: dict) -> str:
+    """Instructions for refreshing an existing portrait supplied as the input image.
+
+    Only the person's current age and attire change; everything else should
+    stay as in the supplied picture.
+    """
+    kind, label, age = _profile_kind_and_age(profile)
+    name = _profile_text(profile, "name", label)
+    if kind == "staff":
+        attire = "Dress them in a simple unbranded dark jacket or training top. "
+    else:
+        attire = _kit_text(_profile_text(profile, "club"))
+    return (
+        f"Update this Football Manager profile picture of {name}. The supplied image is "
+        f"{name}'s current portrait. Keep them clearly the same person, with the same face shape, "
+        "features, skin tone, eye colour, hairstyle, facial hair and distinguishing marks. "
+        f"Show {name} as they look now, at age {age}: if the supplied picture looks younger or "
+        "older, change only the natural signs of age, such as hairline, hair colour, skin "
+        "texture and facial lines. " + attire + PORTRAIT_FRAMING + PORTRAIT_PHOTOGRAPHY +
+        PORTRAIT_BACKGROUND + f"Otherwise make it an updated version of the supplied picture of {name}. "
+        "Do not depict numbers. No text, logos, badges, borders, or other people."
+    )
+
+
 def profile_prompt(profile: dict, *, person_id: str | None = None,
                    appearance_dir: Path | None = None) -> str:
     if not isinstance(profile, dict):
@@ -231,13 +291,7 @@ def profile_prompt(profile: dict, *, person_id: str | None = None,
     worst = sorted((item for item in other if item not in best), key=lambda item: (_stat_strength(item[2]), item[1]))[:3]
     fmt = lambda items: ", ".join(f"{section} {stat} {score}/20" for section, stat, score in items)
     first_name = name.split()[0]
-    kit_text = (
-        "The player has no club; use a plain unbranded football shirt. "
-        if club.casefold() in ("free agent", "unattached", "no club") else
-        f"Make sure the player is wearing the home kit and colours of {club}, "
-        "with the club's recognisable shirt colours and kit pattern. "
-        "For a goalkeeper, use the club's goalkeeper kit. "
-    )
+    kit_text = _kit_text(club)
     appearance = _appearance_prompt(name, age, person_id, appearance_dir)
     return (
         f"Football Manager profile picture for {name}, a {age}-year-old {position} "
@@ -251,25 +305,27 @@ def profile_prompt(profile: dict, *, person_id: str | None = None,
     )
 
 
-def generate_png(env: dict[str, str], prompt: str, *, metadata: dict | None = None) -> bytes:
+def _image_settings(env: dict[str, str]) -> tuple[str, dict[str, str]]:
     key = env.get("OPENAI_API_KEY", "").strip()
     if not key:
         raise ValueError("OPENAI_API_KEY is missing. Add it to .env first.")
     quality = env.get("OPENAI_IMAGE_QUALITY", "medium").strip().lower() or "medium"
     if quality not in ("low", "medium", "high", "xhigh", "max", "auto"):
         raise ValueError("OPENAI_IMAGE_QUALITY must be low, medium, high, xhigh, max, or auto.")
-    payload = {
+    return key, {
         "model": env.get("OPENAI_IMAGE_MODEL", "gpt-image-2.5-sunburst"),
-        "prompt": prompt,
         "size": "1024x1024",
         "quality": quality,
         "background": "transparent",
         "output_format": "png",
     }
+
+
+def _image_request(key: str, endpoint: str, body: bytes, content_type: str,
+                   settings: dict[str, str], metadata: dict | None) -> bytes:
     request = urllib.request.Request(
-        "https://api.openai.com/v1/images/generations",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        f"https://api.openai.com/v1/images/{endpoint}", data=body,
+        headers={"Authorization": f"Bearer {key}", "Content-Type": content_type},
         method="POST",
     )
     try:
@@ -294,10 +350,38 @@ def generate_png(env: dict[str, str], prompt: str, *, metadata: dict | None = No
     if not png.startswith(PNG_SIGNATURE):
         raise RuntimeError("Image API returned data that is not a PNG.")
     if metadata is not None:
-        metadata.update(model=payload["model"], quality=quality, size=payload["size"])
+        metadata.update(model=settings["model"], quality=settings["quality"], size=settings["size"])
         if isinstance(result.get("usage"), dict):
             metadata["usage"] = result["usage"]
     return png
+
+
+def generate_png(env: dict[str, str], prompt: str, *, metadata: dict | None = None) -> bytes:
+    key, settings = _image_settings(env)
+    payload = dict(settings, prompt=prompt)
+    return _image_request(key, "generations", json.dumps(payload).encode("utf-8"),
+                          "application/json", settings, metadata)
+
+
+def edit_png(env: dict[str, str], prompt: str, reference: bytes, *,
+             metadata: dict | None = None) -> bytes:
+    """Make a new portrait from ``prompt`` with ``reference`` (a PNG) as the input image."""
+    if not reference.startswith(PNG_SIGNATURE):
+        raise ValueError("The existing portrait must be a PNG image.")
+    if len(reference) > MAX_REFERENCE:
+        raise ValueError("The existing portrait is too large to send.")
+    key, settings = _image_settings(env)
+    boundary = "fmface-" + secrets.token_hex(16)
+    parts = []
+    for name, value in dict(settings, prompt=prompt).items():
+        parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n'
+                     f"{value}\r\n".encode("utf-8"))
+    parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="image[]"; '
+                 f'filename="portrait.png"\r\nContent-Type: image/png\r\n\r\n'.encode("ascii")
+                 + reference + b"\r\n")
+    parts.append(f"--{boundary}--\r\n".encode("ascii"))
+    return _image_request(key, "edits", b"".join(parts),
+                          f"multipart/form-data; boundary={boundary}", settings, metadata)
 
 
 def _atomic_write(path: Path, content: bytes) -> None:
@@ -331,6 +415,35 @@ def graphics_maps_xml(tree: ET.ElementTree) -> bytes:
 
 def check_graphics_config(directory: Path) -> None:
     load_graphics_maps(directory)
+
+
+def current_portrait(directory: Path, player_id: str) -> bytes | None:
+    """FM Face's saved portrait for this ID, if config.xml still maps it."""
+    player_id = validate_id(player_id)
+    path = directory / f"{player_id}.png"
+    if not path.is_file():
+        return None
+    _, maps = load_graphics_maps(directory)
+    targets = {f"graphics/pictures/person/{prefix}{player_id}/portrait" for prefix in ("", "r-")}
+    if not any(record.get("from") == player_id and record.get("to") in targets for record in maps):
+        return None
+    png = path.read_bytes()
+    return png if png.startswith(PNG_SIGNATURE) and len(png) <= MAX_REFERENCE else None
+
+
+def _reference_png(value: object) -> bytes | None:
+    """The game's current picture of the person, sent as base64 PNG."""
+    if value is None or value == "":
+        return None
+    if not isinstance(value, str) or len(value) > MAX_REFERENCE * 4 // 3 + 4:
+        raise ValueError("The current portrait sent by the game is invalid or too large.")
+    try:
+        png = base64.b64decode(value, validate=True)
+    except (ValueError, binascii.Error) as exc:
+        raise ValueError("The current portrait sent by the game is not valid base64.") from exc
+    if not png.startswith(PNG_SIGNATURE):
+        raise ValueError("The current portrait sent by the game is not a PNG.")
+    return png
 
 
 def save_portrait(directory: Path, player_id: str, png: bytes, *, newgen: bool | None, replace: bool) -> Path:
@@ -443,7 +556,7 @@ class FaceHandler(BaseHTTPRequestHandler):
         except ValueError:
             self.send_error(400, "Invalid Content-Length")
             return
-        if length < 1 or length > MAX_BODY:
+        if length < 1 or length > (MAX_AUTO_BODY if self.path == "/generate-auto" else MAX_BODY):
             self.send_error(413)
             return
         origin = self.headers.get("Origin", "")
@@ -468,13 +581,28 @@ class FaceHandler(BaseHTTPRequestHandler):
             try:
                 payload = json.loads(body)
                 player_id = validate_id(str(payload["playerId"]))
-                profile_prompt(payload["profile"], person_id=player_id)
+                mode = payload.get("mode", "generate")
+                if mode not in ("generate", "update"):
+                    raise ValueError("Unknown portrait request mode.")
+                if mode == "update":
+                    update_prompt(payload["profile"])
+                else:
+                    profile_prompt(payload["profile"], person_id=player_id)
                 env = self._current_env()
                 token = payload.get("locationToken")
                 directory = auto_output_dir(env, token)
                 check_graphics_config(directory)
-                prompt = profile_prompt(payload["profile"], person_id=player_id,
-                                        appearance_dir=directory)
+                reference = None
+                if mode == "update":
+                    prompt = update_prompt(payload["profile"])
+                    # Prefer FM Face's own full-size file to the game's on-screen copy.
+                    shown = _reference_png(payload.get("referencePng"))
+                    reference = current_portrait(directory, player_id) or shown
+                    if reference is None:
+                        raise ValueError("This person has no face to update yet. Use Generate face instead.")
+                else:
+                    prompt = profile_prompt(payload["profile"], person_id=player_id,
+                                            appearance_dir=directory)
                 with self.save_lock:
                     if player_id in self.in_flight:
                         raise FileExistsError("A portrait for this player is already being generated.")
@@ -486,7 +614,7 @@ class FaceHandler(BaseHTTPRequestHandler):
                 self._send_json(409, {"ok": False, "error": str(exc)})
                 return
             try:
-                png = generate_png(env, prompt)
+                png = edit_png(env, prompt, reference) if reference else generate_png(env, prompt)
                 with self.save_lock:
                     save_portrait(directory, player_id, png, newgen=None, replace=True)
             except (ValueError, FileExistsError, RuntimeError, OSError, ET.ParseError) as exc:

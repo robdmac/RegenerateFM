@@ -36,8 +36,9 @@ def main() -> None:
                       ("FM24_TIMESTAMP", "timestamp"), ("FM24_IMAGE_SIZE", "imageSize")):
         constants.append(f"#define {name} {supported[key]}u")
     # Functions of the validated build: FM24's own "reload current skin"
-    # sequence, and the Squad "Players" menu provider that the DLL extends.
-    for group, prefix in (("skinReload", "RELOAD_"), ("squadMenu", "SQUAD_MENU_")):
+    # sequence, the Squad "Players" menu provider that the DLL extends, and
+    # the query/message dialog functions FM24 uses for its own questions.
+    for group, prefix in (("skinReload", "RELOAD_"), ("squadMenu", "SQUAD_MENU_"), ("dialog", "DIALOG_")):
         for key, value in supported[group].items():
             name = prefix + "".join("_" + c if c.isupper() else c.upper() for c in key)
             constants.append(f"#define {name} {value}u")

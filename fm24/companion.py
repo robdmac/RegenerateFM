@@ -20,15 +20,59 @@ from rapidocr import RapidOCR
 from Xlib.error import XError
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from fmface import check_graphics_config, generate_png, load_env, profile_prompt
+from fmface import check_graphics_config, edit_png, generate_png, load_env, profile_prompt, update_prompt
 from capture_profile import BASE_SIZE, _biography, read_player_profile
 from capture_staff import read_staff_identity, read_staff_profile
+from existing_portrait import find_existing_portrait, game_dir_from_process
 from graphics import save_versioned_portrait
-from live_memory import MemoryUnavailable, enrich_profile
+from live_memory import MemoryUnavailable, enrich_profile, find_game_pid
 from native_profile import biography_candidates, choose_biography, read_open_profile
+from native_dialog import DialogUnavailable, set_progress
 from native_reload import request_native_reload
 from read_profile import capture_window, read_identity
 from refresh import _activate_game, find_game_window, reload_skin
+
+
+class NativePortraitProgress:
+    """Progress text on FM Face's portrait popup inside FM24 (native DLL).
+
+    The popup is 88 pixels wide, so the texts are one short word.
+
+    The skin reload after a new face rebuilds the popup, which clears it.
+    Raises DialogUnavailable from the constructor if FM24 cannot show it.
+    """
+
+    def __init__(self, port: int, token: str, text: str):
+        self.port, self.token = port, token
+        self.failed = False
+        set_progress(port, token, "portrait", text)
+
+    def send(self, command: str) -> None:
+        if command == "reload":
+            self._set("Loading…")
+
+    def _set(self, text: str) -> None:
+        try:
+            set_progress(self.port, self.token, "portrait", text)
+        except (DialogUnavailable, ValueError, OSError):
+            pass
+
+    def fail(self) -> None:
+        self.failed = True
+        self._set("Failed")
+
+    def close(self) -> None:
+        self._set("")
+
+
+def start_progress(handler, text: str):
+    """In-game progress when the native DLL is installed; else the X11 overlay."""
+    if handler.reload_port:
+        try:
+            return NativePortraitProgress(handler.reload_port, handler.token, text)
+        except (DialogUnavailable, ValueError, OSError) as exc:
+            print(f"FM24 in-game progress unavailable ({exc}); using the overlay.", flush=True)
+    return ProgressOverlay(handler.window_id)
 
 
 class ProgressOverlay:
@@ -125,6 +169,37 @@ def read_prompt_profile(window_id: str, engine: RapidOCR):
     return person_id, profile
 
 
+def read_update_profile(window_id: str, engine: RapidOCR):
+    """Name, age and club of the open profile, all that "Update face" needs.
+
+    Read twice from memory so navigation during the read is caught. Falls back
+    to the full profile read when memory is unavailable.
+    """
+    try:
+        first = read_open_profile(identity_only=True)
+        if read_open_profile(identity_only=True) != first:
+            raise ValueError("The open FM24 profile changed during native capture; no image request was made.")
+        return first
+    except (MemoryUnavailable, OSError) as exc:
+        print(f"FM24 native identity unavailable; reading the full profile: {exc}", flush=True)
+        return read_prompt_profile(window_id, engine)
+
+
+def existing_portrait(handler, person_id: str, name: str) -> tuple[bytes, str]:
+    """The portrait FM24 shows for this person now, for "Update face"."""
+    game_dir = handler.game_dir
+    if game_dir is None:
+        try:
+            game_dir = game_dir_from_process(find_game_pid())
+        except (MemoryUnavailable, OSError, ValueError):
+            game_dir = None
+    found = find_existing_portrait(person_id, handler.graphics_dir, game_dir)
+    if found is None:
+        raise ValueError(f"{name} has no face to update yet. Choose Generate new face instead; "
+                         "no image request was made.")
+    return found
+
+
 def reload_portrait(handler, player_id: str, staff: bool) -> None:
     """Reload FM24's skin in process when the native DLL is in use."""
     if handler.reload_port:
@@ -179,6 +254,7 @@ class Handler(BaseHTTPRequestHandler):
     reload_port = None
     window_id = ""
     graphics_dir = Path()
+    game_dir = None
     preview_only = False
     engine = None
     lock = threading.Lock()
@@ -267,6 +343,9 @@ again.onclick=()=>{{sessionStorage.removeItem('fmface-fm24-ran');location.reload
             if expected_id is not None and (not isinstance(expected_id, str) or
                                             not expected_id.isdecimal() or len(expected_id) > 20):
                 raise ValueError("Invalid expected FM24 player ID.")
+            mode = payload.get("mode", "generate")
+            if mode not in ("generate", "update"):
+                raise ValueError("Unknown FM24 request mode.")
             nonce = payload.get("nonce")
             with self.lock:
                 issued = self.nonces.pop(nonce, None) if isinstance(nonce, str) else None
@@ -282,22 +361,28 @@ again.onclick=()=>{{sessionStorage.removeItem('fmface-fm24-ran');location.reload
         try:
             _activate_game(self.window_id)
             if not self.preview_only:
-                progress = ProgressOverlay(self.window_id)
-            player_id, profile = read_prompt_profile(self.window_id, self.engine)
+                progress = start_progress(self, "Updating…" if mode == "update" else "Generating…")
+            player_id, profile = (read_update_profile if mode == "update" else read_prompt_profile)(
+                self.window_id, self.engine)
             if expected_id is not None and expected_id != player_id:
                 raise ValueError(f"The open FM24 profile is now person {player_id}, not the requested person "
                                  f"{expected_id}; no image request was made.")
-            prompt = profile_prompt(profile, person_id=player_id,
-                                    appearance_dir=None if self.preview_only else self.graphics_dir)
+            reference = source = None
+            if mode == "update":
+                reference, source = existing_portrait(self, player_id, profile["name"])
+                prompt = update_prompt(profile)
+            else:
+                prompt = profile_prompt(profile, person_id=player_id,
+                                        appearance_dir=None if self.preview_only else self.graphics_dir)
             if self.preview_only:
                 self._json(200, {"ok": True, "preview": True, "playerId": player_id,
-                                 "profile": profile, "prompt": prompt})
+                                 "profile": profile, "prompt": prompt, "reference": source})
                 return
             check_graphics_config(self.graphics_dir)
             env = load_env()
             if not env.get("OPENAI_API_KEY", "").strip():
                 raise ValueError("OPENAI_API_KEY is missing from .env.")
-            png = generate_png(env, prompt)
+            png = edit_png(env, prompt, reference) if reference else generate_png(env, prompt)
             _, previous = save_versioned_portrait(self.graphics_dir, player_id, png)
             if progress:
                 progress.send("reload")

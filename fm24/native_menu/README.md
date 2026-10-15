@@ -2,15 +2,19 @@
 
 FM24 can draw and handle the portrait menu itself. This integration adds a
 transparent native `popup_button` over the player and staff portrait in the FM
-Face skin. Selecting **Generate new face** emits `FMFG`. The DLL also adds
+Face skin, with **Generate new face** and **Update face** rows. FM24 posts the
+popup's `select_event`, `FMFG`, for either row; the DLL reads which row was
+chosen (`FMFG` or `FMFU`) from the event's `slct` property. The DLL also adds
 **Generate missing squad faces…** as the last item of FM24's own Squad screen
 **Overview** menu, below **Export Team for Versus Competition**; choosing it
 emits `FMFS`. The DLL consumes these events and sends an authenticated message
 to the local companion.
 Opening or dismissing the menu does not request a portrait. No browser or X11
-menu window is involved. Generation, profile reading and progress still use
-the existing Linux companion; its progress window and the squad scan still
-depend on X11. The automatic skin reload runs inside FM24 (see below).
+menu window is involved. Generation and profile reading still use the
+existing Linux companion. Progress, the squad confirmation, results and
+errors appear inside FM24 (see "In-game dialogs and progress" below); the
+squad scan still scrolls the table through X11. The automatic skin reload runs
+inside FM24 (see below).
 
 This is a prototype for **FM24 24.4.2 under Proton 9**, with the exact executable
 listed in [supported_build.json](supported_build.json). The installer and the
@@ -110,9 +114,51 @@ opens no profiles and reads no screenshots:
 After the count confirmation, each face is generated, saved and reloaded in
 game in turn. On the test save this took about 30 seconds to read all 29
 rows, where the profile-by-profile X11 scan took 10 to 20 minutes. The
-confirmation and progress dialogs are still separate windows.
+confirmation, progress and result are FM24 dialogs (below).
 
-When **Generate new face** is chosen, the DLL reads the person ID from game
+## In-game dialogs and progress
+
+FM24 opens its own "Quit game and return to start screen?" question by
+building a property record (`titl`, `text`, `acte` = the event posted for Yes,
+`noet` = the event ID posted for No, `widt`, `heig`) and passing it, with the
+screen manager as owner and parent, to the dialog function at RVA `0x10bfcc0`
+(a jump to `0xbdef100`). A gdb trace on 2026-10-15 confirmed the owner is the
+same manager object the DLL's event hook receives, and that choosing No posts
+`NOEX` to it. The DLL does the same on the UI thread's next IDLE event, with
+its own `FMDY`/`FMDN` events, which the hook consumes.
+
+- **Yes/No question:** the squad count confirmation ("Generate faces?").
+- **OK message:** the same dialog, after which its `no  ` button is hidden
+  (skin property `hidn`) and `yes ` is relabelled OK. FM24's OK/Cancel
+  function (`0x10b6050`) showed an empty panel, and `dbtn` only chooses the
+  default button, so neither gave an OK-only text dialog. Results, companion
+  errors and the DLL's own notices (formerly Windows message boxes) use it.
+- **Squad progress:** the same, with the one button labelled **Stop after this
+  face**. Its text is updated in place by applying a `{text}` record to the
+  dialog (`0x1906d70`, the call FM24 uses when creating it). The skin reload
+  after each face destroys open dialogs without any event, so a finished
+  reload marks the dialog closed and the companion opens a new one for the
+  next face. At the end the dialog becomes the result message.
+- **Portrait progress:** the text of FM Face's portrait popup (`fmnP`/`fmnS`)
+  is set the same way: Generating…, Updating…, Loading…, Failed. The reload
+  that loads the new face rebuilds the popup, which clears it.
+
+Widgets are found afresh every time by a bounded search under the screen's
+root widget (`manager + 0x58`), so the DLL never uses a widget pointer after
+navigation or a reload. If FM24 cannot show a dialog or set progress, the
+companion falls back to the X11 progress window or zenity. The companion's
+commands use the authenticated loopback listener on bridge port + 1:
+`FMFACE24D` (dialogs; replies queued, busy, shown, yes, no, closed, failed)
+and `FMFACE24P` (progress text), with base64 UTF-8 text.
+
+The event keeps its properties as a vector of `{fourcc key, value pointer}` at
+offset 0; the `slct` value holds the chosen row's ID at +8 and must have the
+same value type as the event's own `evid` (`FMFG`). A live capture on
+2026-10-15 showed `slct`/`id  ` = `FMFG` for **Generate new face** and `FMFU`
+for **Update face**. If the row cannot be read, nothing is sent and FM24 shows
+a message. The bridge then sends `update` instead of `profile`.
+
+When either row is chosen, the DLL reads the person ID from game
 memory inside FM24's menu callback, on the game's UI thread, before returning
 to the game. FM24 cannot navigate while that callback runs. It starts from the
 event's source widget, which must be FM Face's `fmnP` (player) or `fmnS`

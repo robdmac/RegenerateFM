@@ -112,7 +112,7 @@ namespace FMFaceHotReload
                                      StringComparison.OrdinalIgnoreCase);
         }
 
-        private void Generate(long? personId, bool staff)
+        private void Generate(long? personId, bool staff, bool update = false)
         {
             CheckRefreshTimeout();
             PollGeneration();
@@ -143,14 +143,21 @@ namespace FMFaceHotReload
                                      : CaptureProfile(personId.Value, out picture, out root);
                 if (snapshot.BiographyHeadline == null && _biographyCache.TryGetValue(personId.Value, out string cachedBiography))
                     snapshot.BiographyHeadline = cachedBiography;
+                string reference = null;
+                if (update)
+                {
+                    if (!HasFace(picture))
+                        throw new InvalidOperationException("This person has no face to update yet. Use Generate face instead.");
+                    reference = CaptureReferencePng(picture);
+                }
                 overlay = BuildOverlay(picture, out message);
-                Log.LogInfo("Generating face for " + snapshot.Name + " (" + personId.Value + "): " +
+                Log.LogInfo((update ? "Updating face for " : "Generating face for ") + snapshot.Name + " (" + personId.Value + "): " +
                             snapshot.Physical.Count + " physical, " + snapshot.Technical.Count + " technical, " +
                             snapshot.Mental.Count + " mental, " + snapshot.Goalkeeping.Count + " goalkeeping attributes; bio=" +
                             (snapshot.BiographyHeadline != null));
                 _pending = new PendingGeneration
                 {
-                    Task = RequestPortrait(personId.Value, snapshot),
+                    Task = RequestPortrait(personId.Value, snapshot, update ? "update" : "generate", reference),
                     Overlay = overlay,
                     Message = message,
                     StartedUtc = System.DateTime.UtcNow
@@ -1078,7 +1085,7 @@ namespace FMFaceHotReload
             menu.style.left = Math.Max(0f, picture.worldBound.x - root.worldBound.x);
             menu.style.top = Math.Max(0f, picture.worldBound.yMax - root.worldBound.y + 3f);
             menu.style.width = 190;
-            menu.style.height = 34;
+            menu.style.height = 66;
             menu.style.backgroundColor = new Color(0.16f, 0.16f, 0.16f, 1f);
             menu.style.borderTopWidth = 1;
             menu.style.borderBottomWidth = 1;
@@ -1088,7 +1095,18 @@ namespace FMFaceHotReload
             menu.style.borderBottomColor = Color.gray;
             menu.style.borderLeftColor = Color.gray;
             menu.style.borderRightColor = Color.gray;
-            var action = new Button((Il2CppSystem.Action)(System.Action)(() =>
+            bool hasFace = HasFace(picture);
+            menu.Add(PortraitMenuItem("fmface-portrait-generate", "Generate new face", personId, false, true));
+            menu.Add(PortraitMenuItem("fmface-portrait-update", "Update face", personId, true, hasFace));
+            root.Add(menu);
+            _portraitDismissLayer = dismissLayer;
+            _portraitMenu = menu;
+            _portraitMenuPersonId = personId;
+        }
+
+        private Button PortraitMenuItem(string name, string text, long personId, bool update, bool enabled)
+        {
+            var item = new Button((Il2CppSystem.Action)(System.Action)(() =>
             {
                 ClosePortraitMenu();
                 var currentRoot = CurrentRoot();
@@ -1100,19 +1118,18 @@ namespace FMFaceHotReload
                     return;
                 }
                 bool staff = !IsPlayerOverview(currentRoot) && !IsPlayerHeader(currentHeader);
-                Generate(currentId, staff);
-            })) { name = "fmface-portrait-generate", text = "Generate new face" };
-            action.style.width = Length.Percent(100);
-            action.style.height = 32;
-            action.style.color = Color.white;
-            action.style.backgroundColor = new Color(0.19f, 0.15f, 0.25f, 1f);
-            action.style.unityTextAlign = TextAnchor.MiddleLeft;
-            action.style.paddingLeft = 10;
-            menu.Add(action);
-            root.Add(menu);
-            _portraitDismissLayer = dismissLayer;
-            _portraitMenu = menu;
-            _portraitMenuPersonId = personId;
+                Generate(currentId, staff, update);
+            })) { name = name, text = text };
+            item.style.width = Length.Percent(100);
+            item.style.height = 32;
+            item.style.color = enabled ? Color.white : new Color(0.55f, 0.55f, 0.55f, 1f);
+            item.style.backgroundColor = new Color(0.19f, 0.15f, 0.25f, 1f);
+            item.style.unityTextAlign = TextAnchor.MiddleLeft;
+            item.style.paddingLeft = 10;
+            item.SetEnabled(enabled);
+            if (!enabled)
+                item.tooltip = "No face to update yet";
+            return item;
         }
 
         private void ClosePortraitMenu()
@@ -1255,6 +1272,129 @@ namespace FMFaceHotReload
             }
         }
 
+        // FM26 shows "person_default" (a silhouette) when a person has no face:
+        // neither a generated one nor a game photo.
+        private static bool HasFace(VisualElement picture)
+        {
+            var image = picture == null ? null : FindNamed(picture, "PersonImage")?.TryCast<SI.UI.Image>();
+            var address = image?.m_imageAddressableID?.ToString();
+            return !string.IsNullOrEmpty(address) && address != "person_default";
+        }
+
+        // The face FM26 is showing, as base64 PNG, for "Update face". The local
+        // generator prefers its own full-size file when this is a generated face.
+        private string CaptureReferencePng(VisualElement picture)
+        {
+            var image = FindNamed(picture, "PersonImage")?.TryCast<SI.UI.Image>();
+            var sprite = image?.sprite;
+            Texture source = sprite != null ? sprite.texture : image?.m_createdTexture;
+            if (source == null)
+                source = image?.image;
+            if (source == null)
+            {
+                Log.LogWarning("The current portrait texture was not found");
+                return null;
+            }
+            var rect = sprite != null ? sprite.textureRect : new Rect(0, 0, source.width, source.height);
+            int width = Mathf.RoundToInt(rect.width), height = Mathf.RoundToInt(rect.height);
+            if (width < 16 || height < 16 || width > 4096 || height > 4096)
+            {
+                Log.LogWarning("The current portrait texture has an unexpected size: " + width + "x" + height);
+                return null;
+            }
+            var target = RenderTexture.GetTemporary(width, height, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
+            var previous = RenderTexture.active;
+            Texture2D copy = null;
+            try
+            {
+                Graphics.Blit(source, target, new Vector2(rect.width / source.width, rect.height / source.height),
+                              new Vector2(rect.x / source.width, rect.y / source.height));
+                RenderTexture.active = target;
+                copy = new Texture2D(width, height, TextureFormat.RGBA32, false);
+                copy.ReadPixels(new Rect(0, 0, width, height), 0, 0);
+                copy.Apply();
+                // ImageConversion.EncodeToPNG fails in the IL2CPP interop layer,
+                // so read the pixels back and encode the PNG here.
+                var pixels = copy.GetPixels32();
+                var rgba = new byte[width * height * 4];
+                for (int i = 0; i < pixels.Length; i++)
+                {
+                    var pixel = pixels[i];
+                    rgba[i * 4] = pixel.r;
+                    rgba[i * 4 + 1] = pixel.g;
+                    rgba[i * 4 + 2] = pixel.b;
+                    rgba[i * 4 + 3] = pixel.a;
+                }
+                Log.LogInfo("Captured the current portrait (" + width + "x" + height + ")");
+                return Convert.ToBase64String(EncodePng(rgba, width, height));
+            }
+            catch (Exception error)
+            {
+                Log.LogWarning("Could not capture the current portrait: " + error);
+                return null;
+            }
+            finally
+            {
+                RenderTexture.active = previous;
+                RenderTexture.ReleaseTemporary(target);
+                if (copy != null)
+                    UnityEngine.Object.Destroy(copy);
+            }
+        }
+
+        // RGBA rows from Unity (bottom row first) as an 8-bit RGBA PNG.
+        private static byte[] EncodePng(byte[] rgba, int width, int height)
+        {
+            var raw = new byte[(width * 4 + 1) * height];
+            for (int row = 0; row < height; row++)
+                Buffer.BlockCopy(rgba, (height - 1 - row) * width * 4, raw, row * (width * 4 + 1) + 1, width * 4);
+            byte[] compressed;
+            using (var buffer = new MemoryStream())
+            {
+                using (var zlib = new System.IO.Compression.ZLibStream(buffer, System.IO.Compression.CompressionLevel.Optimal))
+                    zlib.Write(raw, 0, raw.Length);
+                compressed = buffer.ToArray();
+            }
+            var header = new byte[13];
+            WriteBigEndian(header, 0, (uint)width);
+            WriteBigEndian(header, 4, (uint)height);
+            header[8] = 8;  // bit depth
+            header[9] = 6;  // RGBA
+            using (var png = new MemoryStream())
+            {
+                png.Write(new byte[] { 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a }, 0, 8);
+                WriteChunk(png, "IHDR", header);
+                WriteChunk(png, "IDAT", compressed);
+                WriteChunk(png, "IEND", new byte[0]);
+                return png.ToArray();
+            }
+        }
+
+        private static void WriteChunk(Stream stream, string type, byte[] data)
+        {
+            var bytes = new byte[12 + data.Length];
+            WriteBigEndian(bytes, 0, (uint)data.Length);
+            Encoding.ASCII.GetBytes(type, 0, 4, bytes, 4);
+            Buffer.BlockCopy(data, 0, bytes, 8, data.Length);
+            uint crc = 0xffffffff;
+            for (int i = 4; i < 8 + data.Length; i++)
+            {
+                crc ^= bytes[i];
+                for (int bit = 0; bit < 8; bit++)
+                    crc = (crc >> 1) ^ (0xedb88320 & (uint)-(int)(crc & 1));
+            }
+            WriteBigEndian(bytes, 8 + data.Length, ~crc);
+            stream.Write(bytes, 0, bytes.Length);
+        }
+
+        private static void WriteBigEndian(byte[] bytes, int offset, uint value)
+        {
+            bytes[offset] = (byte)(value >> 24);
+            bytes[offset + 1] = (byte)(value >> 16);
+            bytes[offset + 2] = (byte)(value >> 8);
+            bytes[offset + 3] = (byte)value;
+        }
+
         private static VisualElement BuildOverlay(VisualElement picture, out Label message)
         {
             if (picture == null)
@@ -1307,7 +1447,8 @@ namespace FMFaceHotReload
             public string GraphicsDir;
         }
 
-        private static async Task<GenerationResult> RequestPortrait(long playerId, ProfileSnapshot profile)
+        private static async Task<GenerationResult> RequestPortrait(long playerId, ProfileSnapshot profile,
+            string mode = "generate", string referencePng = null)
         {
             string marker = null;
             try
@@ -1321,6 +1462,8 @@ namespace FMFaceHotReload
                 {
                     playerId = playerId.ToString(),
                     locationToken = token,
+                    mode,
+                    referencePng,
                     profile = new
                     {
                         type = profile.Type,
@@ -1493,13 +1636,13 @@ namespace FMFaceHotReload
                 if (menu != null)
                     menu.schedule.Execute((Il2CppSystem.Action)(System.Action)(() =>
                     {
-                        var label = FindText(menu, "Generate face");
-                        var row = label?.parent?.parent;
-                        if (row?.parent?.name == "View")
+                        foreach (var text in new[] { "Generate face", "Update face" })
                         {
-                            row.BringToFront();
-                            Instance.Log.LogInfo("FM Face action moved to bottom of Actions menu");
+                            var row = FindText(menu, text)?.parent?.parent;
+                            if (row?.parent?.name == "View")
+                                row.BringToFront();
                         }
+                        Instance.Log.LogInfo("FM Face actions moved to bottom of Actions menu");
                     })).ExecuteLater(1500);
             }
 
@@ -1527,6 +1670,11 @@ namespace FMFaceHotReload
                 bool staff = !IsPlayerOverview(root) && !IsPlayerHeader(header);
                 context.Description.AddItem(parent, "Generate face",
                     (Il2CppSystem.Action)(System.Action)(() => Instance.Generate(personId, staff)));
+                var update = context.Description.AddItem(parent, "Update face",
+                    (Il2CppSystem.Action)(System.Action)(() => Instance.Generate(personId, staff, true)));
+                // Updating needs a face to start from: a generated one or the game's photo.
+                if (!HasFace(FindNamed(header, "PersonPicture")))
+                    context.Description.SetEnabled(update, false);
                 _bound = true;
                 Instance.Log.LogInfo("FM Face action contributed to " + (staff ? "staff" : "player") +
                                      " Actions menu for " + personId);

@@ -354,9 +354,9 @@ class CompanionHttpTests(unittest.TestCase):
         self.assertIn("result.warning ? '\\n'+result.warning", page)
         return re.search(r'"nonce": "([^"]+)"', page).group(1)
 
-    def _post(self, nonce, expected_id=None):
+    def _post(self, nonce, expected_id=None, mode="generate"):
         body = json.dumps({"key": companion.Handler.token, "nonce": nonce,
-                           "expectedPlayerId": expected_id}).encode()
+                           "expectedPlayerId": expected_id, "mode": mode}).encode()
         return urllib.request.Request(self.base + "/fm24/generate", data=body,
                                       headers={"Content-Type": "application/json"}, method="POST")
 
@@ -402,6 +402,62 @@ class CompanionHttpTests(unittest.TestCase):
             self.assertEqual(portraits[0].read_bytes(), PNG_SIGNATURE + b"test")
             generate.assert_called_once_with({"OPENAI_API_KEY": "test-only"}, "test prompt")
             reload.assert_called_once()
+
+    def _update(self, *, found, preview):
+        companion.Handler.preview_only = preview
+        profile = {"name": "Lionel Messi", "age": 38, "club": "Inter Miami"}
+        with patch.object(companion, "read_update_profile", return_value=("7458500", profile)), \
+             patch.object(companion, "find_existing_portrait", return_value=found) as lookup, \
+             patch.object(companion, "find_game_pid", return_value=1), \
+             patch.object(companion, "game_dir_from_process", return_value=Path("/games/fm24")), \
+             patch.object(companion, "load_env", return_value={"OPENAI_API_KEY": "test-only"}), \
+             patch.object(companion, "generate_png") as generate, \
+             patch.object(companion, "edit_png", return_value=PNG_SIGNATURE + b"updated") as edit, \
+             patch.object(companion, "reload_skin"):
+            try:
+                result = json.load(urllib.request.urlopen(self._post(self._nonce(), "7458500", "update")))
+            except urllib.error.HTTPError as error:
+                result = {"status": error.code, **json.load(error)}
+            generate.assert_not_called()
+            lookup.assert_called_once_with("7458500", Path(self.temp.name), Path("/games/fm24"))
+            return result, edit
+
+    def test_update_preview_names_the_existing_portrait(self):
+        result, edit = self._update(found=(PNG_SIGNATURE + b"photo", "FM24 bundled messi.jpg"), preview=True)
+        self.assertTrue(result["preview"])
+        self.assertEqual(result["reference"], "FM24 bundled messi.jpg")
+        self.assertIn("updated version of the supplied picture of Lionel Messi", result["prompt"])
+        edit.assert_not_called()
+
+    def test_update_sends_existing_portrait_and_saves_result(self):
+        result, edit = self._update(found=(PNG_SIGNATURE + b"photo", "FM24 bundled messi.jpg"), preview=False)
+        self.assertTrue(result["ok"])
+        self.assertEqual(edit.call_args.args[2], PNG_SIGNATURE + b"photo")
+        self.assertIn("at age 38", edit.call_args.args[1])
+        saved = list(Path(self.temp.name).glob("7458500-*.png"))
+        self.assertEqual([path.read_bytes() for path in saved], [PNG_SIGNATURE + b"updated"])
+
+    def test_update_reads_only_identity_and_detects_navigation(self):
+        identity = ("7458500", {"type": "player", "name": "Lionel Messi", "age": 35, "club": "Inter Miami"})
+        with patch.object(companion, "read_open_profile", side_effect=[identity, identity]) as native, \
+             patch.object(companion, "read_prompt_profile") as full:
+            self.assertEqual(companion.read_update_profile("0x123", object()), identity)
+            self.assertEqual(native.call_args.kwargs, {"identity_only": True})
+            full.assert_not_called()
+        other = ("2000045865", dict(identity[1], name="Ian Fray"))
+        with patch.object(companion, "read_open_profile", side_effect=[identity, other]):
+            with self.assertRaisesRegex(ValueError, "changed"):
+                companion.read_update_profile("0x123", object())
+        with patch.object(companion, "read_open_profile", side_effect=live_memory.MemoryUnavailable("gone")), \
+             patch.object(companion, "read_prompt_profile", return_value=identity) as full:
+            self.assertEqual(companion.read_update_profile("0x123", object()), identity)
+            full.assert_called_once()
+
+    def test_update_without_a_face_is_refused_before_any_request(self):
+        result, edit = self._update(found=None, preview=False)
+        self.assertEqual(result["status"], 422)
+        self.assertIn("no face to update", result["error"])
+        edit.assert_not_called()
 
     def test_unsupported_window_rejected_before_api_request(self):
         companion.Handler.preview_only = False

@@ -6,7 +6,8 @@ import xml.etree.ElementTree as ET
 
 
 def popup(widget_id: str) -> ET.Element:
-    """A transparent popup over the portrait; its only item emits FMFG."""
+    """A transparent popup over the portrait. FM24 posts its select_event, FMFG,
+    for either row; the DLL reads the chosen row (FMFG or FMFU) from the event."""
     widget = ET.Element("widget", {"class": "popup_button", "id": widget_id, "select_event": "FMFG",
                                    "fixed": "true", "auto_size": "none", "width": "88", "height": "80",
                                    "show_button_appearance": "false"})
@@ -16,8 +17,9 @@ def popup(widget_id: str) -> ET.Element:
                                          "value": "Choose a face action"})
     ET.SubElement(widget, "string", {"id": "text", "value": ""})
     items = ET.SubElement(widget, "list", {"id": "items"})
-    item = ET.SubElement(items, "record", {"id": "FMFG"})
-    ET.SubElement(item, "translation", {"id": "text", "type": "new", "value": "Generate new face"})
+    for item_id, text in (("FMFG", "Generate new face"), ("FMFU", "Update face")):
+        item = ET.SubElement(items, "record", {"id": item_id})
+        ET.SubElement(item, "translation", {"id": "text", "type": "new", "value": text})
     return widget
 
 

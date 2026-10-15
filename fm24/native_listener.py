@@ -9,6 +9,7 @@ import threading
 import time
 
 from companion_client import describe_result, request_generation
+from native_dialog import notify as native_notify
 from squad_batch import run_native_squad_batch
 
 # The DLL reports the person ID shown in the clicked screen's header, read from
@@ -28,7 +29,11 @@ def _notify_error(message: str) -> None:
 
 
 def start_native_listener(window_id, port, bridge_port, token, engine, handler, *,
-                          notify=_notify_error, clock=time.time, generate=None):
+                          notify=None, clock=time.time, generate=None):
+    if notify is None:
+        # FM24's own OK dialog through the DLL, else a zenity window.
+        def notify(message):
+            native_notify(getattr(handler, "reload_port", None), token, message, _notify_error)
     server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         server.bind(("127.0.0.1", bridge_port))
@@ -56,7 +61,8 @@ def start_native_listener(window_id, port, bridge_port, token, engine, handler, 
             if not bound_id:
                 raise ValueError("FM24 did not report which person's menu was chosen; "
                                  "no image request was made.")
-            result = request_generation(port, token, handler, expected_id=bound_id)
+            result = request_generation(port, token, handler, expected_id=bound_id,
+                                        mode="update" if action == "update" else "generate")
             print(describe_result(result), flush=True)
             if not result.get("ok"):
                 notify(result.get("error", "FM Face could not generate this portrait."))
@@ -73,7 +79,7 @@ def start_native_listener(window_id, port, bridge_port, token, engine, handler, 
         if (peer[0] != "127.0.0.1" or magic != "FMFACE24" or version != "5" or
                 not pid.isdecimal() or not serial.isdecimal() or not clicked.isdecimal() or
                 not person.isdecimal() or
-                action not in ("profile", "squad") or not hmac.compare_digest(key, token)):
+                action not in ("profile", "update", "squad") or not hmac.compare_digest(key, token)):
             return
         sequence = int(serial)
         previous, reply = last_reply.get(pid, (0, b""))
@@ -101,7 +107,7 @@ def start_native_listener(window_id, port, bridge_port, token, engine, handler, 
             # click must still run and release the busy lock.
             print(f"FM24 native bridge reply failed (continuing): {exc}", flush=True)
         if accepted:
-            bound_id = person if action == "profile" and person != "0" else None
+            bound_id = person if action in ("profile", "update") and person != "0" else None
             try:
                 threading.Thread(target=process, args=(action, bound_id), daemon=True).start()
             except RuntimeError as exc:
