@@ -712,3 +712,22 @@ The FM24 companion now requires the native DLL and has no X11 code.
       - **Update face:** used his new FM Face portrait.
       - **Generate missing squad faces…** from FM24's Squad menu: 0 of 29
         missing, shown in FM24's dialog.
+
+## Billed Update face: 2026-10-15
+
+- [x] **FM24, Edison Azcona (generated face):** the same face, hair and features
+      came back in Inter Miami's pink home kit, reloaded in game. He is on loan at
+      Las Vegas, but the club comes from his contract, so the kit is the parent
+      club's.
+- [x] **FM24, Drake Callender (bundled photo):** a close likeness, now in a green
+      goalkeeper kit, reloaded in game.
+- [x] **FM26, Max Crocombe (game photo copied from memory, 191×250):** a close
+      likeness in a green goalkeeper kit, saved by `fmface.service` and reloaded
+      in game. This also ran the final plugin build in game for the first time.
+- [x] **Refused, FM24, Lionel Messi (bundled photo):** OpenAI returned "HTTP 400:
+      Your request was rejected by the safety system." The error showed in an
+      FM24 dialog, and nothing was saved. Edits of very famous people's real
+      photos are refused; lesser-known players' photos were accepted.
+- [ ] **FM26 Actions menu timing:** opened about 5 s after the profile, the menu
+      had no FM Face items (the header ID was not yet readable); reopening it
+      showed them.
