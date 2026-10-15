@@ -21,7 +21,7 @@ using UnityEngine.UIElements;
 
 namespace FMFaceHotReload
 {
-    [BepInPlugin("fmface.hotreload", "FM Face", "0.7.0")]
+    [BepInPlugin("fmface.hotreload", "FM Face", "0.8.0")]
     [BepInDependency(Plugin.Guid)]
     public sealed class HotReloadPlugin : BasePlugin
     {

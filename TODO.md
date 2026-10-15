@@ -39,6 +39,8 @@
   Overview dropdown (code-generated; needs DLL work like the Squad menu item).
 - **FM26 Actions menu timing:** opened about 5 s after a profile loads, the
   menu can lack the FM Face items until it is reopened.
-- **Release build:** rebuild the FM26 plugin in `hotreload/bin` (it predates
-  Update face and the loan-club fix), then `make_release.py`.
+- **Release build:** done (2026-10-16). Plugin version 0.8.0 was rebuilt into
+  `hotreload/bin` and installed in FM26, and `dist/fmface-0.8.0.zip` was made.
+  The unpacked zip passes all tests and holds no key or token. Not yet
+  published anywhere.
 - **Remote repo:** git is set up locally as FMFace; nothing has been pushed.
