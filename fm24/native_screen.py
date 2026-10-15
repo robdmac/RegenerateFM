@@ -30,6 +30,7 @@ _ID = re.compile(r"\(ID:([1-9][0-9]{0,9})\)$")
 class OpenScreen:
     person_id: str
     biography: str          # first paragraph shown, or "" when none is shown
+    title: str = ""         # the header's "Role - Club" text, without its ID
 
 
 def _skin_id(name: bytes) -> int:
@@ -109,4 +110,4 @@ def read_open_screen(pid: int | None = None) -> OpenScreen:
                      if biographies else "")
     except (OSError, ValueError, struct.error) as exc:
         raise MemoryUnavailable(f"Could not read the open FM24 screen: {exc}") from exc
-    return OpenScreen(match.group(1), biography)
+    return OpenScreen(match.group(1), biography, subtitle[:match.start()].strip())

@@ -289,7 +289,20 @@ back it was 16.8%, against 14.1% idle afterwards: the companion reads the
 game's memory from outside and never pauses it. The companion uses no
 measurable CPU when idle (29 MB of memory).
 
-Each companion read scans FM24's writable memory once, about 4.3 s, of
-which reading takes 0.8 s and Python's byte searches 2.9 s. A Generate reads
-the profile twice (about 10 s before the image request) and the squad
-command takes about 8.5 s.
+Each full pass over FM24's writable memory takes 2–4 s, mostly Python's
+byte searches. The companion now avoids repeat passes:
+
+| Read | Before | Now |
+|---|---|---|
+| Generate (profile, biography and the check read) | about 10 s | 3.4 s, 2.0 s for the same person again |
+| Update face | about 10 s | 2.1 s |
+| Squad roster | about 8.5 s | about 4.2 s |
+
+- The check read before a request uses the open screen's header and the
+  person record found the first time, instead of two more memory passes.
+- Person record addresses are remembered while the game runs. Each is used
+  only while its 64-byte header is unchanged; otherwise it is searched again.
+- The squad scan counts the top bar's date in its main pass instead of a
+  second one.
+- The Squad person table's address is remembered and checked against every
+  drawn row before use.

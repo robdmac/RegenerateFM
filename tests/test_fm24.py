@@ -265,26 +265,33 @@ class CompanionHttpTests(unittest.TestCase):
 
 
 class NativeProfileReadTests(unittest.TestCase):
+    PROFILE = {"type": "player", "name": "Lionel Messi", "age": 35, "club": "Inter Miami"}
+
+    def read(self, screens, reread=None, identity_only=False):
+        screens = iter(screens)
+        reread = reread or (lambda pid, person_id, title, age, identity_only=False: (person_id, dict(self.PROFILE)))
+        with patch.object(companion, "find_game_pid", return_value=1), \
+             patch.object(companion, "read_open_profile",
+                          side_effect=lambda *a, **k: ("7458500", dict(self.PROFILE))) as first, \
+             patch.object(companion, "read_open_screen", side_effect=lambda pid: next(screens)), \
+             patch.object(companion, "reread_profile", side_effect=reread) as again:
+            result = companion.read_native_profile(identity_only=identity_only)
+        return result, first, again
+
     def test_native_profile_takes_biography_from_the_open_screen(self):
         from native_screen import OpenScreen
-        profile = {"type": "player", "name": "Lionel Messi", "age": 35}
-        screen = OpenScreen("7458500", "Barcelona legend Lionel Messi is truly one of world soccer's superstars.")
-        with patch.object(companion, "find_game_pid", return_value=1), \
-             patch.object(companion, "read_open_profile", side_effect=lambda *a, **k: ("7458500", dict(profile))), \
-             patch.object(companion, "read_open_screen", return_value=screen):
-            person_id, result = companion.read_native_profile()
+        screen = OpenScreen("7458500", "Barcelona legend Lionel Messi is truly one of world soccer's superstars.",
+                            "Attacking Midfielder - Inter Miami")
+        (person_id, result), _, again = self.read([screen, screen])
         self.assertEqual(result["biographyHeadline"], screen.biography)
-        with patch.object(companion, "find_game_pid", return_value=1), \
-             patch.object(companion, "read_open_profile", side_effect=lambda *a, **k: ("7458500", dict(profile))), \
-             patch.object(companion, "read_open_screen", return_value=OpenScreen("2000045865", "")):
-            with self.assertRaisesRegex(ValueError, "shows 2000045865"):
-                companion.read_native_profile()
-        later = iter([("7458500", dict(profile)), ("2000045865", dict(profile))])
-        with patch.object(companion, "find_game_pid", return_value=1), \
-             patch.object(companion, "read_open_profile", side_effect=lambda *a, **k: next(later)), \
-             patch.object(companion, "read_open_screen", return_value=screen):
-            with self.assertRaisesRegex(ValueError, "changed"):
-                companion.read_native_profile()
+        # The check read uses the header title and the first age: no second memory scan.
+        self.assertEqual(again.call_args.args, (1, "7458500", "Attacking Midfielder - Inter Miami", 35))
+        with self.assertRaisesRegex(ValueError, "shows 2000045865"):
+            self.read([OpenScreen("2000045865", ""), OpenScreen("2000045865", "")])
+        with self.assertRaisesRegex(ValueError, "changed"):
+            self.read([screen, OpenScreen("2000045865", "", "Defender - Inter Miami")])
+        with self.assertRaisesRegex(ValueError, "changed"):
+            self.read([screen, screen], reread=lambda *a, **k: ("7458500", dict(self.PROFILE, club="Las Vegas")))
         with patch.object(companion, "find_game_pid", return_value=1), \
              patch.object(companion, "read_open_profile", side_effect=live_memory.MemoryUnavailable("gone")):
             with self.assertRaisesRegex(ValueError, "from game memory"):
@@ -292,12 +299,11 @@ class NativeProfileReadTests(unittest.TestCase):
 
     def test_update_reads_identity_only(self):
         from native_screen import OpenScreen
-        identity = ("7458500", {"type": "player", "name": "Lionel Messi", "age": 35, "club": "Inter Miami"})
-        with patch.object(companion, "find_game_pid", return_value=1), \
-             patch.object(companion, "read_open_profile", side_effect=lambda *a, **k: (identity[0], dict(identity[1]))) as read, \
-             patch.object(companion, "read_open_screen", return_value=OpenScreen("7458500", "A biography.")):
-            self.assertEqual(companion.read_native_profile(identity_only=True), identity)
-        self.assertEqual(read.call_args.kwargs, {"identity_only": True})
+        screen = OpenScreen("7458500", "A biography.", "Attacking Midfielder - Inter Miami")
+        (person_id, result), first, again = self.read([screen, screen], identity_only=True)
+        self.assertEqual((person_id, result), ("7458500", self.PROFILE))
+        self.assertEqual(first.call_args.kwargs, {"identity_only": True})
+        self.assertEqual(again.call_args.kwargs, {"identity_only": True})
 
 
 class GraphicsTests(unittest.TestCase):

@@ -16,6 +16,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "fm24"))
 import native_profile
+import live_memory
 import native_screen
 import native_squad
 import squad_batch
@@ -67,6 +68,37 @@ class PlayingClubTests(unittest.TestCase):
             words[0x6000 + 12] = 78  # details of another club
             with self.assertRaises(MemoryUnavailable):
                 native_profile._playing_club(1, record, "Inter Miami")
+
+
+class RecordCacheTests(unittest.TestCase):
+    def test_record_address_is_reused_until_its_header_changes(self):
+        native_profile._records.clear()
+        identity = live_memory.PersonIdentity(7458500, "Lionel Messi", dt.date(1987, 6, 24), 2023, "player")
+        header = {0x5000: b"H" * native_profile._RECORD_HEADER}
+        with patch.object(native_profile, "read_person_record", return_value=(0x5000, identity)) as search, \
+                patch.object(native_profile, "read_process_bytes",
+                             side_effect=lambda pid, address, size: header[address][:size]):
+            self.assertEqual(native_profile._person_record(1, "7458500"), (0x5000, identity))
+            self.assertEqual(native_profile._person_record(1, "7458500"), (0x5000, identity))
+            self.assertEqual(search.call_count, 1)
+            header[0x5000] = b"X" * native_profile._RECORD_HEADER  # moved or replaced: search again
+            native_profile._person_record(1, "7458500")
+            self.assertEqual(search.call_count, 2)
+            native_profile._person_record(2, "7458500")  # another game process
+            self.assertEqual(search.call_count, 3)
+        native_profile._records.clear()
+
+
+class DateCountTests(unittest.TestCase):
+    def test_counts_only_fm_date_strings(self):
+        def fm_string(text):
+            return struct.pack("<I", len(text)) + text + b"\0"
+        data = (b"xx" + fm_string(b"2 Jan 2023") + b"yy" + fm_string(b"12 Feb 2024") +
+                b"2 Jan 2023\0" +                          # no length prefix: ignored
+                fm_string(b"2 Foo 2023") + b" 2023 tail")   # not a month: ignored
+        dates = collections.Counter()
+        native_squad._count_dates(data, dates)
+        self.assertEqual(dates, {"2 Jan 2023": 1, "12 Feb 2024": 1})
 
 
 class AlternateNameTests(unittest.TestCase):

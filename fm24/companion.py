@@ -27,7 +27,7 @@ from fmface import check_graphics_config, edit_png, generate_png, load_env, prof
 from existing_portrait import find_existing_portrait, game_dir_from_process
 from graphics import save_versioned_portrait
 from live_memory import MemoryUnavailable, find_game_pid
-from native_profile import read_open_profile
+from native_profile import read_open_profile, reread_profile
 from native_dialog import DialogUnavailable, set_progress
 from native_reload import request_native_reload
 from native_screen import read_open_screen
@@ -92,9 +92,10 @@ def read_native_profile(*, identity_only: bool = False):
         if (not identity_only and biography and
                 not biography.lower().startswith("no biography is available")):
             profile["biographyHeadline"] = biography
-        if (read_open_profile(pid, identity_only=identity_only) !=
-                (person_id, {key: value for key, value in profile.items() if key != "biographyHeadline"}) or
-                read_open_screen(pid) != screen):
+        # The check read uses the header and the known record: no memory search.
+        if (read_open_screen(pid) != screen or
+                reread_profile(pid, person_id, screen.title, profile["age"], identity_only=identity_only) !=
+                (person_id, {key: value for key, value in profile.items() if key != "biographyHeadline"})):
             raise ValueError("The open FM24 profile changed during capture; no image request was made.")
         return person_id, profile
     except (MemoryUnavailable, OSError) as exc:

@@ -113,11 +113,31 @@ def _record_with_alternate_name(pid: int, person_id: str) -> tuple[int, PersonId
     return address, PersonIdentity(number, names.pop(), birth, year, kind)
 
 
+# Person records stay at one address while the game runs. Remember where each
+# was found, with its header, so a later read skips the full memory search; a
+# changed header (or a new game process) means searching again.
+_RECORD_HEADER = 0x40
+_records: dict[tuple[int, str], tuple[int, PersonIdentity, bytes]] = {}
+
+
 def _person_record(pid: int, person_id: str) -> tuple[int, PersonIdentity]:
+    cached = _records.get((pid, person_id))
+    if cached:
+        address, identity, header = cached
+        try:
+            if read_process_bytes(pid, address, _RECORD_HEADER) == header:
+                return address, identity
+        except OSError:
+            pass
+        del _records[(pid, person_id)]
     try:
-        return read_person_record(person_id, pid)
+        address, identity = read_person_record(person_id, pid)
     except MemoryUnavailable:
-        return _record_with_alternate_name(pid, person_id)
+        address, identity = _record_with_alternate_name(pid, person_id)
+    if len(_records) > 512:
+        _records.clear()
+    _records[(pid, person_id)] = (address, identity, read_process_bytes(pid, address, _RECORD_HEADER))
+    return address, identity
 
 
 def _text(pid: int, address: int, *, limit: int = 80) -> str:
@@ -264,6 +284,24 @@ def read_open_profile(pid: int | None = None, *, identity_only: bool = False) ->
     if len(matching_ages) != 1:
         raise MemoryUnavailable("Could not verify the open FM24 person's age.")
     age = matching_ages.pop()
+    return person_id, _profile(pid, record, identity, names, age, identity_only)
+
+
+def reread_profile(pid: int, person_id: str, title: str, age: int, *,
+                   identity_only: bool = False) -> tuple[str, dict]:
+    """Read a person found by read_open_profile again, without a memory search.
+
+    ``title`` is the open screen's "Role - Club" header text and ``age`` the
+    age read the first time. Used to check that nothing changed during capture.
+    """
+    record, identity = _person_record(pid, person_id)
+    if age not in identity.possible_ages:
+        raise MemoryUnavailable("The FM24 person's age changed during capture.")
+    return person_id, _profile(pid, record, identity, [title], age, identity_only)
+
+
+def _profile(pid: int, record: int, identity: PersonIdentity, names: list[str], age: int,
+             identity_only: bool) -> dict:
     nation = _nation(pid, record)
     club = _club(pid, record)
     if not any(title.endswith(" - " + club) for title in names):
@@ -274,13 +312,13 @@ def read_open_profile(pid: int | None = None, *, identity_only: bool = False) ->
         if len(jobs) != 1 or not next(iter(jobs)):
             raise MemoryUnavailable("Could not verify the FM24 staff job title.")
         if identity_only:
-            return person_id, {"type": "staff", "name": identity.name, "age": age, "club": club}
-        return person_id, {"type": "staff", "name": identity.name,
-                           "age": age, "nationality": nation,
-                           "jobTitle": jobs.pop(), "club": club}
+            return {"type": "staff", "name": identity.name, "age": age, "club": club}
+        return {"type": "staff", "name": identity.name,
+                "age": age, "nationality": nation,
+                "jobTitle": jobs.pop(), "club": club}
     if identity_only:
-        return person_id, {"type": "player", "name": identity.name, "age": age,
-                           "club": _playing_club(pid, record, club)}
+        return {"type": "player", "name": identity.name, "age": age,
+                "club": _playing_club(pid, record, club)}
     raw = read_process_bytes(pid, record - 0x6d, 54)
     height_cm = struct.unpack("<H", read_process_bytes(pid, record - 0x136, 2))[0]
     rated_position = _position(pid, record)
@@ -299,7 +337,7 @@ def read_open_profile(pid: int | None = None, *, identity_only: bool = False) ->
                "mental": _attributes(raw, MENTAL)}
     section = "goalkeeping" if rated_position == "Goalkeeper" else "technical"
     profile[section] = _attributes(raw, GOALKEEPING if section == "goalkeeping" else TECHNICAL)
-    return person_id, profile
+    return profile
 
 
 def squad_club(pid: int, records: list[int]) -> str:

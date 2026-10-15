@@ -6,8 +6,8 @@
    FM24's UI thread is about 0.35 ms a minute when idle, and at most 4.4 ms
    for a single event (showing a dialog). The companion uses no CPU when idle
    and its memory reads don't pause the game. Each read takes about 4.3 s,
-   mostly in Python's byte searches (see "Faster memory scans" below). Details
-   are in `fm24/native_menu/README.md`.
+   mostly in Python's byte searches; since made faster (see "In progress").
+   Details are in `fm24/native_menu/README.md`.
 2. **Remove the remaining overlays.** Done (2026-10-15). FM24's progress,
    confirmations, results and errors are FM24 dialogs; squad rows come from
    the table's row model and the biography from the displayed widget. All X11
@@ -24,9 +24,10 @@
 ## In progress
 
 - In-game squad generation: done (memory roster from the row model, portrait
-  index, prompts by ID; a billed two-face batch with Stop passed). Remaining:
-  speed up the memory passes (the portrait index and date scan take about
-  10 s), and the "All Players" view, which has a row the reader refuses.
+  index, prompts by ID; a billed two-face batch with Stop passed). Memory
+  reads were made faster on 2026-10-16 (Generate about 10 s to 3.4 s, squad
+  8.5 s to 4.2 s). Remaining: the "All Players" view, which has a row the
+  reader refuses.
 
 ## Later
 

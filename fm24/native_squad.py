@@ -137,13 +137,27 @@ def _text(pid: int, address: int) -> str:
     return value
 
 
-def _scan(pid: int, manager: int, catalogue: bool = True) -> tuple[list[int], set[str]]:
+def _count_dates(data: bytes, dates: collections.Counter) -> None:
+    """Count "d Mon 20YY" FM string objects in a chunk (the top bar shows today's)."""
+    offset = 0
+    while (offset := data.find(b" 20", offset)) >= 0:
+        if data[offset + 3:offset + 5].isdigit() and data[offset + 5:offset + 6] == b"\0":
+            for start in (offset - 5, offset - 6):
+                text = data[start:offset + 5]
+                match = _DATE.fullmatch(text)
+                if (start >= 4 and match and match.group(2).decode() in _MONTHS and
+                        struct.unpack_from("<I", data, start - 4)[0] == len(text)):
+                    dates[text.decode()] += 1
+        offset += 3
+
+
+def _scan(pid: int, manager: int, catalogue: bool = True) -> tuple[list[int], set[str], collections.Counter]:
     """One pass: name cells of this manager and, with ``catalogue``, the
-    indexed portraits."""
+    indexed portraits and the dates shown in FM strings."""
     cell_vtable = fm24_image_base(pid) + NAME_CELL_VTABLE_RVA
     needle = struct.pack("<Q", manager)
     no_picture_key = b"\x01\x00\x00\x00" + struct.pack("<I", len(_NO_PICTURE)) + _NO_PICTURE + b"\x00"
-    cells, indexed, no_picture = [], set(), False
+    cells, indexed, no_picture, dates = [], set(), False, collections.Counter()
     scan = MemoryScan(pid, 128)
     for base, data in scan:
         offset = 0
@@ -168,26 +182,10 @@ def _scan(pid: int, manager: int, catalogue: bool = True) -> tuple[list[int], se
                 indexed.add(match.group(1).decode())
             offset += len(_PERSON_PICTURE)
         no_picture |= no_picture_key in data
+        _count_dates(data, dates)
     if not scan.complete or (catalogue and not no_picture):
         raise MemoryUnavailable("Could not read FM24's complete portrait index.")
-    return cells, indexed
-
-
-def _dates(pid: int, year: int) -> collections.Counter:
-    """Count "d Mon <year>" FM string objects (the top bar shows today's)."""
-    key = f" {year}\0".encode()
-    dates = collections.Counter()
-    for _, data in MemoryScan(pid, 16):
-        offset = 0
-        while (offset := data.find(key, offset)) >= 0:
-            for start in (offset - 5, offset - 6):
-                text = data[start:offset + 5]
-                match = _DATE.fullmatch(text)
-                if (start >= 4 and match and match.group(2).decode() in _MONTHS and
-                        struct.unpack_from("<I", data, start - 4)[0] == len(text)):
-                    dates[text.decode()] += 1
-            offset += len(key)
-    return dates
+    return cells, indexed, dates
 
 
 def _today(dates: collections.Counter) -> dt.date:
@@ -211,7 +209,7 @@ def read_squad(pid: int | None = None, attempts: int = 3, catalogue: bool = True
         manager = ui_manager(pid)
         for attempt in range(attempts):
             try:
-                cells, indexed = _scan(pid, manager, catalogue)
+                cells, indexed, dates = _scan(pid, manager, catalogue)
                 break
             except MemoryUnavailable:
                 # FM24 can unmap memory during a scan; a later pass is complete.
@@ -246,7 +244,9 @@ def read_squad(pid: int | None = None, attempts: int = 3, catalogue: bool = True
         years = {struct.unpack("<H", read_process_bytes(pid, row.record + 0x36, 2))[0] for row in result}
         if len(years) != 1 or not 1900 < min(years) < 2200:
             raise MemoryUnavailable("Could not read FM24's current year.")
-        today = _today(_dates(pid, years.pop()))
+        year = str(years.pop())
+        today = _today(collections.Counter({text: count for text, count in dates.items()
+                                            if text.endswith(" " + year)}))
     return SquadState(tuple(result), total, frozenset(indexed), today, visible, table)
 
 
@@ -281,6 +281,22 @@ def _handle_table(pid: int, people: list[int]) -> int:
     if len(people) < 2:
         raise MemoryUnavailable("Too few drawn FM24 Squad rows to locate the person table.")
     handles = [_u32(pid, person + PERSON_HANDLE) for person in people]
+    cached = _person_tables.get(pid)
+    if cached:
+        # The table stays put while the game runs; check it still holds every drawn person.
+        try:
+            if all(_u64(pid, cached + 8 * handle) == person for person, handle in zip(people, handles)):
+                return cached
+        except OSError:
+            pass
+    _person_tables[pid] = base = _find_handle_table(pid, people, handles)
+    return base
+
+
+_person_tables: dict[int, int] = {}
+
+
+def _find_handle_table(pid: int, people: list[int], handles: list[int]) -> int:
     needle = struct.pack("<Q", people[0])
     bases = set()
     for base, data in MemoryScan(pid, 8):
