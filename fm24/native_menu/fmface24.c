@@ -590,11 +590,49 @@ static void queue_click(unsigned int id, unsigned int item, LONG64 click_ms, LON
     SetEvent(event_ready);
 }
 
-static int native_event(void *object, unsigned int id, void *event)
+/* Performance build (build.py --perf): time FM Face's own work on FM24's UI
+   thread, excluding the game's handler, and log totals once a minute. */
+#ifdef FMFACE_PERF
+static LARGE_INTEGER perf_frequency;
+static LONG64 perf_events, perf_game, perf_own, perf_own_max, perf_menu;
+static ULONGLONG perf_reported;
+static LONG64 perf_now(void)
+{
+    LARGE_INTEGER now;
+    QueryPerformanceCounter(&now);
+    return now.QuadPart;
+}
+static LONG64 perf_us(LONG64 ticks) { return ticks * 1000000 / perf_frequency.QuadPart; }
+static int perf_original(void *object, unsigned int id, void *event)
+{
+    LONG64 start = perf_now();
+    int result = original_event(object, id, event);
+    perf_game += perf_now() - start;
+    return result;
+}
+static void perf_report(void)
+{
+    ULONGLONG now = GetTickCount64();
+    if (!perf_reported) perf_reported = now;
+    if (now - perf_reported < 60000) return;
+    char line[160];
+    snprintf(line, sizeof(line), "FMFACE24_PERF events=%lld own_us=%lld own_max_us=%lld game_us=%lld menu_us=%lld",
+             (long long)perf_events, (long long)perf_us(perf_own), (long long)perf_us(perf_own_max),
+             (long long)perf_us(perf_game), (long long)perf_us(perf_menu));
+    log_line(line);
+    perf_events = perf_own = perf_own_max = perf_game = perf_menu = 0;
+    perf_reported = now;
+}
+#define ORIGINAL_EVENT perf_original
+#else
+#define ORIGINAL_EVENT original_event
+#endif
+
+static int handle_event(void *object, unsigned int id, void *event)
 {
     if (id != PROFILE_EVENT && id != SQUAD_EVENT) {
         if ((id == DIALOG_YES || id == DIALOG_NO) && dialog_tick(object, id)) return 1;
-        int result = original_event(object, id, event);
+        int result = ORIGINAL_EVENT(object, id, event);
         if (id == IDLE_EVENT || id == SKIN_EVENT || id == STAGE_EVENT) reload_tick(object, id);
         if (id == IDLE_EVENT) dialog_tick(object, id);
         return result;
@@ -611,6 +649,22 @@ static int native_event(void *object, unsigned int id, void *event)
     return 1;
 }
 
+static int native_event(void *object, unsigned int id, void *event)
+{
+#ifdef FMFACE_PERF
+    LONG64 game_before = perf_game, start = perf_now();
+    int result = handle_event(object, id, event);
+    LONG64 own = perf_now() - start - (perf_game - game_before);
+    ++perf_events;
+    perf_own += own;
+    if (own > perf_own_max) perf_own_max = own;
+    perf_report();
+    return result;
+#else
+    return handle_event(object, id, event);
+#endif
+}
+
 /* Squad screen "Players" menu. FM24 builds it from provider objects; the
    provider that adds "Export Team for Versus Competition" (its last item) is
    extended to append "Generate missing squad faces…", and its command
@@ -623,9 +677,22 @@ typedef void (*release_function)(void *, int);
 static menu_add_function original_menu_add;
 static menu_event_function original_menu_event;
 
+static void add_squad_item(void *provider, void **builder, void *context);
+
 static void squad_menu_add(void *provider, void **builder, void *context)
 {
     original_menu_add(provider, builder, context);
+#ifdef FMFACE_PERF
+    LONG64 start = perf_now();
+    add_squad_item(provider, builder, context);
+    perf_menu += perf_now() - start;
+#else
+    add_squad_item(provider, builder, context);
+#endif
+}
+
+static void add_squad_item(void *provider, void **builder, void *context)
+{
     if (!builder || !*builder || !GAME_FUNCTION(record_check_function, SQUAD_MENU_IS_RECORD_RVA)(context))
         return;
     unsigned char text[16] __attribute__((aligned(16))) = {0};
@@ -981,6 +1048,9 @@ static void install_event_hook(void)
     if (*slot != original_event || memcmp(base + HANDLER_RVA, prologue, sizeof(prologue))) {
         log_line("FMFACE24_HANDLER_MISMATCH"); return;
     }
+#ifdef FMFACE_PERF
+    QueryPerformanceFrequency(&perf_frequency);
+#endif
     event_ready = CreateEventW(NULL, FALSE, FALSE, NULL);
     if (!event_ready) return;
     HANDLE thread = CreateThread(NULL, 0, bridge_worker, NULL, 0, NULL);

@@ -17,6 +17,8 @@ def main() -> None:
     parser.add_argument("--system-winmm", type=Path, required=True)
     parser.add_argument("--cc", default="x86_64-w64-mingw32-gcc")
     parser.add_argument("--output", type=Path, default=Path(__file__).parent / "build")
+    parser.add_argument("--perf", action="store_true",
+                        help="Log FM Face's own time on FM24's UI thread once a minute (fmface24.log)")
     args = parser.parse_args()
     compiler = shutil.which(args.cc)
     if not compiler:
@@ -74,6 +76,7 @@ def main() -> None:
     definition.write_text("\n".join(exports) + "\n")
     target = args.output / "winmm.dll"
     subprocess.run([compiler, "-shared", "-O2", "-Wall", "-Wextra", "-Werror",
+                    *(["-DFMFACE_PERF"] if args.perf else []),
                     "-static-libgcc", "-I", str(args.output), str(Path(__file__).with_name("fmface24.c")),
                     str(generated), str(definition), "-lws2_32", "-lbcrypt", "-o", str(target)],
                    check=True)

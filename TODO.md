@@ -2,10 +2,12 @@
 
 ## Requested (2026-10-15)
 
-1. **Performance measurement.** Check FM Face does not slow the game
-   unnecessarily: the DLL's work on FM24's UI thread (event hook, IDLE
-   reload check, Squad menu provider), and the companion's memory scans
-   (about 1.5 s per 2 GB pass; the squad reader makes two or three).
+1. **Performance measurement.** Done (2026-10-15). FM Face's own work on
+   FM24's UI thread is about 0.35 ms a minute when idle, and at most 4.4 ms
+   for a single event (showing a dialog). The companion uses no CPU when idle
+   and its memory reads don't pause the game. Each read takes about 4.3 s,
+   mostly in Python's byte searches (see "Faster memory scans" below). Details
+   are in `fm24/native_menu/README.md`.
 2. **Remove the remaining overlays.** Done (2026-10-15). FM24's progress,
    confirmations, results and errors are FM24 dialogs; squad rows come from
    the table's row model and the biography from the displayed widget. All X11

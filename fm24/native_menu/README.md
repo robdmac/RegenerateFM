@@ -267,3 +267,29 @@ complete missing-face batch and stop-after-current-face remain unverified by
 that retest. See [the release checklist](../../RELEASE_CHECKLIST.md) for evidence
 and remaining checks. Other skins, resolutions, builds, and staff roles need
 separate validation before making this the default release integration.
+
+## Performance
+
+`build.py --perf` builds a DLL that times FM Face's own work on FM24's UI
+thread (excluding the game's handler) and logs it to `fmface24.log` once a
+minute as `FMFACE24_PERF`. A normal build contains none of this code.
+
+Measured on 2026-10-15 with the tested save:
+
+| Activity | Events/min | FM Face time/min | Worst single event |
+|---|---|---|---|
+| Idle on Home | 1,200–1,700 | about 0.35 ms | under 0.02 ms |
+| Clicking through screens and popups | about 2,600 | about 0.6 ms | under 0.01 ms |
+| A Generate or Update click | | | 1.1 ms (person ID and row read) |
+| Squad command dialog | | | 4.4 ms (dialog shown once) |
+
+FM24's own CPU use was about 13.5% of one core when idle and 33% while
+clicking through screens. While the companion ran squad memory reads back to
+back it was 16.8%, against 14.1% idle afterwards: the companion reads the
+game's memory from outside and never pauses it. The companion uses no
+measurable CPU when idle (29 MB of memory).
+
+Each companion read scans FM24's writable memory once, about 4.3 s, of
+which reading takes 0.8 s and Python's byte searches 2.9 s. A Generate reads
+the profile twice (about 10 s before the image request) and the squad
+command takes about 8.5 s.
