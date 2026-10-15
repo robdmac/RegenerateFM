@@ -648,3 +648,41 @@ table, which has 4 players with no face.
       attributes work. Preview: Brad Guzan (980785, Atlanta United), age 38,
       Atlanta United kit, bundled photo `usa/atlanta/brad guzan.jpg`.
 - [ ] Billed Update face in either game.
+
+## No X11 in the native path: 2026-10-15
+
+The native mode no longer scrolls the Squad table, takes screenshots, runs
+OCR, looks up the game window or activates it. Evidence comes from a preview
+companion whose X11 entry points (`Xlib.display.Display`, `capture_window`,
+`find_game_window`, `_activate_game`, `_click`, `_scroll`, `reload_skin`) all
+raise; it started without a window and logged no X11 call.
+
+- [x] Squad rows from the table's row model (table+0x6e8 → +0x18) and FM24's
+      person table (found from drawn rows, base 0x1c690040 on the test save):
+      Inter Miami 29 of 29 with rows 1–5 undrawn (visible 6–29), in about 1 s
+      beyond the existing scan. Through FM24's Squad menu with rows 1–2 and
+      28–29 undrawn: "0 missing of 29", shown in FM24's dialog.
+- [x] LAFC (24 rows, 11 missing) through the native squad code with the X11
+      helpers raising: confirmation Yes, 11 previews (Hugo Lloris, age 36,
+      LAFC, …), "Previewed 11 squad faces."; X11 calls: none.
+- [x] Generate preview, Messi (7458500): biography headline from the `biot`
+      widget ("Barcelona legend Lionel Messi is truly one of world soccer's
+      global superstars…"), identical to what FM24 shows.
+- [x] Generate preview, Jorge Theiler (14008037, staff): biography headline
+      "Club Atlético Newell's Old Boys icon Jorge Walter Theiler was born…".
+- [x] Update face preview for Messi (bundled photo) and Theiler (FM Face
+      portrait), name/age/club from memory.
+- [ ] "All Players" on another club's Players screen includes a row the squad
+      reader refuses ("does not show a validated FM24 player"); unchanged.
+- [ ] A billed run through the X11-free path.
+
+## Billed single face through the X11-free path: 2026-10-15
+
+- [x] Gabriel Pec (19397595, LA Galaxy, no face before): a billed **Generate
+      new face** through FM24's portrait popup. The companion ran with every X11
+      entry point patched to raise; it logged 0 X11 calls. The face was saved and
+      reloaded in game 37 s after the click.
+- [x] Fixed: some name records carry a third string, the common name
+      ("Gabriel" "Fortes Chaves" "Gabriel Pec"). The decoder rejected these, and
+      the first attempt was refused safely with "found 0" and no request. It now
+      accepts the common name and uses "first surname".

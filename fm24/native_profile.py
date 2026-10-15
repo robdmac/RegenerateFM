@@ -54,7 +54,9 @@ def _u32(pid: int, address: int) -> int:
 
 
 def _alternate_name(raw: bytes) -> str | None:
-    """Decode "<id><id> 09 <u32 n><first> <u32 n><surname> 00", or None."""
+    """Decode "<id><id> 09 <u32 n><first> <u32 n><surname>" followed by 00,
+    or by a third string, the common name (e.g. "Gabriel" "Fortes Chaves"
+    "Gabriel Pec"). Returns "first surname", or None."""
     if len(raw) < 20 or raw[8] != 0x09:
         return None
     first_size = struct.unpack_from("<I", raw, 9)[0]
@@ -62,14 +64,21 @@ def _alternate_name(raw: bytes) -> str | None:
         return None
     last_size = struct.unpack_from("<I", raw, 13 + first_size)[0]
     end = 17 + first_size + last_size
-    if not 1 <= last_size <= 40 or end >= len(raw) or raw[end] != 0:
+    if not 1 <= last_size <= 40 or end >= len(raw):
         return None
+    texts = [raw[13:13 + first_size], raw[17 + first_size:end]]
+    if raw[end] != 0:
+        if end + 4 > len(raw):
+            return None
+        common_size = struct.unpack_from("<I", raw, end)[0]
+        if not 1 <= common_size <= 40 or end + 4 + common_size >= len(raw):
+            return None
+        texts.append(raw[end + 4:end + 4 + common_size])
     try:
-        first = raw[13:13 + first_size].decode("utf-8")
-        last = raw[17 + first_size:end].decode("utf-8")
+        first, last, *common = (text.decode("utf-8") for text in texts)
     except UnicodeDecodeError:
         return None
-    if not (first + last).isprintable() or first != first.strip() or last != last.strip():
+    if not all(text.isprintable() and text == text.strip() for text in [first, last, *common]):
         return None
     return first + " " + last
 

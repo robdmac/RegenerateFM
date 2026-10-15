@@ -26,7 +26,7 @@ from Xlib.error import XError
 
 from capture_profile import BASE_SIZE, _ocr, _rect
 from read_profile import capture_window, read_identity
-from refresh import _activate_game, _click
+from refresh import _activate_game, _click, resolve_window
 from menu_overlay import menu_bottom
 from live_memory import MemoryUnavailable, find_game_pid
 from native_dialog import DialogUnavailable, NativeProgress, notify, show_dialog
@@ -505,12 +505,14 @@ def _finish(progress, native, text: str, fallback) -> None:
     notify(*(native or (None, "")), text, fallback)
 
 
-def run_native_squad_batch(window_id: str, handler, generate, describe=str, *, pid: int | None = None) -> None:
+def run_native_squad_batch(window_id: str | None, handler, generate, describe=str, *,
+                           pid: int | None = None) -> None:
     """Native-menu squad command: read the roster, portrait state and every
     prompt from FM24's memory, then generate without opening any profile.
 
-    ``generate(person_id, profile)`` returns the companion's result dict. The
-    squad table is scrolled only when it has not drawn every row yet.
+    ``generate(person_id, profile)`` returns the companion's result dict.
+    Undrawn rows come from the table's row model; the X11 window (found only
+    if needed) is used just when that or FM24's own dialogs are unavailable.
     """
     batch_dialog = None
     # FM24's own dialogs through the DLL's authenticated loopback listener.
@@ -523,7 +525,7 @@ def run_native_squad_batch(window_id: str, handler, generate, describe=str, *, p
             # FM24 may still be closing its menu; activation can briefly fail.
             for attempt in range(4):
                 try:
-                    _scroll(window_id, 5 if down else 4, 3)
+                    _scroll(resolve_window(window_id), 5 if down else 4, 3)
                     break
                 except ValueError:
                     if attempt == 3:
@@ -547,7 +549,7 @@ def run_native_squad_batch(window_id: str, handler, generate, describe=str, *, p
             batch_dialog = NativeProgress(*native, "FM Face squad faces",
                                           f"{action} {missing[0].name} (1/{len(missing)})")
         except DialogUnavailable:
-            batch_dialog = SquadProgress(window_id, "Stop after current face")
+            batch_dialog = SquadProgress(resolve_window(window_id), "Stop after current face")
         completed = 0
         for index, row in enumerate(missing):
             if batch_dialog.stopped.is_set():

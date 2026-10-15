@@ -30,7 +30,8 @@ from native_profile import biography_candidates, choose_biography, read_open_pro
 from native_dialog import DialogUnavailable, set_progress
 from native_reload import request_native_reload
 from read_profile import capture_window, read_identity
-from refresh import _activate_game, find_game_window, reload_skin
+from native_screen import read_open_screen
+from refresh import _activate_game, find_game_window, reload_skin, resolve_window
 
 
 class NativePortraitProgress:
@@ -72,15 +73,21 @@ def start_progress(handler, text: str):
             return NativePortraitProgress(handler.reload_port, handler.token, text)
         except (DialogUnavailable, ValueError, OSError) as exc:
             print(f"FM24 in-game progress unavailable ({exc}); using the overlay.", flush=True)
-    return ProgressOverlay(handler.window_id)
+    try:
+        return ProgressOverlay(resolve_window(handler.window_id))
+    except (ValueError, OSError) as exc:
+        print(f"FM24 progress overlay unavailable ({exc}); continuing without it.", flush=True)
+        return ProgressOverlay(None)
 
 
 class ProgressOverlay:
     """Show status over the FM24 portrait while a portrait request runs."""
 
-    def __init__(self, window_id: str):
+    def __init__(self, window_id: str | None):
         self.process = None
         self.failed = False
+        if window_id is None:
+            return
         try:
             self.process = subprocess.Popen(
                 [sys.executable, str(Path(__file__).with_name("overlay.py")),
@@ -169,6 +176,34 @@ def read_prompt_profile(window_id: str, engine: RapidOCR):
     return person_id, profile
 
 
+def read_native_profile(*, identity_only: bool = False):
+    """The open profile and the biography FM24 shows, from game memory only.
+
+    The native mode's read: no screenshots. The open screen's header must show
+    the person read from memory, and both are read twice so navigation during
+    capture is refused. ``identity_only`` reads just name, age and club.
+    """
+    try:
+        pid = find_game_pid()
+        person_id, profile = read_open_profile(pid, identity_only=identity_only)
+        screen = read_open_screen(pid)
+        if screen.person_id != person_id:
+            raise ValueError(f"The open FM24 screen shows {screen.person_id}, not person {person_id}; "
+                             "no image request was made.")
+        biography = screen.biography
+        if (not identity_only and biography and
+                not biography.lower().startswith("no biography is available")):
+            profile["biographyHeadline"] = biography
+        if (read_open_profile(pid, identity_only=identity_only) !=
+                (person_id, {key: value for key, value in profile.items() if key != "biographyHeadline"}) or
+                read_open_screen(pid) != screen):
+            raise ValueError("The open FM24 profile changed during capture; no image request was made.")
+        return person_id, profile
+    except (MemoryUnavailable, OSError) as exc:
+        raise ValueError(f"Could not read the open FM24 profile from game memory ({exc}); "
+                         "no image request was made.") from exc
+
+
 def read_update_profile(window_id: str, engine: RapidOCR):
     """Name, age and club of the open profile, all that "Update face" needs.
 
@@ -208,7 +243,7 @@ def reload_portrait(handler, player_id: str, staff: bool) -> None:
             return
         except (OSError, RuntimeError, TimeoutError) as exc:
             print(f"FM24 in-game reload failed ({exc}); using the Preferences reload instead.", flush=True)
-    reload_skin(handler.window_id, player_id, handler.engine, staff=staff)
+    reload_skin(resolve_window(handler.window_id), player_id, handler.engine, staff=staff)
 
 
 def generate_for_profile(handler, player_id: str, profile: dict) -> dict:
@@ -253,6 +288,7 @@ class Handler(BaseHTTPRequestHandler):
     token = ""
     reload_port = None
     window_id = ""
+    native = False          # the native menu DLL mode: memory only, no screen capture
     graphics_dir = Path()
     game_dir = None
     preview_only = False
@@ -359,11 +395,15 @@ again.onclick=()=>{{sessionStorage.removeItem('fmface-fm24-ran');location.reload
             return
         progress = None
         try:
-            _activate_game(self.window_id)
+            if not self.native:
+                _activate_game(self.window_id)
             if not self.preview_only:
                 progress = start_progress(self, "Updating…" if mode == "update" else "Generating…")
-            player_id, profile = (read_update_profile if mode == "update" else read_prompt_profile)(
-                self.window_id, self.engine)
+            if self.native:
+                player_id, profile = read_native_profile(identity_only=mode == "update")
+            else:
+                player_id, profile = (read_update_profile if mode == "update" else read_prompt_profile)(
+                    self.window_id, self.engine)
             if expected_id is not None and expected_id != player_id:
                 raise ValueError(f"The open FM24 profile is now person {player_id}, not the requested person "
                                  f"{expected_id}; no image request was made.")
@@ -452,7 +492,9 @@ def main() -> None:
         for panel in (player_panel, staff_panel):
             if panel.is_file() and 'event_id="OURL"' in panel.read_text(encoding="utf-8"):
                 parser.error("The installed FM Face skin still opens a browser; rebuild it before using --direct-clicks")
-    if not args.window_id:
+    # The native mode reads FM24's memory and draws in game; it looks up the
+    # X11 window only if a fallback needs it.
+    if not args.window_id and args.direct_clicks:
         try:
             args.window_id = find_game_window()
         except (ValueError, OSError) as exc:
@@ -460,6 +502,7 @@ def main() -> None:
         print(f"Using FM24 game window {args.window_id}.", flush=True)
     Handler.token = token
     Handler.window_id = args.window_id
+    Handler.native = args.native_menu
     Handler.graphics_dir = graphics_dir
     Handler.preview_only = args.preview_only
     Handler.engine = RapidOCR()

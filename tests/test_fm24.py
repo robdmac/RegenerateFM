@@ -453,6 +453,44 @@ class CompanionHttpTests(unittest.TestCase):
             self.assertEqual(companion.read_update_profile("0x123", object()), identity)
             full.assert_called_once()
 
+    def test_native_mode_reads_memory_only_and_never_touches_the_window(self):
+        companion.Handler.native = True
+        self.addCleanup(setattr, companion.Handler, "native", False)
+        profile = {"type": "player", "name": "Lionel Messi", "age": 35, "club": "Inter Miami"}
+        with patch.object(companion, "read_native_profile", return_value=("7458500", profile)) as native, \
+             patch.object(companion, "_activate_game", side_effect=AssertionError("X11 used")), \
+             patch.object(companion, "capture_window", side_effect=AssertionError("X11 used")), \
+             patch.object(companion, "profile_prompt", return_value="test prompt"):
+            result = json.load(urllib.request.urlopen(self._post(self._nonce(), "7458500")))
+        self.assertEqual((result["preview"], result["prompt"]), (True, "test prompt"))
+        self.assertEqual(native.call_args.kwargs, {"identity_only": False})
+
+    def test_native_profile_takes_biography_from_the_open_screen(self):
+        from native_screen import OpenScreen
+        profile = {"type": "player", "name": "Lionel Messi", "age": 35}
+        screen = OpenScreen("7458500", "Barcelona legend Lionel Messi is truly one of world soccer's superstars.")
+        with patch.object(companion, "find_game_pid", return_value=1), \
+             patch.object(companion, "read_open_profile", side_effect=lambda *a, **k: ("7458500", dict(profile))), \
+             patch.object(companion, "read_open_screen", return_value=screen):
+            person_id, result = companion.read_native_profile()
+        self.assertEqual(result["biographyHeadline"], screen.biography)
+        with patch.object(companion, "find_game_pid", return_value=1), \
+             patch.object(companion, "read_open_profile", side_effect=lambda *a, **k: ("7458500", dict(profile))), \
+             patch.object(companion, "read_open_screen", return_value=OpenScreen("2000045865", "")):
+            with self.assertRaisesRegex(ValueError, "shows 2000045865"):
+                companion.read_native_profile()
+        later = iter([("7458500", dict(profile)), ("2000045865", dict(profile))])
+        with patch.object(companion, "find_game_pid", return_value=1), \
+             patch.object(companion, "read_open_profile", side_effect=lambda *a, **k: next(later)), \
+             patch.object(companion, "read_open_screen", return_value=screen):
+            with self.assertRaisesRegex(ValueError, "changed"):
+                companion.read_native_profile()
+        with patch.object(companion, "find_game_pid", return_value=1), \
+             patch.object(companion, "read_open_profile", side_effect=live_memory.MemoryUnavailable("gone")), \
+             patch.object(companion, "capture_window", side_effect=AssertionError("no screen fallback")):
+            with self.assertRaisesRegex(ValueError, "from game memory"):
+                companion.read_native_profile()
+
     def test_update_without_a_face_is_refused_before_any_request(self):
         result, edit = self._update(found=None, preview=False)
         self.assertEqual(result["status"], 422)

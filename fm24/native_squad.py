@@ -21,7 +21,8 @@ import struct
 import time
 from dataclasses import dataclass
 
-from live_memory import MemoryUnavailable, find_game_pid
+from live_memory import MemoryUnavailable, _parse_record, find_game_pid
+from native_profile import _alternate_name
 from process_memory import MemoryScan, fm24_image_base, read_process_bytes
 
 MANAGER_GLOBAL_RVA = 0x63635B8
@@ -31,6 +32,17 @@ ROW_PERSON = 0x728
 ROW_NAME = 0x1C8            # cell -> {u32 length, UTF-8} display name ("Ian Fray")
 TABLE_ROWS = 0x3A0          # table widget: total rows, drawn or not
 TABLE_VISIBLE = 0x394       # table widget: first and last visible row, 1-based
+# Every row of the table, drawn or not: table -> row model, whose vector at
+# +0x18 lists the row objects (the header row first). A row object starts with
+# a vector of {fourcc key, value pointer} properties; its 'id  ' value holds
+# a u32 at +8. A person row's id is 0x01000000 | the person's handle, the u32
+# at person+8, and FM24 keeps person pointers in a heap table indexed by handle.
+TABLE_MODEL = 0x6E8
+MODEL_ROWS = 0x18
+ROW_ID_KEY = int.from_bytes(b"id  ", "big")
+HEADER_ROW_ID = int.from_bytes(b"HROW", "big")
+PERSON_HANDLE = 8
+PERSON_ROW = 0x01000000
 WIDGET_MANAGER, WIDGET_PARENT, WIDGET_ID, WIDGET_CHILDREN = 0x48, 0x50, 0x5C, 0x100
 _PERSON_PICTURE = b"graphics/pictures/person/"
 _PORTRAIT = re.compile(rb"(?:r-)?([1-9][0-9]{0,9})/portrait")
@@ -53,6 +65,7 @@ class SquadState:
     indexed: frozenset[str]
     today: dt.date
     visible: tuple[int, int] = (0, 0)  # first and last visible row, 1-based
+    table: int = 0                      # the table widget, for the row model
 
     @property
     def complete(self) -> bool:
@@ -235,17 +248,140 @@ def read_squad(pid: int | None = None, attempts: int = 3, catalogue: bool = True
         if len(years) != 1 or not 1900 < min(years) < 2200:
             raise MemoryUnavailable("Could not read FM24's current year.")
         today = _today(_dates(pid, years.pop()))
-    return SquadState(tuple(result), total, frozenset(indexed), today, visible)
+    return SquadState(tuple(result), total, frozenset(indexed), today, visible, table)
+
+
+def _row_ids(pid: int, table: int) -> list[int]:
+    """The 'id  ' of every data row in the table's row model, in table order."""
+    model = _u64(pid, table + TABLE_MODEL)
+    begin, end = _u64(pid, model + MODEL_ROWS), _u64(pid, model + MODEL_ROWS + 8)
+    if end <= begin or (end - begin) % 8 or end - begin > 8 * 501:
+        raise MemoryUnavailable("Invalid FM24 Squad row model.")
+    ids = []
+    for row in struct.unpack(f"<{(end - begin) // 8}Q", read_process_bytes(pid, begin, end - begin)):
+        first, last = _u64(pid, row), _u64(pid, row + 8)
+        if last < first or (last - first) % 16 or last - first > 16 * 32:
+            raise MemoryUnavailable("Invalid FM24 Squad row.")
+        properties = read_process_bytes(pid, first, last - first) if last > first else b""
+        values = [value for key, value in struct.iter_unpack("<QQ", properties) if key & 0xFFFFFFFF == ROW_ID_KEY]
+        if len(values) != 1:
+            raise MemoryUnavailable("An FM24 Squad row has no single row ID.")
+        ids.append(_u32(pid, values[0] + 8))
+    if not ids or ids[0] != HEADER_ROW_ID or any(row >> 24 != PERSON_ROW >> 24 for row in ids[1:]):
+        raise MemoryUnavailable("The FM24 Squad row model does not list people.")
+    return ids[1:]
+
+
+def _handle_table(pid: int, people: list[int]) -> int:
+    """Base of FM24's person table, found from drawn rows' person pointers.
+
+    One pass finds where the first person's pointer is stored; the base is the
+    one that also holds every other drawn person at their own handles. With at
+    least five people that cannot be a coincidence, so the pass stops there.
+    """
+    if len(people) < 2:
+        raise MemoryUnavailable("Too few drawn FM24 Squad rows to locate the person table.")
+    handles = [_u32(pid, person + PERSON_HANDLE) for person in people]
+    needle = struct.pack("<Q", people[0])
+    bases = set()
+    for base, data in MemoryScan(pid, 8):
+        offset = 0
+        while (offset := data.find(needle, offset)) >= 0:
+            candidate = base + offset - 8 * handles[0]
+            if (base + offset) % 8 == 0 and candidate > 0:
+                try:
+                    if all(_u64(pid, candidate + 8 * handle) == person
+                           for person, handle in zip(people[1:], handles[1:])):
+                        bases.add(candidate)
+                except OSError:
+                    pass
+            offset += 8
+        if len(bases) == 1 and len(people) >= 5:
+            break
+    if len(bases) != 1:
+        raise MemoryUnavailable(f"Expected one FM24 person table; found {len(bases)}.")
+    return bases.pop()
+
+
+def _undrawn_names(pid: int, rows: dict[str, int]) -> dict[str, str]:
+    """Names of players without a drawn cell, from their person records.
+
+    ``rows`` maps person ID to record. Players whose record has no full-name
+    string use FM24's separate first/surname record, found in one pass.
+    """
+    names, alternate = {}, {}
+    for person_id, record in rows.items():
+        identity = _parse_record(pid, record, int(person_id))
+        if identity is not None:
+            names[person_id] = identity.name
+        else:
+            alternate[struct.pack("<II", int(person_id), int(person_id)) + b"\x09"] = person_id
+    found: dict[str, set[str]] = {}
+    if alternate:
+        for _, data in MemoryScan(pid, 128):
+            for needle, person_id in alternate.items():
+                offset = 0
+                while (offset := data.find(needle, offset)) >= 0:
+                    if (name := _alternate_name(data[offset:offset + 128])) is not None:
+                        found.setdefault(person_id, set()).add(name)
+                    offset += 1
+    for person_id in alternate.values():
+        if len(found.get(person_id, ())) != 1:
+            raise MemoryUnavailable(f"Could not read the name of FM24 player {person_id}.")
+        names[person_id] = found[person_id].pop()
+    return names
+
+
+def read_squad_rows(pid: int | None = None) -> SquadState:
+    """Every Squad row, drawn or not, without scrolling the table.
+
+    Drawn rows keep their displayed name; the others use the person record's
+    name. Each row resolves through the person table to a validated player,
+    and every drawn row must be among them.
+    """
+    pid = pid or find_game_pid()
+    state = read_squad(pid)
+    if state.complete:
+        return state
+    try:
+        ids = _row_ids(pid, state.table)
+        if len(ids) != state.total or len(set(ids)) != len(ids):
+            raise MemoryUnavailable("The FM24 Squad row model does not match the table.")
+        base = _handle_table(pid, [row.record - 12 for row in state.rows])
+        drawn = {row.person_id: row for row in state.rows}
+        records = []
+        for row_id in ids:
+            handle = row_id & 0xFFFFFF
+            person = _u64(pid, base + 8 * handle)
+            if _u32(pid, person + PERSON_HANDLE) != handle:
+                raise MemoryUnavailable("An FM24 Squad row does not resolve to its person.")
+            records.append((_player_id(pid, person), person + 12))
+    except (OSError, ValueError, struct.error) as exc:
+        raise MemoryUnavailable(f"Could not read the FM24 Squad rows: {exc}") from exc
+    if not drawn.keys() <= {person_id for person_id, _ in records}:
+        raise MemoryUnavailable("The FM24 Squad row model does not contain the drawn rows.")
+    names = _undrawn_names(pid, {person_id: record for person_id, record in records
+                                 if person_id not in drawn})
+    rows = tuple(drawn.get(person_id) or SquadRow(person_id, record, names[person_id])
+                 for person_id, record in records)
+    return SquadState(rows, state.total, state.indexed, state.today, state.visible, state.table)
 
 
 def read_full_squad(scroll, pid: int | None = None, steps: int = 60) -> SquadState:
-    """Read every Squad row, scrolling the table until all have been drawn.
+    """Read every Squad row: from the row model, else by scrolling the table.
 
-    ``scroll(down: bool)`` scrolls the table a few rows. The table's own
+    ``scroll(down: bool)`` scrolls the table a few rows; it is only used when
+    the row model cannot be read, and ``None`` refuses instead. The table's own
     visible-row range tells when its top and bottom are reached, and its row
     count when every row has been read; otherwise this raises.
     """
     pid = pid or find_game_pid()
+    try:
+        return read_squad_rows(pid)
+    except MemoryUnavailable as exc:
+        if scroll is None:
+            raise
+        print(f"FM24 Squad row model unavailable ({exc}); scrolling the table instead.", flush=True)
     state = read_squad(pid)
     rows = {row.person_id: row for row in state.rows}
 
@@ -261,7 +397,7 @@ def read_full_squad(scroll, pid: int | None = None, steps: int = 60) -> SquadSta
                 break
             time.sleep(.2)
         rows.update((row.person_id, row) for row in later.rows)
-        state = SquadState(state.rows, state.total, state.indexed, state.today, later.visible)
+        state = SquadState(state.rows, state.total, state.indexed, state.today, later.visible, state.table)
         return later.visible != before
 
     for _ in range(steps):
@@ -272,4 +408,4 @@ def read_full_squad(scroll, pid: int | None = None, steps: int = 60) -> SquadSta
             break
     if len(rows) != state.total:
         raise MemoryUnavailable(f"Read {len(rows)} of {state.total} FM24 Squad rows.")
-    return SquadState(tuple(rows.values()), state.total, state.indexed, state.today, state.visible)
+    return SquadState(tuple(rows.values()), state.total, state.indexed, state.today, state.visible, state.table)

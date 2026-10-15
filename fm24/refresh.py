@@ -47,6 +47,14 @@ def find_game_window() -> str:
     return hex(found[0])
 
 
+def resolve_window(window_id: str | None) -> str:
+    """The given FM24 window, else find it now.
+
+    The native mode needs no window; only its X11 fallbacks look it up.
+    """
+    return window_id or find_game_window()
+
+
 def _activate_game(window_id: str) -> None:
     connection = display.Display()
     try:

@@ -98,10 +98,20 @@ FM Face item through the same game functions, and its command handler queues
 The squad command then works from game memory (`fm24/native_squad.py`); it
 opens no profiles and reads no screenshots:
 
-- **Roster:** the rows of the Squad table attached to the live UI tree. Each
-  player-name cell holds its person record and display name. The table only
-  draws visible rows, so the companion scrolls it (X11 wheel input) until
-  FM24's own row count says every row has been read; otherwise it refuses.
+- **Roster:** the Squad table attached to the live UI tree. Drawn rows have a
+  player-name cell holding the person and display name. The table draws only
+  visible rows, so the rest come from its row model: table+0x6e8 points to an
+  object whose vector at +0x18 lists every row object (a header row with ID
+  `HROW` first). Each row starts with a `{fourcc key, value}` property vector;
+  its `id  ` value holds `0x01000000 | handle`, where the handle is the u32 at
+  person+8. FM24 keeps person pointers in a heap table indexed by handle. Its
+  base is found with one memory pass for a drawn player's pointer, and must
+  hold every drawn player at their own handle. Each resolved row must be a
+  validated player whose handle matches, the model must have FM24's row count,
+  and every drawn row must be in it; otherwise it refuses. Undrawn rows use
+  the person record's name (players whose record has no name string use
+  FM24's separate first/surname record). X11 scrolling is kept only as a
+  fallback if the row model cannot be read.
 - **Portrait state:** FM24's graphics index, read in the same pass. A player
   is missing when no `graphics/pictures/person/<id>/portrait` key is indexed.
   The index keeps a key after its FM Face mapping is deleted, so such a
@@ -115,6 +125,22 @@ After the count confirmation, each face is generated, saved and reloaded in
 game in turn. On the test save this took about 30 seconds to read all 29
 rows, where the profile-by-profile X11 scan took 10 to 20 minutes. The
 confirmation, progress and result are FM24 dialogs (below).
+
+## Profiles without screenshots
+
+In native mode the companion reads the open profile from memory only
+(`fm24/native_screen.py`). The UI manager's root widget (manager+0x58) is the
+open screen; its widget tree is walked through each widget's children vector
+(+0x100), keeping widgets of this manager and treating anything else as a leaf.
+The header (`head`) must contain one subtitle (`subs`) whose text (+0x190)
+ends in "(ID:n)", and n must be the person read from memory. The Biography
+box's `person_bio_text` widget (`biot`, from `person/person history biography
+no title.xml`) holds the rich-text biography at +0x188; its first paragraph,
+with links reduced to their text, is the headline used in the prompt. The
+memory profile and the screen are each read twice, and any difference refuses
+the request. If memory cannot be read the request is refused with a message;
+the screenshot and OCR readers are used only with `--direct-clicks`. The game
+window is looked up only if an X11 fallback runs.
 
 ## In-game dialogs and progress
 
