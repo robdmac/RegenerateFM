@@ -1,0 +1,565 @@
+# FM24 native integration: in-game release checklist
+
+Automated tests and the Wine bridge harness cover protocol, installer, and
+binding logic. The checks below need the real game. Run them on the pinned
+FM24 24.4.2 executable at 1854×1011 with screen IDs enabled. Record the date,
+result, and `fmface24.log` excerpt for each.
+
+Steps marked **billed** make one image API request each.
+
+## Install and upgrade
+
+1. With FM24 closed, run `fm24/native_menu/install.py` over the existing
+   installation. Expect a version 2 `fmface24-install.json` listing the two
+   portrait panels, and (for an install that had it) the message that the
+   Squad screen Faces button was removed.
+2. Start FM24 with `WINEDLLOVERRIDES="winmm=n,b"`. Expect
+   `FMFACE24_NATIVE_MENU_HOOK_INSTALLED`, `FMFACE24_SQUAD_MENU_INSTALLED`,
+   `FMFACE24_BRIDGE_READY` and `FMFACE24_RELOAD_READY` in `fmface24.log`.
+
+## Preview mode (`--native-menu --preview-only`)
+
+3. Player portrait → Generate new face: the prompt for the correct ID appears.
+4. Staff portrait → Generate new face: the same check for a staff profile.
+5. Navigation race: choose Generate new face, then immediately open another
+   profile. Expect a refusal naming both IDs, and no preview for the second
+   person. Delayed delivery: pause the companion (`kill -STOP`), choose Generate
+   new face, open another profile, then resume it (`kill -CONT`) after about
+   one second. Expect FM24's "received this click too late" dialog, a companion
+   line saying the command "arrived … after the click; refused", and no preview.
+   A pause exceeding the DLL's reply timeout may instead show "companion is
+   unavailable". Also test a pause below 0.75 seconds using the next-person
+   arrow: expect "Generate new face was chosen for person X, but FM24 now
+   shows person Y", with X the clicked person, and no preview. `fmface24.log`
+   and the companion line must name the clicked person's ID.
+6. Squad → **Overview** menu → Generate missing squad faces… (last item): the
+   scan runs and the confirmation shows the missing count. Cancel.
+7. The same item anywhere else FM24 shows **Export Team for Versus
+   Competition** (if any): the command must refuse with "no longer on the
+   Squad screen". **Export Team for Versus Competition** must still work.
+
+## Bridge recovery
+
+8. Stop the companion, then choose Generate new face. After about 2 s, expect the
+   "companion is unavailable" dialog.
+9. Restart the companion without restarting FM24 and click again. Expect it to
+   be accepted.
+10. Click twice quickly. Expect the second click to show the "already
+    processing" dialog.
+
+## Billed generation (`--native-menu`)
+
+11. **billed** Player with no portrait: the portrait is saved and reloads in game.
+12. **billed** Regenerate the same player: the new image replaces the old one
+    and the previous versioned file is removed.
+13. **billed** Staff member.
+14. **billed** Squad batch of two missing players via the Squad menu item,
+    including **Stop after current face** on a second run.
+15. Failure path: set an invalid `OPENAI_API_KEY`. Expect an error dialog, no
+    graphics change, and the old portrait intact.
+
+## Restart, update, uninstall
+
+16. Restart FM24 and the companion. Repeat step 3.
+17. Re-run the installer (idempotent reinstall). Expect panels and the manifest
+    to be unchanged apart from the DLL.
+18. `install.py --remove`. Expect the original FM Face panels to be restored,
+    the squad panel and the empty `panels/team` directory to be removed, and
+    the game to start without the hook once the launch option is cleared.
+
+## Independent review: 2026-10-14
+
+**Release status: not ready.** Tests below used FM24 24.4.2, Proton 9, the
+FM Face skin, English UI, enabled screen IDs and a 1854×1011 game window.
+All companion runs were preview-only; no image API request was made. The
+production native DLL is installed, FM24 is running, and the companion is
+left in preview mode. Temporary diagnostic DLLs were removed before final
+testing. The FM26 plugin was built, but not installed or tested in FM26.
+
+### Remaining findings
+
+1. **High: delayed commands can target another person.** Clicked Generate on
+   Franco Negri (14080606), with the companion temporarily paused; opened
+   Drake Callender (72056318), then resumed the companion. It successfully
+   prepared Drake's prompt instead of refusing. The DLL packet has no person
+   ID, and `native_listener.py` captures the screen only after receipt.
+   The current expected-ID check protects navigation after that capture, not
+   before it. Bind the original selection in the native callback and carry it
+   in the authenticated command; add delayed-delivery coverage.
+2. **Medium: native biography selection can use a later paragraph.** The
+   Jorge Walter Theiler staff preview used "Theiler's life-long love affair
+   with Newell's…". The visible headline starts "Club Atlético Newell's Old
+   Boys icon Jorge Walter Theiler…". `native_profile.read_biography` chooses
+   the longest candidate beginning with a person link, which does not prove
+   the paragraph's position in the displayed biography. Player previews for
+   Drake Callender and Franco Negri did match their visible headlines.
+3. **Medium: full squad scan did not finish.** The native Faces command
+   scanned ten players, then stopped while returning from Franco Negri's
+   profile: "Could not return to the same FM24 squad; scan stopped. FM24 is
+   no longer on the Squad screen; no image request was made." The profile
+   remained open. `_return_to_squad` sends one click, then polls for up to
+   75 seconds without retrying the transition. A complete roster scan,
+   confirmation and batch generation remain unverified.
+
+### Implementation changes before the follow-up (2026-10-14)
+
+1. **Delayed commands (finding 1).** Native protocol version 2: the DLL
+   stamps each command with its click time, and the companion refuses one that
+   arrives more than 0.75 s later, before any screen capture. FM24 shows
+   "received this click too late"; a command queued while the companion was
+   paused gets the same refusal once it resumes. Wine harness reproduction of
+   the review case (companion stopped during the click, then resumed): refused,
+   no request; later clicks accepted/busy as before. This bounds the click-to-
+   capture window to about a second rather than proving the original person;
+   reading the person in the DLL would need further reverse engineering.
+2. **Staff biography (finding 2).** Candidate paragraphs now include strings
+   whose first paragraph links to the person anywhere, not only at the start
+   (Theiler's headline starts with the club link). The companion captures the
+   screen between its two native reads and uses the candidate whose opening
+   matches the on-screen Biography box. With no unique match it uses the
+   on-screen text; with none readable, no headline.
+3. **Squad return (finding 3).** Back is pressed again, up to three times,
+   when the exact profile title is still shown 8 s after the previous press.
+   Once the title changes, Back is never repeated, so a slow but accepted Back
+   cannot become a double navigation.
+
+Verification: 61 tests (6 new), pyflakes, DLL build with `-Werror`, Wine
+harness (no companion, dropped packet, stale ACK, busy, silent companion,
+stale refusal dialog, paused-then-resumed real listener). The rebuilt DLL is
+installed (in-place upgrade; panels unchanged). Checklist steps 4–6 need
+repeating in game.
+
+### Fixes made during this review
+
+- A request-worker startup failure now releases the bridge's busy lock and
+  reports an error, keeping the listener available for subsequent clicks.
+- Installer rollback restores a removed directory's permissions.
+- Atomic installer writes use unique temporary files, preserving unrelated
+  files with the old predictable temporary name.
+- Three regression tests cover these failures. The existing binding test was
+  renamed to describe receipt-time binding accurately.
+
+### Results
+
+| Check | Result |
+| --- | --- |
+| Automated suite | Original 52 passed; 55 passed after fixes |
+| pyflakes | Passed for `fm24` and `fmface.py` |
+| FM24 native DLL build | Passed with `-Werror`; 189 forwarding exports |
+| Wine harness, current native C source | Passed normal ACK, dropped first packet, stale ACK, busy reply and no-reply cases |
+| FM26 plugin Release build | Passed with .NET SDK 6.0.428; zero warnings/errors |
+| Release archive | 44 explicitly selected public files, including this checklist; no private config, research or backups; extracted copy passed all 55 tests |
+| Checklist 1, v1 upgrade | Passed on real installation; version 2, three panels |
+| Checklist 2, startup | Passed hook-installed and bridge-ready log markers |
+| Checklist 3, player preview | Passed correct ID, identity, physical/extreme stats and biography |
+| Checklist 4, staff preview | Correct ID/name/age/nationality/role; biography failed as above |
+| Checklist 5, navigation | Failed delayed-receipt case as above |
+| Checklist 6, squad scan/confirmation | Menu and dispatch passed; full scan failed as above; confirmation not reached |
+| Checklist 7, non-Squad guard | Not exercised in game |
+| Checklist 8, companion unavailable | Passed in FM24; visible native dialog and unavailable log |
+| Checklist 9, companion restart | Passed without game restart; subsequent player preview accepted |
+| Checklist 10, busy click | Passed unit/Wine harness; not separately exercised in FM24 |
+| Checklist 11–15, generation/failure/batch | Not exercised; no billed requests |
+| Checklist 16, restart | Passed repeated game/companion startup and profile preview |
+| Checklist 17, reinstall | Passed on real files; DLL/config/manifest/skin/backups byte-identical |
+| Checklist 18, uninstall | Passed; original panels byte-identical, squad directory removed, unhooked game started |
+
+Session evidence is under `/tmp/fmface-review-*`: final test/build/harness
+logs, preview logs, screenshots, and a private pre-install backup. These are
+local review artifacts, not release contents. The release archive produced
+during review is a test artifact, not an approved release.
+
+## Follow-up in-game retest: 2026-10-14
+
+**Release status: not ready; original-person binding remains unresolved.**
+The rebuilt native protocol v2 DLL was already installed when this retest
+started. Its checksum matched the installation manifest, and startup recorded
+both hook-installed and bridge-ready markers. FM24 used the same build, skin,
+language, screen IDs, Proton version and resolution as the first review.
+
+| Check | Follow-up result |
+| --- | --- |
+| Automated tests and pyflakes | 61 tests passed independently before further changes; 62 passed after the screenshot-identity fix below; pyflakes passed |
+| Final release archive | All 62 tests passed from the extracted 44-file archive; private configuration and research excluded |
+| DLL build | Passed `-Werror`, 189 forwarding exports |
+| Native C harness | Passed under Proton's Wine 9: protocol v2, normal ACK, dropped packet/retry, older ACK ignored, busy, stale, and unavailable paths |
+| Staff biography | Passed in FM24: Theiler's prompt starts with the visible club-link headline and includes its complete opening paragraph; repeated successfully after the screenshot-identity fix |
+| Player after screenshot-identity fix | Passed in FM24: verified Franco Negri's ID before dispatch; final preview retained identity, height, physical/extreme stats and opening biography |
+| Stale-command refusal | Passed in FM24: paused companion, chose Generate on Theiler, opened Drake, resumed; command arrived 1.43 seconds after the click, native stale dialog shown, no new preview |
+| Short-delay navigation | **Failed in FM24:** Generate chosen for Facundo Farías (14240979), next-person arrow opened Ian Fray (2000045865), companion resumed after a 0.532-second pause; accepted command prepared Ian's prompt |
+| Navigation after screenshot | A separate fast-navigation attempt captured the Squad title before C.J. dos Santos opened; expected-ID mismatch refused it without a request |
+| Dropped return click | Passed with actual FM24 UI and an intentionally suppressed first click: returned to Squad with exactly one retry |
+| Full native squad scan | Passed: all 29 players scanned, zero missing; zero-missing info dialog reached; retries recovered multiple dropped return clicks, including Franco Negri where the first review stopped |
+| Graphics writes | File set and checksums unchanged throughout preview testing |
+| Billed generation/reload/batch | Not exercised; no API requests made |
+
+The timestamp cutoff mitigates long delays but does not fix the original-person
+race. The successful short-delay reproduction uses FM24's normal next-person
+arrow, not a fabricated native command. The original ID must be bound in the
+native callback and verified before billing. Lowering the cutoff alone is not
+proof of correct selection.
+
+### Additional biography fix during retest
+
+Matching native reads before and after a screenshot do not prove that the
+screenshot belongs to that person: navigation away and back can leave both
+reads unchanged. A controlled test using the real Theiler screenshot between
+two mocked Drake native reads reproduced Theiler's biography being attached to
+Drake. This was a snapshot-injection reproduction, not a claimed live
+out-and-back reproduction.
+
+`read_prompt_profile` now verifies the person ID in that exact screenshot before
+using its visible biography. A mismatch or unreadable ID refuses the request.
+When no biography can be read, the unused native biography scan is skipped.
+One new regression test covers both player and staff identity mismatches; the
+same real-screenshot reproduction now refuses before candidate selection.
+Theiler's normal native menu preview still passed with this guard enabled.
+
+One additional limit observed: Ian Fray's native profile reader found no
+validated record and used OCR fallback; its prompt spelled his first name
+"lan". This retest does not establish native profile coverage for every person.
+
+Evidence is in `/tmp/fmface-retest-*`, including original/final preview logs,
+screenshots, test/build/harness logs and graphics checksums. The test dialogs
+were dismissed, and the updated companion was restarted in preview mode for
+the running game window. Nothing was billed. This section supersedes the
+earlier pending status for the three in-game retests; missing-face confirmation,
+paid generation, automatic reload and batch stop remain outside this run.
+
+## Click-time person binding (protocol 3): implementation before live retest
+
+Addresses the short-delay wrong-person race (Facundo Farías → Ian Fray).
+
+- **Where the person comes from.** A read-only search of live FM24 memory
+  found exactly one static path to the open profile's person: the static
+  stack FM24 uses to draw bound UI objects, at RVA `0x6374408` (begin, cursor,
+  end). Its bottom entry is the open screen's bound object. Live checks in
+  preview mode, using the next-person arrow and Back: Franco Negri, Federico
+  Redondo, a third player, and Redondo again all matched the title ID once
+  settled. The entry was unchanged with the portrait menu open and the
+  pointer over **Generate new face**. While a new profile loaded it briefly
+  held other objects (none, a club, another person). No staff profile has been
+  checked.
+- **DLL.** The menu callback reads that entry on FM24's UI thread with
+  `ReadProcessMemory`, before returning to the game. FM24 cannot navigate
+  during the callback. It accepts only a person record with a duplicated ID
+  and sends that ID in the command, with 0 if none was found. Click, time and
+  person are handed to the worker together under one lock.
+- **Companion.** A profile command with person 0 is refused. Otherwise the
+  screenshot taken on receipt must show the same ID ("chosen for person X, but
+  FM24 now shows person Y"). Generation is then requested with
+  `expected_id` = the clicked person, which the companion checks again against
+  the native profile before billing. The 0.75 s late-command refusal stays as
+  an extra check. Protocol 2 DLLs are ignored.
+- **Verification.** 64 tests (the retest's short-delay case is a regression
+  test), pyflakes, DLL build with `-Werror`. Wine harness with FM24's stack
+  emulated: matching person → request bound to it; mismatched person
+  (14240979 vs. screen 14008037) → refused, no request; no stack (unmapped
+  address) → person 0, refused, no crash. Fake-companion retry, busy and
+  unavailable cases still pass.
+- **Not yet done.** The new DLL is built in `fm24/native_menu/build/` but not
+  installed, because FM24 was running. Close FM24, run the installer, start
+  FM24 and restart the companion; a protocol 2 DLL and the new companion
+  ignore each other. Then repeat step 5, including the sub-0.75 s
+  next-person case, plus step 4 for a staff profile. Check that
+  `fmface24.log` shows no crash and that the refusal names the clicked ID.
+
+## Protocol 3 independent live retest: 2026-10-14
+
+**Release status: not ready. The original short-delay case now refuses
+correctly, but the native ID reader does not cover staff and all players.**
+
+The game was closed, the current source rebuilt, and the new DLL installed
+over protocol 2. All skin XML files remained byte-identical. A private backup
+is at `/tmp/fmface-binding-preinstall.tgz`. FM24 and the companion were then
+restarted with protocol 3 in preview mode, on the same validated build/skin,
+English UI, screen IDs and 1854×1011 window.
+
+### Remaining finding: first drawing-stack entry is not always the person
+
+`bound_person_id` reads only the first entry at `boundObjectStackRva`. These
+live menu selections returned person 0 and the companion refused them:
+
+- **Jorge Walter Theiler (14008037):** first entry held Inter Miami
+  (72052048), with runtime type `TEAM@db`; the second entry held Theiler's
+  person record, with the expected duplicated ID and person tag `0x58`.
+- **Tyler Hall (2000251984):** first entry held nation 390, with runtime type
+  `NATION@db`; the second entry held Tyler's person record with the expected
+  duplicated ID and person tag `0x58`.
+
+The type names were verified through FM24's runtime type information, not
+inferred from IDs alone. The field described as the stack cursor equaled its
+begin pointer during the settled reads. Merely scanning additional allocated
+entries therefore needs separate proof of current selection; it should not
+be adopted as an unvalidated fallback. The observed non-person entries were
+on settled profiles, so this is not limited to navigation/loading transitions.
+The current refusal prevents billing but blocks previously working staff and
+some player menu commands. Resolve coverage before treating this path as a
+general click-time selection mechanism.
+
+### Results
+
+| Check | Result |
+| --- | --- |
+| Installation/startup | Passed; rebuilt protocol 3 installed, skin XML unchanged, hook-installed and bridge-ready markers logged |
+| Automated suite | Initial run exposed an asynchronous test failure; after the test fix below, all 64 passed |
+| pyflakes | Passed for public Python scripts, FM24 source and tests |
+| Native DLL build | Passed `-Werror`, 189 forwarded WINMM exports |
+| Current C/Wine harness | Passed matching ID, mismatched ID, unreadable address, invalid record tag/duplicated ID, retries, old ACK ignored, busy, stale and unavailable paths |
+| Extracted release | All 64 tests passed from the 44-file archive; private configuration and research excluded |
+| Franco Negri normal menu | Passed native bound-ID preview for 14080606 |
+| Facundo Farías normal menu | Passed native bound-ID preview for 14240979 |
+| Original Farías → Ian Fray race | **Passed:** verified Farías's menu was open, chose Generate, used next-person arrow with companion paused 0.533 seconds; refused with "chosen for person 14240979, but FM24 now shows person 2000045865"; no new preview/request |
+| Late command | Passed in FM24: command arriving 1.18 seconds after click was refused, with native stale dialog and log marker |
+| Theiler staff menu | **Failed functionally:** reported 0, refused before any request; game remained running |
+| Tyler Hall player menu | **Failed functionally:** reported 0, refused before any request; game remained running |
+| Recovery | Franco preview succeeded after the two ID-0 refusals without restarting the game or companion |
+| Graphics/API | Graphics file set and checksums unchanged from previous review; no billed requests |
+| Paid generation/reload/batch | Not exercised in this retest |
+
+### Test fix
+
+`test_profile_without_reported_person_is_refused` checked the recovery request's
+mock immediately after receiving its ACK. The bridge sends the ACK before
+starting the worker, so `request.call_args` could still be `None`. The test
+now asserts no request for person 0, then waits for the valid request worker
+before inspecting its bound ID. Product behavior was unchanged by this fix.
+
+Evidence is under `/tmp/fmface-binding-*`: preview/test/build logs, screenshots,
+graphics checksums and the harness's results. Temporary harness memory was
+simulated in its own process; the live game memory inspection was read-only.
+The test dialogs were dismissed. The protocol 3 DLL remains installed and the
+companion remains in preview mode. This section supersedes the earlier
+"awaiting in-game retest" status; it does not establish general person-reader
+coverage or approve a release.
+
+## Header-memory binding (protocol 5): passed in-game preview retest
+
+Replaces protocol 3's drawing-stack reader, which refused Theiler and Tyler
+Hall. A screenshot-based alternative (unreleased "protocol 4") was tried and
+withdrawn, because the goal is binding from game memory. The tree is back on
+the protocol 3 sources from `dist/fmface-0.7.0.zip`, with only the changes
+below.
+
+- **How the ID is found.** In the menu callback, on FM24's UI thread:
+  1. Start at the event's source, which must be FM Face's `fmnP`/`fmnS`
+     button and belong to the callback's UI manager. With FM24 paused at a
+     real click, gdb showed the source at event+0x20.
+  2. Walk up the parents to the screen's unique `head` widget.
+  3. Find its unique `subs` subtitle widget.
+  4. Parse the trailing "(ID:n)" from its text.
+  The widget layout (widget part at +0x38: manager +0x10, parent +0x18, skin ID
+  +0x24; children vector at +0x100; text at widget part +0x158) was mapped
+  read-only in live FM24. Anything unexpected sends ID 0, which is refused.
+- **Live model check** (Python model reading live memory, compared with the
+  title ID read by OCR for checking only): all 12 matched.
+  - Players: Tyler Hall 2000251984, 71006535, 7458500, 2000273878, Franco
+    Negri 14080606, Federico Redondo 14253394, 72056129.
+  - Staff: Theiler 14008037, 72049827, 2000214125, 2000218221, 2000218222.
+  - Search size on Tyler Hall: 10 ancestors and 138 header widgets.
+- **Companion.** The profile request is bound to the DLL's ID. Before billing,
+  the companion reads the open profile from memory and refuses if it differs.
+  The receipt screenshot used for binding by protocols 2–3 is removed. The
+  0.75 s late-command refusal stays. Protocols 1–3 are ignored.
+- **Verification.**
+  - 62 tests, pyflakes, and the DLL build with `-Werror` pass.
+  - Wine test of the C reader on a model widget tree:
+    - Correct player and staff IDs.
+    - 0 for: no ID, leading zero, overflow, non-digits, wrong manager, wrong
+      source, two headers, bad pointer, null event.
+  - Wine transport harness: ID 0 refused; squad accepted then busy; no
+    companion gives "unavailable".
+- **Not yet done.** Install the new DLL (FM24 closed), restart FM24 and the
+  companion, then repeat checklist steps 3–5 on Theiler, Tyler Hall, Franco
+  and Farías. Include Farías → Ian Fray with the companion paused for under
+  0.75 s: expect "now person 2000045865, not the requested person 14240979".
+  Check `person=` and `read_ms=` in `fmface24.log` for each click.
+
+### In-game retest: 2026-10-14
+
+The protocol 5 DLL was installed over protocol 3. The three skin panels were
+byte-identical before and after. FM24 started with hook-installed and
+bridge-ready log markers. The companion ran in `--preview-only`; no image
+request was made and graphics were not written.
+
+| Check | Result |
+| --- | --- |
+| Players, Generate new face | **Passed, 8 of 8.** `fmface24.log` `person=` matched the on-screen ID and the preview was for that ID: Tyler Hall 2000251984, Franco Negri 14080606, Facundo Farías 14240979, Ian Fray 2000045865, Nicolás Freire 14036721, Diego Gómez 2000036372, Julian Gressel 72048236. Tyler Hall was refused by protocol 3. |
+| Staff, Generate new face | **Passed, 5 of 5:** Jorge Theiler 14008037 (refused by protocol 3), Damian Silvero 72049827, Erik Marquis 2000214125, Tom Jobe 2000218221 (twice). Theiler's preview used the correct "Club Atlético Newell's Old Boys icon…" headline. |
+| Read time | `read_ms=0` on every click, i.e. below the 15 ms tick resolution |
+| Farías → Ian Fray, binding check alone | **Passed.** Test-only companion with the late-click limit raised to 30 s; companion paused 1.9 s; next-person arrow opened Ian Fray. DLL sent `person=14240979`; companion refused: "The open FM24 profile is now person 2000045865, not the requested person 14240979; no image request was made." |
+| Farías → Ian Fray, normal companion | Refused as late (1.28 s), with the clicked person still logged as 14240979 |
+
+**Observation (not a binding fault).** FM24 fires the menu event only after
+the menu closes. A click elsewhere before that cancels the selection, so
+navigation cannot precede the event. While a DLL dialog (for example the
+"too late" message) is open, the DLL worker waits. Clicks made meanwhile are
+merged and handled when it closes, which then refuses them as late. One such
+click was logged 41 s late and refused. This is safe but can be confusing.
+The cause (a blocking message box) is inferred, not confirmed.
+
+Remaining: paid generation, reload and squad batch (steps 11–15) are not
+exercised. The prompt's profile data still falls back to the screen when the
+memory reader cannot validate a person: Tyler Hall, Ian Fray and Diego Gómez
+here.
+
+## Protocol 5 independent retest: 2026-10-15
+
+**The previously observed Theiler/Tyler binding regression and the original
+Farías-to-Ian navigation case passed this independent retest.** This is still
+the pinned FM24 24.4.2 build, English FM Face skin, enabled screen IDs,
+1854×1011 X11 window and Proton 9. Broader builds/layouts are not established.
+
+FM24 was closed when this run started. The source was independently rebuilt
+and reinstalled, with all skin XML files unchanged, and the game restarted.
+The old companion was replaced with one targeting the new window.
+
+### Verification results
+
+| Check | Result |
+| --- | --- |
+| Automated suite / pyflakes | All 62 tests passed independently; pyflakes passed |
+| Native DLL build | Passed `-Werror`, 189 forwarding exports |
+| Current C reader under Wine | All 12 model-tree cases passed: player/staff IDs, malformed ID, wrong manager/source, duplicate headers, invalid pointer and null event |
+| Current C transport under Wine | Passed normal ACK, dropped packet/retry, earlier ACK ignored, busy, stale and unavailable paths |
+| Extracted release archive | All 62 tests passed from the 44-file archive; private settings, research, backups and temporary test fixtures excluded |
+| Theiler normal native menu | Passed: DLL logged 14008037, preview matched, correct club-link biography headline |
+| Tyler Hall normal native menu | Passed: DLL logged 2000251984, preview matched; profile details used verified OCR fallback |
+| Original Farías → Ian race | **Passed with the normal 0.75-second cutoff:** verified menu open, selected Generate, next-person arrow opened Ian, companion paused 0.533 seconds; DLL logged 14240979; endpoint refused current 2000045865 versus requested 14240979; no image request. No test-only cutoff override was needed. |
+| Native squad entry / Cancel | Passed: scan reached four players; closing its progress window invoked Cancel, scan reported cancellation without requests |
+| Graphics restoration | Original file set, checksums and file metadata restored; restored staff portrait pixels matched the original screenshot |
+
+Every independently tested click logged `read_ms=0`, at the clock's available
+resolution. This is not a high-resolution performance benchmark.
+
+### Save/reload checks without an image API call
+
+A temporary server fixture outside the repository replaced `generate_png`
+with existing local portrait bytes and supplied a dummy key; it never called
+the image provider. The normal native menu, authenticated request, profile
+validation, progress, versioned save and automatic reload paths remained in
+use. A private backup of all original graphics was taken first.
+
+- **Player save and visible reload:** generated for Tyler using Theiler's
+  existing portrait as deliberately different test data. The different face
+  appeared automatically on Tyler's profile. The old versioned file was
+  removed after success.
+- **Player regeneration:** a second native menu selection returned Tyler's
+  original portrait bytes. The original-looking face appeared automatically,
+  and the first test version was removed.
+- **Provider failure:** the fixture raised a provider error. The error was
+  reported and the complete graphics file set/checksums remained unchanged.
+  This exercises the error path, not a real provider authentication response.
+- **Staff save and visible reload:** Theiler's menu returned Tyler's existing
+  portrait bytes. The visibly different face appeared automatically on
+  Theiler's profile. This also showed recovery after the provider error without
+  restarting the game or fixture server.
+
+The fixture server was then stopped. All original graphics files, names,
+permissions and mtimes were restored from backup, and the game skin reloaded.
+Portrait-crop comparisons showed mean RGB differences of 23.232 for the
+player test face and 19.265 for the staff test face; player regeneration and
+staff restoration both compared at 0.0 against their originals.
+
+### Current limits and final state
+
+No image API call was made and nothing was billed. Actual provider generation,
+authentication failures, a complete missing-face squad batch and
+stop-after-current-face remain unverified by this run. The save/reload checks
+above do establish visible in-game refresh for player generation, regeneration
+and staff generation using controlled local image bytes.
+
+Profile details can still use OCR when native records cannot be validated;
+the clicked ID itself comes from the DLL's in-memory header reader. Screen IDs
+must remain enabled. The DLL worker's reply-dialog behavior noted above is
+unchanged; this retest does not establish broader dialog/navigation behavior.
+
+The normal companion is running in preview mode with the production cutoff
+unchanged. Original graphics are restored. Evidence, fixtures and private
+backups are under `/tmp/fmface-p5-*` and are excluded from the release archive.
+No product source changes were needed during this retest.
+
+
+## Native menu as default; automatic window detection: 2026-10-15
+
+The companion now uses the native menu unless `--direct-clicks` is given, and
+finds the visible FM24 game window itself when `--window-id` is omitted. With
+no mode or window flag, it selected window 0x4a00005 and a native Generate new
+face on Ryan Sailor previewed person 2000155624 (DLL `read_ms=0`). Preview
+only; nothing was billed. In native mode the companion draws no menus: the
+remaining companion windows are the portrait progress indicator, the squad
+progress panel and zenity dialogs. Reload and squad navigation still use X11
+input.
+
+## In-process skin reload and biography fix: 2026-10-15
+
+**In-process reload (DLL):** the companion sends `FMFACE24R 1 <serial> <token>`
+to the bridge port + 1, and the DLL repeats FM24's own reload-current-skin
+command on the UI thread (details in the native menu README). Live results on
+the pinned build:
+
+| Check | Result |
+| --- | --- |
+| Reload request with no screen change | Done in 4.3 s; log `RELOAD_REQUESTED`, `POSTED`, `DONE` |
+| Changed portrait picked up | Tyler Hall's mapping pointed at Theiler's existing image; reload took 3.8 s and Theiler's face appeared on Tyler's open profile without leaving it |
+| Restore | Original graphics restored byte-identical from backup; reload showed Tyler's original portrait, pixel-identical (mean difference 0.0) |
+
+Two defects were found and fixed during the test. The stage counter rests at 5
+(not only -1) after the game's initial skin load, which first refused the
+request. The posted `GChS` is handled before the post returns, so the
+"running" state is now set before posting. No image request was made. The
+companion's end-to-end use of this reload through a native menu selection
+(generation, then reload) has not yet been run.
+
+**Biography:** a headline also kept in memory joined to the following
+paragraphs made two candidates match the on-screen opening, so the prompt fell
+back to OCR text, which read the club-link icon as "!" ("!InterMiami"). The
+shortest match is now used when every other match is that headline followed by
+more sentences, and the OCR fallback drops a "!" glued to the start of a word.
+Ryan Sailor's prompt now uses the memory headline.
+
+**Incident:** while a debugger was attached to FM24 for menu research,
+Xwayland stopped responding and GNOME restarted it at 10:05, closing FM24 and
+the Steam client. No project files or graphics were affected.
+
+## Squad menu item replaces the Faces button: 2026-10-15
+
+The DLL extends the provider object that adds **Export Team for Versus
+Competition** to the Squad screen's **Overview** menu (vtable entries pinned
+in `supported_build.json`). Found by locating that item's translation ID
+(335045) in code, then confirming with breakpoints which of two identical
+providers the Squad screen uses.
+
+| Check | Result |
+| --- | --- |
+| Menu | "Generate missing squad faces..." is the last item, below Export Team for Versus Competition |
+| Selection | Log `FMFACE24_SQUAD_CLICK`, `CLICK_ACCEPTED`; companion started the squad scan (preview; stopped by restarting the companion) |
+| Upgrade | Reinstall removed the created `team squad.xml`; manifest lists two panels; the Faces button is gone from the Squad screen |
+| Portrait menu after upgrade | Drake Callender previewed as 72056318, `read_ms=0` |
+
+**Export Team for Versus Competition** still opens FM24's Save dialog (cancelled
+without saving). Not yet checked: whether the item appears on other screens
+that use the same provider.
+
+## In-game squad command (memory roster, prompts by ID): 2026-10-15
+
+The native Squad menu command no longer opens profiles or uses OCR. Results
+on the pinned build, preview mode only (nothing billed):
+
+| Check | Result |
+| --- | --- |
+| Own squad via Squad menu | 29 of 29 rows read with display names; 0 missing (all indexed); "All 29 squad players already have portraits" |
+| Roster completeness | Table row count (29) and visible range drive scrolling; reads opened mid-table and at the bottom both completed |
+| Another club (LA Galaxy, run directly) | 22 of 22 rows; 4 not indexed; prompts built by ID for all 4 (e.g. Mauricio Cuevas, 19, American, Defender (Right), LA Galaxy) |
+| Prompt fields | All 29 own-squad players produced valid prompts, including loanee Freire (club Inter Miami) and previously OCR-only Tyler Hall |
+| Stale index | With Tyler's FM Face mapping removed and the skin reloaded, his profile showed the silhouette but his key stayed indexed: treated as present (safe direction). Mapping restored, graphics byte-identical |
+| Timing | About 7 s for the first pass (cells, portrait index, date), about 5 s per extra pass after a scroll; 22-33 s overall |
+
+Also fixed: alternate-name records for first names of any length (Tyler,
+Lawson, Robbie, Benjamin), type-5 players (Diego Gómez), and the 0x40 record
+marker flag. Ian Fray's alternate-name record is only sometimes resident, so
+his open-profile read can still fall back to OCR; the squad command uses the
+table's display name instead.
+
+Not yet run: a billed squad batch through this path, and Stop after current
+face with it.

@@ -1,0 +1,35 @@
+{
+  "version": "24.4.2",
+  "sha256": "e1059eee82fa7832188831521a3fa633ec3260dd98d03da48b16661147e3ab48",
+  "timestamp": "0x67ff9a80",
+  "imageSize": "0x1d807000",
+  "eventHandlerRva": "0x1f21c0",
+  "eventVtableSlotRva": "0x5600760",
+  "eventHandlerPrologue": "415741564154565755534881ec40010000",
+  "skinReload": {
+    "managerGlobalRva": "0x63635b8",
+    "topManagerRva": "0x1151110",
+    "valueInitRva": "0x197ce40",
+    "currentSkinRva": "0x114ed50",
+    "eventInitRva": "0x104d2a0",
+    "eventSetCopyRva": "0x1974c90",
+    "valueBoolRva": "0x197d250",
+    "eventSetRva": "0x1974e70",
+    "valueFreeRva": "0x197cea0",
+    "postEventRva": "0x114c860",
+    "eventFreeRva": "0x19732f0",
+    "stageOffset": "0x292"
+  },
+  "squadMenu": {
+    "addSlotRva": "0x558afc0",
+    "addOriginalRva": "0x62e60",
+    "eventSlotRva": "0x558afc8",
+    "eventOriginalRva": "0x63010",
+    "isRecordRva": "0x197df70",
+    "itemNewRva": "0x10f1ae0",
+    "itemAppendRva": "0x165f0",
+    "stringInitRva": "0x192ef30",
+    "stringFreeRva": "0x192e8a0",
+    "valueFourccRva": "0x197d3d0"
+  }
+}
