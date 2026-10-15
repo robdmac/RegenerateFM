@@ -753,3 +753,20 @@ The FM24 companion now requires the native DLL and has no X11 code.
       keeps MK Dons.
 - [ ] `hotreload/bin` still holds an older plugin build; rebuild it before a
       release.
+
+## Windows memory backend and platform check: 2026-10-15
+
+- [x] `process_memory.py` chooses a Linux backend (`/proc`, `process_vm_readv`)
+      or a Windows backend (`ReadProcessMemory`, `VirtualQueryEx`, a Toolhelp
+      process snapshot, and `EnumProcessModulesEx` for the fm.exe base).
+      Process lookups in `live_memory`, `existing_portrait` and the installer
+      go through it.
+- [x] Windows Python 3.11.9 (the python.org embeddable build) ran under
+      Proton's Wine in FM24's prefix, alongside the live game:
+      - found fm.exe (pid 292), the image base 0x140000000 with "MZ", and
+        1,214 MB of writable memory in 256 regions
+      - read Federico Redondo's full profile (6.8 s) and the shown biography
+      - read all 29 Squad rows (8.9 s)
+- [x] The companion refuses to start on macOS with an explanation. The
+      installer gives the Proton launch option only off Windows.
+- [ ] Run on real Windows: the DLL, the installer and the companion.

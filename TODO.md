@@ -14,10 +14,12 @@
    code (overlays, `--direct-clicks`, screenshots/OCR, scrolling, the
    Preferences reload fallback) and zenity have been removed; the companion
    requires the native DLL.
-3. **Compatibility check for macOS and Windows.** The FM24 path is
-   Linux/Proton-specific (process memory via /proc, the WINMM proxy
-   DLL loaded through a Proton override); FM26 uses BepInEx. Work out what
-   runs, what needs porting, and what must be refused on each platform.
+3. **Compatibility check for macOS and Windows.** Done (2026-10-15); see
+   "Platform support" in the README. The FM24 companion now has a Windows
+   memory backend, checked with Windows Python under Wine against the live
+   game; macOS is refused (FM24 for Mac is a native program the DLL cannot
+   hook). Still to do: a run on real Windows, and FM26 on macOS if wanted
+   (per-platform build pins and the community Il2CppInterop patch).
 
 ## In progress
 

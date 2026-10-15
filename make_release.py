@@ -38,6 +38,8 @@ PUBLIC_FILES = (
     "fm24/native_screen.py",
     "fm24/native_squad.py",
     "fm24/process_memory.py",
+    "fm24/process_memory_linux.py",
+    "fm24/process_memory_windows.py",
     "fm24/squad_batch.py",
     "fm24/native_menu/README.md",
     "fm24/native_menu/build.py",

@@ -11,9 +11,8 @@ import datetime as dt
 import re
 import struct
 from dataclasses import dataclass
-from pathlib import Path
 
-from process_memory import MemoryScan, fm24_image_base, read_process_bytes
+from process_memory import MemoryScan, fm24_image_base, read_process_bytes, running_executables
 
 
 _RECORD_SIZE = 64
@@ -81,18 +80,14 @@ def _parse_record(pid: int, address: int, person_id: int) -> PersonIdentity | No
 
 def find_game_pid() -> int:
     candidates = []
-    for entry in Path("/proc").iterdir():
-        if not entry.name.isdigit():
+    for pid, executable in running_executables():
+        if not executable.replace("\\", "/").lower().endswith("/fm.exe"):
             continue
         try:
-            command = (entry / "cmdline").read_bytes().split(b"\0", 1)[0]
-            if not command.replace(b"\\", b"/").lower().endswith(b"/fm.exe"):
-                continue
-            pid = int(entry.name)
             fm24_image_base(pid)
-            candidates.append(pid)
         except (OSError, ValueError):
             continue
+        candidates.append(pid)
     if len(candidates) != 1:
         raise MemoryUnavailable(f"Expected one running FM24 process; found {len(candidates)}.")
     return candidates[0]

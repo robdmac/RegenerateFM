@@ -18,6 +18,7 @@ from pathlib import Path
 from PIL import Image
 
 import game_archive
+from process_memory import process_executable
 from fmface import validate_id
 
 IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg")
@@ -139,13 +140,6 @@ def find_existing_portrait(person_id: str, graphics_dir: Path, game_dir: Path | 
 
 
 def game_dir_from_process(pid: int) -> Path | None:
-    """FM24's installation folder, from the running game's mapped fm.exe."""
-    try:
-        maps = Path(f"/proc/{pid}/maps").read_text()
-    except OSError:
-        return None
-    for line in maps.splitlines():
-        fields = line.split(maxsplit=5)
-        if len(fields) == 6 and fields[5].casefold().endswith("/football manager 2024/fm.exe"):
-            return Path(fields[5]).parent
-    return None
+    """FM24's installation folder, from the running game's fm.exe."""
+    executable = process_executable(pid)
+    return executable.parent if executable else None

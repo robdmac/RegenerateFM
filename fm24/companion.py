@@ -18,6 +18,10 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 from xml.etree.ElementTree import ParseError
 
+if sys.platform != "win32" and not sys.platform.startswith("linux"):
+    sys.exit("FM Face's FM24 companion runs on Linux (Steam/Proton) and Windows. The macOS version "
+             "of FM24 is a separate program that the FM Face DLL and memory reader do not support.")
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from fmface import check_graphics_config, edit_png, generate_png, load_env, profile_prompt, update_prompt
 from existing_portrait import find_existing_portrait, game_dir_from_process

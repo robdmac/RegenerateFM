@@ -14,6 +14,9 @@ from pathlib import Path
 
 from skin import modify_panel
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from process_memory import running_executables
+
 SUPPORTED_SHA256 = json.loads(Path(__file__).with_name("supported_build.json").read_text())["sha256"]
 PANEL_FILES = {"player": "panels/player/player overview panel.xml",
                "staff": "panels/non_player/non player profile.xml"}
@@ -117,14 +120,8 @@ def load_manifest(path: Path) -> dict | None:
 
 
 def game_running() -> bool:
-    for entry in Path("/proc").iterdir():
-        if not entry.name.isdecimal():
-            continue
-        try:
-            command = (entry / "cmdline").read_bytes().split(b"\0", 1)[0]
-        except OSError:
-            continue
-        if command.replace(b"\\", b"/").lower().endswith(b"/fm.exe"):
+    for _, executable in running_executables():
+        if executable.replace("\\", "/").lower().endswith("/fm.exe"):
             return True
     return False
 
@@ -245,7 +242,10 @@ def main(argv: list[str] | None = None) -> None:
           "\"Generate missing squad faces…\" item with an authenticated loopback bridge.")
     if LEGACY_SQUAD_PANEL in installed:
         print("Removed the earlier Squad screen Faces button; the command is now in the Squad menu.")
-    print('Proton launch option: WINEDLLOVERRIDES="winmm=n,b" %command%')
+    if sys.platform == "win32":
+        print("On Windows, FM24 loads the DLL from its folder; no launch option is needed.")
+    else:
+        print('Proton launch option: WINEDLLOVERRIDES="winmm=n,b" %command%')
     print("Start the companion with --native-menu (use --preview-only for no-charge tests).")
 
 

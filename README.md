@@ -25,6 +25,17 @@ Add `--replace` to overwrite a portrait already created for that ID. Generated i
 
 FM24 24.4.2 support is experimental and runs through a [native DLL](fm24/native_menu/README.md) pinned to the tested executable on Steam/Proton. FM24's own portrait popup offers **Generate new face** and **Update face**, and the Squad **Overview** menu ends with **Generate missing squad faces…**. The FM24 companion reads profiles, biographies and squad rows from game memory, shows progress and confirmations in FM24's own dialogs, and reloads new faces inside the game; it has no X11 code. A billed single face and a billed two-face squad batch with Stop have been run this way. Setup and current limits are in [fm24/README.md](fm24/README.md). For manual FM24 imports, use its own user-data `graphics/fmface` directory and reload the skin in Preferences; the FM26 plugin does not manage FM24 graphics.
 
+## Platform support
+
+Everything has been tested on Linux with Steam/Proton. Status elsewhere:
+
+| Part | Windows | macOS |
+|---|---|---|
+| Local server (`fmface.py`) | Standard-library Python plus Pillow, so it should run; untested. `install_service.py` is Linux-only (systemd). | Should run; untested. |
+| FM26 plugin | Its native target: the build check pins the Windows game binaries that Proton also runs. Untested on Windows itself. | Not supported. The build check pins the Windows binaries, and BepInEx IL2CPP on macOS needs a community Il2CppInterop patch for plugins that register their own types, as this one does. |
+| FM24 DLL | The same Windows DLL; Windows loads it from the game folder without a launch option. Untested on Windows itself. | Not possible: FM24 for macOS is a native Mac program, not `fm.exe`. |
+| FM24 companion | Has a Windows memory reader (`ReadProcessMemory`, `VirtualQueryEx`). Run with Windows Python under Wine against the live game, it found FM24, read a full profile, the shown biography and all 29 Squad rows. Native Windows is untested. | Refuses to start. |
+
 ## Release scope
 
 The native plugin has been tested on FM26 26.3.2 with the vanilla skin, BepInEx 6.0.0-be.760, and FM ActionLink 1.0.0. Its squad scanner matched all 49 players in the test save. A three-face billed batch generated and reloaded every missing portrait; a fresh scan from a scrolled squad list then checked 49 of 49 players and found zero missing. Its game-binary checks disable the buttons on other FM26 builds. The FM24 flows have been tested on FM24 24.4.2 with its vanilla-based skin through the native DLL: previews of every command, a billed single face and a billed squad batch with Stop. Other skins, resolutions, languages, and game builds remain unverified. Both servers run locally and each successful generation uses a billed OpenAI API request; importing an existing PNG does not.
