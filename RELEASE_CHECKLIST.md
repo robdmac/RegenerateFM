@@ -741,3 +741,15 @@ The FM24 companion now requires the native DLL and has no X11 code.
 - [x] Preview of Edison Azcona (on loan from Inter Miami): Generate says "plays
       for Las Vegas" with Las Vegas's kit, and Update face uses Las Vegas's kit.
       The squad reader gives Las Vegas for him and Inter Miami for Messi.
+
+## Loan club kit (FM26): 2026-10-15
+
+- [x] The header's `PlayingTeam` is the contract club; for a loaned player the
+      header also shows the loan club in `TeamAwayFromOrTo`, which the plugin now
+      uses when it is visible. Found by logging the header's element tree.
+- [x] With a stand-in server that records the prompt and refuses (no API call,
+      nothing saved): Kane Thompson-Sommers (MK Dons, on loan at Bristol Rovers)
+      gets "plays for Bristol Rovers" and Bristol Rovers's kit. Max Crocombe
+      keeps MK Dons.
+- [ ] `hotreload/bin` still holds an older plugin build; rebuild it before a
+      release.

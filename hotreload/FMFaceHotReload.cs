@@ -276,6 +276,11 @@ namespace FMFaceHotReload
                 }
             profile.Position = FirstText(FindNamed(banner, "Frame 1000003901"));
             profile.Club = FirstText(FindNamed(header, "PlayingTeam"));
+            // "PlayingTeam" is the contract club; a loaned player's header also
+            // shows the loan club, so the face wears the kit they play in now.
+            var loanClub = FirstText(FindNamed(header, "TeamAwayFromOrTo"));
+            if (!string.IsNullOrWhiteSpace(loanClub))
+                profile.Club = loanClub;
             profile.Nationality = FirstText(FindNamed(header, "Frame 1000003766"));
             foreach (var value in TextValues(banner))
             {
