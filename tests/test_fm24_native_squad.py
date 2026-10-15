@@ -51,6 +51,24 @@ class ScreenTextTests(unittest.TestCase):
             native_screen._first_paragraph(b"bad \xff text")
 
 
+class PlayingClubTests(unittest.TestCase):
+    def test_loaned_player_uses_the_loan_club(self):
+        record = 0x1000
+        # Club objects: ID twice at +12/+16, details at +0x30 with the same ID and a name at +0xc8.
+        words = {record + native_profile.PLAYING_CLUB: 0x5000,
+                 0x5000 + 12: 77, 0x5000 + 16: 77, 0x5000 + 0x30: 0x6000, 0x6000 + 12: 77, 0x6000 + 0xc8: 0x7000}
+        names = {0x7000: "Las Vegas"}
+        with patch.object(native_profile, "_u32", side_effect=lambda pid, address: words.get(address, 0)), \
+                patch.object(native_profile, "_text", side_effect=lambda pid, address, limit=80: names[address]):
+            self.assertEqual(native_profile._playing_club(1, record, "Inter Miami"), "Las Vegas")
+            words[record + native_profile.PLAYING_CLUB] = 0  # staff, or no current club
+            self.assertEqual(native_profile._playing_club(1, record, "Inter Miami"), "Inter Miami")
+            words[record + native_profile.PLAYING_CLUB] = 0x5000
+            words[0x6000 + 12] = 78  # details of another club
+            with self.assertRaises(MemoryUnavailable):
+                native_profile._playing_club(1, record, "Inter Miami")
+
+
 class AlternateNameTests(unittest.TestCase):
     def test_decodes_any_first_name_length(self):
         # Live bytes of Tyler Hall's name record (ID twice, 09, Tyler, Hall).

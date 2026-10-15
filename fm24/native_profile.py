@@ -200,18 +200,33 @@ def _nation(pid: int, record: int) -> str:
     return _text(pid, _u32(pid, nation + 0x30), limit=40)
 
 
-def _club(pid: int, record: int) -> str:
-    contract = _u32(pid, record + 0xbc)
-    if _u32(pid, contract + 8) != record - 12:
-        raise MemoryUnavailable("FM24 contract points to another person.")
-    club = _u32(pid, contract + 0x10)
+# A player's record holds the club they play for now at -0x154: the loan club
+# while on loan, otherwise the contract club. Staff records leave it empty.
+PLAYING_CLUB = -0x154
+
+
+def _club_name(pid: int, club: int) -> str:
     club_id = _u32(pid, club + 12)
     if not 1 <= club_id <= 2_000_000_000 or club_id != _u32(pid, club + 16):
         raise MemoryUnavailable("Invalid FM24 club object.")
     details = _u32(pid, club + 0x30)
     if _u32(pid, details + 12) != club_id:
-        raise MemoryUnavailable("FM24 club details do not match the contract.")
+        raise MemoryUnavailable("FM24 club details do not match the club.")
     return _text(pid, _u32(pid, details + 0xc8), limit=80)
+
+
+def _club(pid: int, record: int) -> str:
+    """The club holding the person's contract (the parent club during a loan)."""
+    contract = _u32(pid, record + 0xbc)
+    if _u32(pid, contract + 8) != record - 12:
+        raise MemoryUnavailable("FM24 contract points to another person.")
+    return _club_name(pid, _u32(pid, contract + 0x10))
+
+
+def _playing_club(pid: int, record: int, fallback: str) -> str:
+    """The club a player plays for now, so a loaned player wears the loan club's kit."""
+    club = _u32(pid, record + PLAYING_CLUB)
+    return _club_name(pid, club) if club else fallback
 
 
 def _position(pid: int, record: int) -> str:
@@ -264,7 +279,8 @@ def read_open_profile(pid: int | None = None, *, identity_only: bool = False) ->
                            "age": age, "nationality": nation,
                            "jobTitle": jobs.pop(), "club": club}
     if identity_only:
-        return person_id, {"type": "player", "name": identity.name, "age": age, "club": club}
+        return person_id, {"type": "player", "name": identity.name, "age": age,
+                           "club": _playing_club(pid, record, club)}
     raw = read_process_bytes(pid, record - 0x6d, 54)
     height_cm = struct.unpack("<H", read_process_bytes(pid, record - 0x136, 2))[0]
     rated_position = _position(pid, record)
@@ -277,7 +293,7 @@ def read_open_profile(pid: int | None = None, *, identity_only: bool = False) ->
     if family not in position and not (family == "Midfielder" and "M (" in position):
         raise MemoryUnavailable("FM24 position ratings and title disagree.")
     profile = {"type": "player", "name": identity.name, "age": age,
-               "nationality": nation, "position": position, "club": club,
+               "nationality": nation, "position": position, "club": _playing_club(pid, record, club),
                "height": _height(height_cm),
                "physical": _attributes(raw, PHYSICAL),
                "mental": _attributes(raw, MENTAL)}
@@ -305,8 +321,9 @@ def squad_club(pid: int, records: list[int]) -> str:
 def squad_player_profile(pid: int, record: int, name: str, club: str, today: dt.date) -> dict:
     """Prompt fields for a Squad row's player, read by record without opening it.
 
-    ``name`` is the row's display name and ``club`` the Squad's club. The
-    position comes from the player's position ratings.
+    ``name`` is the row's display name and ``club`` the Squad's club, used
+    unless the player plays elsewhere (on loan). The position comes from the
+    player's position ratings.
     """
     raw = read_process_bytes(pid, record, 0x40)
     number = struct.unpack_from("<I", raw)[0]
@@ -323,7 +340,8 @@ def squad_player_profile(pid: int, record: int, name: str, club: str, today: dt.
     height_cm = struct.unpack("<H", read_process_bytes(pid, record - 0x136, 2))[0]
     position = _position(pid, record)
     profile = {"type": "player", "name": name, "age": age,
-               "nationality": _nation(pid, record), "position": position, "club": club,
+               "nationality": _nation(pid, record), "position": position,
+               "club": _playing_club(pid, record, club),
                "height": _height(height_cm),
                "physical": _attributes(ratings, PHYSICAL),
                "mental": _attributes(ratings, MENTAL)}

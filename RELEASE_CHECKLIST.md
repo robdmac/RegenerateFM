@@ -731,3 +731,13 @@ The FM24 companion now requires the native DLL and has no X11 code.
 - [ ] **FM26 Actions menu timing:** opened about 5 s after the profile, the menu
       had no FM Face items (the header ID was not yet readable); reopening it
       showed them.
+
+## Loan club kit (FM24): 2026-10-15
+
+- [x] Player prompts use the club the player plays for now (`record-0x154`): the
+      loan club during a loan, else the contract club. Staff keep the contract
+      club, and the header check still uses the contract club, which the title
+      shows.
+- [x] Preview of Edison Azcona (on loan from Inter Miami): Generate says "plays
+      for Las Vegas" with Las Vegas's kit, and Update face uses Las Vegas's kit.
+      The squad reader gives Las Vegas for him and Inter Miami for Messi.
