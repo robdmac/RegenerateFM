@@ -1,14 +1,32 @@
-# FM24 experimental player, staff, and squad controls
+# FM24 player, staff and squad faces (experimental)
 
-An optional [native portrait menu prototype](native_menu/README.md) is now available for the exact tested FM24 24.4.2 executable. FM24 draws the popup and dispatches its selection to a build-validated DLL hook, which invokes the existing companion without a browser. Player and Assistant Coach previews, repeated selection, and dismissal without a request have been validated. A staff selection also saved and automatically reloaded a portrait in a local test that reused the existing image instead of calling the image API. This removes the X11 menu overlays: individual portraits use FM24's own popup, and **Generate missing squad faces…** is the last item of the Squad **Overview** menu (the scan starts in game; a full batch through it has not been run). New portraits are reloaded inside the game, and progress, confirmations and errors are FM24 dialogs. The squad scan still scrolls the table through X11.
+FM Face for FM24 works inside the game through the [native DLL](native_menu/README.md), which is pinned to the tested FM24 24.4.2 executable on Steam/Proton.
+- Click a player or staff portrait on their Overview to get FM24's own popup with **Generate new face** and **Update face**.
+- The Squad screen's **Overview** menu ends with **Generate missing squad faces…**.
 
-FM Face lets you click a player or staff portrait on FM24's Overview to open a small **Generate new face** menu. In the default mode, the companion draws this menu over the game through X11. An optional X11 overlay also places a **Generate face** row immediately below the open player **Overview** dropdown. These overlays look like game menus but are separate companion windows. A local skin override of `actions/person actions.xml` did not change FM24's code-generated dropdown in the tested 24.4.2 build. The native prototype instead adds a skin-defined popup over the portrait and handles its selection in process. The default companion detects clicks through X11 RECORD, reads the active profile, makes an on-demand image request, writes a versioned portrait, and reloads the skin automatically. No browser opens. An animated progress indicator covers the portrait; failures appear in the companion terminal. Versioned filenames matter: FM24 kept showing the old portrait when the same filename was overwritten.
+The companion reads everything from FM24's memory: the open profile, the biography FM24 is showing, and every Squad row. It makes the image request, writes a versioned portrait and reloads the skin inside the game. Progress, the squad confirmation, results and errors appear in FM24's own dialogs. There is no X11 code, no screenshots or OCR, and no browser.
 
-The companion currently supports the English vanilla-based player and staff overviews at a **1854×1011 game-window size on X11 with RECORD and Composite**. Enable **Show screen IDs in Title Bar to assist skinning** in FM24 Preferences. The primary reader gets the open person ID, name, age, nationality, club, job title or position, height, player attributes, and available opening biography from read-only FM24 process memory. It cross-checks the active UI title with canonical person and contract records. With the native DLL, the companion reads the open screen's widgets from memory: the header must show the same person ID, and the biography is the first paragraph of the Biography box FM24 is displaying. Both reads are repeated before generation to catch navigation during capture, and if memory cannot be read the request is refused; no screenshot or OCR is used. With `--direct-clicks`, biography paragraphs that link to the person are matched against an OCR of the on-screen Biography box, and the full-screen OCR reader remains the fallback. If the reader cannot verify the fields it needs, the companion stops before the image request. The automatic reload also checks the active window and person ID. A generated image is retained if the subsequent reload fails; use Preferences > Reload Skin to load it manually if needed.
+Versioned filenames matter: FM24 kept showing the old portrait when the same filename was overwritten.
+
+## What it reads
+
+From read-only process memory, the companion reads:
+- the open person's ID, name and age
+- nationality and club
+- job title or position, and height
+- player attributes
+- the first paragraph of the Biography box FM24 is displaying
+
+**Checks before any request**
+- **Person:** the title, the canonical person record and the contract must agree.
+- **Header:** it must show the same `(ID:n)`, so enable **Show screen IDs in Title Bar to assist skinning** in FM24 Preferences.
+- **Repeat read:** everything is read twice to catch navigation during capture.
+
+If anything can't be verified, the request is refused before any image is requested. If the in-game reload fails after a face is saved, the image is kept; use Preferences > Reload Skin to load it.
 
 ## Setup
 
-1. Create a virtual environment and install the local companion's dependencies:
+1. Create a virtual environment and install the companion's dependencies:
 
    ```sh
    python3 -m venv .venv-fm24
@@ -16,7 +34,7 @@ The companion currently supports the English vanilla-based player and staff over
    ```
 
 2. Extract your own FM24 `panels.fmf` with the FM24 Resource Archiver. Locate `panels/player/player overview panel.xml` and `panels/non_player/non player profile.xml` in that extraction. This repository does not include Sports Interactive's panels.
-3. Find your FM24 **user-data** directory, which contains `skins` and `graphics`, and create its `graphics/fmface` directory. For Steam Proton this is normally inside the game's `compatdata/2252570/pfx/drive_c/users/steamuser/Documents/Sports Interactive/Football Manager 2024/`; it is not the game installation directory.
+3. Find your FM24 **user-data** directory, which contains `skins` and `graphics`, and create its `graphics/fmface` directory. For Steam Proton this is normally inside the game's `compatdata/2252570/pfx/drive_c/users/steamuser/Documents/Sports Interactive/Football Manager 2024/`. It is not the game installation directory.
 4. Build the skin, supplying your extracted panel and user-data paths:
 
    ```sh
@@ -27,9 +45,9 @@ The companion currently supports the English vanilla-based player and staff over
      --auth-file .fm24-auth
    ```
 
-   The builder creates a private local token and refuses to overwrite an existing skin. Keep `.fm24-auth` private. The portrait menu works only while the companion is running. If you have an older FM Face skin with a button beneath the portrait, switch FM24 to its normal skin, move the old FM Face skin out of the way, rebuild it, then select FM Face again.
-5. Copy `.env.example` to `.env` and set `OPENAI_API_KEY` there. Keep the file private (`chmod 600 .env`). Each successful click uses a billed image API request. The FM24 companion uses the graphics path passed on its command line; `FM_GRAPHICS_DIR` in `.env` is for the main web app and FM26.
-6. Install the [native portrait menu](native_menu/README.md) with FM24 closed and add its Steam launch option. In FM24 Preferences, select **FM Face**, enable screen IDs in the title, and use a windowed 1854×1011 game window. Then run:
+   The builder creates a private local token and refuses to overwrite an existing skin. Keep `.fm24-auth` private.
+5. Copy `.env.example` to `.env` and set `OPENAI_API_KEY` there. Keep the file private (`chmod 600 .env`). Each generated or updated face is one billed image API request. The FM24 companion uses the graphics path passed on its command line; `FM_GRAPHICS_DIR` in `.env` is for the main web app and FM26.
+6. Install the [native DLL](native_menu/README.md) with FM24 closed and add its Steam launch option. In FM24 Preferences, select **FM Face** and enable screen IDs in the title. Then run:
 
    ```sh
    .venv-fm24/bin/python fm24/companion.py \
@@ -37,14 +55,32 @@ The companion currently supports the English vanilla-based player and staff over
      --graphics-dir '/path/to/Football Manager 2024/graphics/fmface'
    ```
 
-   In this native mode the companion needs no game window: profiles, the shown biography and every Squad row are read from FM24's memory, and FM24 draws the menus, progress and dialogs. It looks up the X11 window (class `steam_app_2252570`, title "Football Manager 2024") only if a fallback needs it, such as the X11 progress window or the Preferences reload. With `--direct-clicks` it finds the window at startup; if it reports none or several, pass `--window-id 0x…` with the child game window from `xwininfo -root -tree`, not the decorated outer window, and restart the companion after restarting FM24. Leave the companion running while playing. Open a player or staff Overview, click the portrait, then choose **Generate new face** from FM24's own menu. On the Squad screen, the **Overview** menu ends with **Generate missing squad faces…**. FM24 stays in front while the request runs, and the portrait should reload automatically. Repeat to replace that person's portrait. **Update face**, below it, refreshes the face the person already has: FM Face's own portrait, a facepack picture from your graphics folder, or FM24's bundled squad photo (read from `data/game/graphics.fmf`, with its mask as transparency). The request asks for the same person at their current age in their current club's kit. FM24's skin popup cannot grey the item out, so for a person with no face the companion refuses before making any request. The companion terminal shows the result or a detailed error. With the native DLL, progress appears on the portrait itself, and the squad confirmation, squad progress (with **Stop after this face**), results and errors are FM24's own dialogs. Tkinter (`python3-tk` on Debian) and `zenity` are only needed for the fallback, or with `--direct-clicks`.
+## Use
 
-   Without the native DLL (for example on another FM24 executable), add `--direct-clicks` to use the older X11 menus instead: the companion detects portrait clicks through X11 RECORD and draws its own menu over the game.
+Leave the companion running while you play; the menus work only while it runs.
 
-To inspect the captured prompt with **no image API request or portrait write**, add `--preview-only` to the companion command. Use a player or staff portrait menu; the prompt appears in the companion terminal. For **Update face**, preview also names the existing portrait that would be sent.
+- **Generate new face:** open a player or staff Overview, click the portrait and choose it from FM24's popup. The new face loads automatically, and choosing it again replaces the portrait.
+- **Update face:** refreshes the face the person already has, asking for the same person at their current age in their current club's kit. The starting face can be:
+  - FM Face's own portrait
+  - a facepack picture from your graphics folder
+  - FM24's bundled squad photo, read from `data/game/graphics.fmf` with its mask as transparency
 
-With `--direct-clicks`, the companion also adds X11 **Overview** dropdown rows; the native mode does not need them. On a player profile, **Generate face** appears below the dropdown. On **Squad > Overview**, **Generate missing squad faces…** appears below its dropdown. The squad command visits each player profile and first checks FM24's in-memory portrait resource index. Indexed portraits are treated as present. An absent or uncertain mapping is checked against the rendered portrait, so an unexpected generated face or incomplete memory scan cannot cause an unnecessary billed request. The command then asks for confirmation with the missing count. It opens each missing player again, verifies the ID and silhouette, generates one face at a time, and reloads the skin after each request. A progress panel can cancel the scan or stop the batch after the current face. The scan and the count confirmation make no API requests. On the tested 29-player squad, profile-by-profile scans took roughly 10–20 minutes depending on FM24 redraw speed. Test with `--preview-only` first; menu detection and placement are tied to the tested X11 layout. Use `--no-menu-overlay` to disable these rows. The staff Overview menu is not covered by this option.
+  FM24's skin popup can't grey the item out, so for a person with no face the companion refuses before making any request.
+- **Generate missing squad faces…:** on the Squad screen, choose it from the **Overview** menu.
+  - It reads every row from memory, including rows FM24 hasn't drawn, and asks in an FM24 dialog before any request.
+  - It then generates and reloads one face at a time. Choose **Stop after this face** to end after the current one.
 
-FM24 skin integration remains experimental. On one Steam/Proton installation, billed player regeneration and staff generation saved new portraits and reloaded them in game without opening a browser. A billed player request through the optional Overview dropdown row also loaded automatically. The portrait-click menu has been checked for player and Assistant Coach profiles in no-charge preview mode; its menu choice uses the same generation endpoint. The squad scanner checked all 29 players in the test save and found eight missing portraits; its menu action and Cancel control worked in preview mode. Live requests then generated those portraits, including consecutive batch requests with exact ID checks and automatic reloads. A final full scan opened all 29 profiles and found zero missing portraits. Two images from an earlier run were saved but needed manual skin reload after the progress window covered Preferences; moving the window resolved that issue and later reloads succeeded. The eight portraits were completed across several runs, not one uninterrupted batch. Other staff roles, languages, resolutions, skins, and game builds need separate validation. Historical feasibility probes are kept in `research/` and are not part of the release.
+If FM24 can't show one of its dialogs, the message goes to the companion terminal instead, and an unanswerable squad confirmation counts as Cancel.
 
-The read-only memory parser was derived for the tested FM24 build and uses only original code and Linux interfaces. Its player attribute offsets were compared with live outfield and goalkeeper profiles; native player and Assistant Coach prompts were previewed without making an image request. The native reader also handles an alternate name layout used by some players. Native portrait mapping checks matched two visible silhouettes, two built-in photos, and one FM Face photo in a live save. An absent mapping still needs a rendered-portrait check before billing; automatic reload checks and the profile fallback on unsupported builds also use the screen. Other game builds, skins, languages, roles, and clubs need separate validation. Run `.venv-fm24/bin/python fm24/memory_probe.py --pid <FM24_PID>` to check process-memory access without generating an image.
+To see the prompt with **no image API request or portrait write**, add `--preview-only` to the companion command. Previews print to the companion terminal; for **Update face**, the preview also names the existing portrait that would be sent.
+
+## Validation and limits
+
+Live checks on one Steam/Proton installation and save:
+- **Previews:** Generate, Update face and the squad command, run with every X11 entry point set to fail. No X11 calls were made.
+- **Billed single face:** a Generate through the portrait popup (Gabriel Pec, LA Galaxy).
+- **Billed squad batch:** two LA Galaxy faces, with Stop ending the run after the second face.
+
+Other staff roles, languages, skins, clubs and game builds need separate validation. The DLL refuses to hook any other FM24 executable.
+
+The memory layouts were derived for the tested build using only original code and Linux interfaces. Run `.venv-fm24/bin/python fm24/memory_probe.py --pid <FM24_PID>` to check process-memory access without generating an image. Historical feasibility probes are kept in `research/` and are not part of the release.

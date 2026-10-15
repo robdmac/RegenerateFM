@@ -53,7 +53,7 @@ class Bridge:
 
     def __init__(self, test, **options):
         options.setdefault("notify", lambda message: None)
-        self.server = native_listener.start_native_listener("0x1", 1234, 0, KEY, None, None, **options)
+        self.server = native_listener.start_native_listener(1234, 0, KEY, None, **options)
         self.client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.client.settimeout(.3)
         self.address = self.server.getsockname()
@@ -229,7 +229,7 @@ class NativeBridgeTests(unittest.TestCase):
         holder.bind(("127.0.0.1", 0))
         try:
             with self.assertRaisesRegex(RuntimeError, "another companion"):
-                native_listener.start_native_listener("0x1", 1, holder.getsockname()[1], KEY, None, None)
+                native_listener.start_native_listener(1, holder.getsockname()[1], KEY, None)
         finally:
             holder.close()
 

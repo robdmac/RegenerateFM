@@ -1,4 +1,2 @@
 Pillow>=10,<12
-rapidocr==3.9.2
-onnxruntime>=1.17,<2
-python-xlib>=0.33,<1
+zstandard>=0.22,<1

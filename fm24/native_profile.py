@@ -7,10 +7,8 @@ it can be used in a prompt. This module never writes to the game process.
 
 from __future__ import annotations
 
-import base64
 import collections
 import datetime as dt
-import difflib
 import re
 import struct
 
@@ -175,91 +173,6 @@ def _scan_ui(pid: int) -> tuple[dict[str, list[str]], set[int]]:
     for _, data in MemoryScan(pid, 256):
         _collect_ui_chunk(data, titles, ages)
     return titles, ages
-
-
-def _decode_biography(raw: bytes) -> str:
-    """Decode the first paragraph of FM24's linked UI biography string."""
-    first = raw.split(b"\n\n", 1)[0].split(b"\x00", 1)[0]
-    if not first.startswith(b"\x01") or b"\x02" not in first:
-        return ""
-    plain = _RICH_LINK.sub(b"", first).replace(b"\x01", b"")
-    try:
-        result = plain.decode("utf-8").strip()
-    except UnicodeDecodeError:
-        return ""
-    if not 40 <= len(result) <= 2000 or not result.isprintable():
-        return ""
-    return result
-
-
-def _string_start(data: bytes, index: int) -> bool:
-    """A rich-text UI string begins at ``index`` after a NUL-padded header."""
-    return (index >= 16 and data[index:index + 1] == b"\x01" and
-            data[index - 16:index].count(b"\x00") >= 4)
-
-
-def biography_candidates(pid: int | None, full_name: str) -> set[str]:
-    """Return first paragraphs that link to this exact person.
-
-    This is only used after the open person has been validated from its native
-    record. The link tooltip contains that record's full name. The headline
-    may start with the person's link or mention them later in its first
-    paragraph ("Club X icon Name ..."), so the string start is found by
-    walking back from the link. Other UI strings (news, history paragraphs)
-    can also link to the person, so the result can hold several paragraphs;
-    the caller must choose using the visible biography.
-    """
-    pid = pid or find_game_pid()
-    tooltip = base64.b64encode(f"Click to view {full_name}'s profile".encode()) + b"\x02"
-    candidates: set[str] = set()
-    scan = MemoryScan(pid, 4096)
-    for base, data in scan:
-        offset = 0
-        while (offset := data.find(tooltip, offset)) >= 0:
-            link = data.rfind(b"\x01", max(0, offset - 500), offset)
-            starts = set()
-            if link >= 0 and data[link + 1:offset].isascii() and _string_start(data, link):
-                starts.add(link)
-            # The containing string starts after the nearest NUL; the person
-            # must be linked within its first paragraph.
-            boundary = data.rfind(b"\x00", max(0, offset - 4000), offset) + 1
-            if boundary > 0 and _string_start(data, boundary) and b"\n\n" not in data[boundary:offset]:
-                starts.add(boundary)
-            for start in starts:
-                # Read enough for the complete first paragraph even when the
-                # chunk ends inside the rich-text string.
-                headline = _decode_biography(scan.read(base + start, 8192))
-                if headline:
-                    candidates.add(headline)
-            offset += len(tooltip)
-    return candidates
-
-
-def _comparable(text: str) -> str:
-    return re.sub(r"[^0-9a-z]+", "", text.casefold())
-
-
-def choose_biography(candidates: set[str], visible: str) -> str:
-    """Pick the paragraph that starts like the biography drawn on screen.
-
-    ``visible`` is OCR of the profile's Biography box. A memory candidate is
-    only used when exactly one matches its opening; otherwise the visible text
-    itself is returned, and no headline is used when nothing could be read.
-    """
-    visible_key = _comparable(visible)[:60]
-    if len(visible_key) < 20:
-        return ""
-    matches = {candidate for candidate in candidates
-               if difflib.SequenceMatcher(None, _comparable(candidate)[:len(visible_key)],
-                                          visible_key).ratio() >= .85}
-    # FM24 also keeps the headline joined to later paragraphs. When every other
-    # match is the shortest one followed by more sentences, that is the headline.
-    shortest = min(matches, key=len, default="")
-    if matches and shortest.endswith((".", "!", "?")) and all(
-            match == shortest or match.startswith(shortest + " ") for match in matches):
-        return shortest
-    # OCR reads the club-link icon before linked names as "!".
-    return re.sub(r"(?<!\S)!(?=\w)", "", visible).strip()
 
 
 def _rating(raw: int) -> int:

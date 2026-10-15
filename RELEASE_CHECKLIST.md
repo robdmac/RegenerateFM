@@ -686,3 +686,29 @@ raise; it started without a window and logged no X11 call.
       ("Gabriel" "Fortes Chaves" "Gabriel Pec"). The decoder rejected these, and
       the first attempt was refused safely with "found 0" and no request. It now
       accepts the common name and uses "first surname".
+
+## X11 code removed from FM24: 2026-10-15
+
+The FM24 companion now requires the native DLL and has no X11 code.
+- **Removed modules:** `overlay.py`, `squad_progress.py`, `menu_overlay.py`,
+  `portrait_menu.py`, `click_listener.py`, `read_profile.py`,
+  `capture_profile.py`, `capture_staff.py`, `refresh.py`, `native_portrait.py`
+  and `research/probe_server.py`.
+- **Removed modes and fallbacks:** the `--direct-clicks`, `--window-id` and
+  menu-overlay options, the scrolling squad reader, the OCR biography
+  matching, the screen-profile enrichment, and the zenity dialogs.
+- **When FM24 can't show a dialog:** the message goes to the companion
+  terminal, and an unanswered squad confirmation counts as Cancel.
+- **When the in-game reload fails:** the face stays saved, and the result
+  says to use Preferences > Reload Skin.
+- **Dependencies:** `fm24/requirements.txt` is now Pillow and zstandard.
+  `rapidocr`, `onnxruntime`, `python-xlib`, Tkinter and zenity are no longer
+  needed. The release file list was updated.
+- [x] 90 tests pass; pyflakes is clean.
+- [x] Live re-check in preview with the slimmed companion. Its process maps no
+      X11 or ONNX libraries.
+      - **Generate** on Gabriel Pec: the prompt includes the biography shown
+        ("Gabriel Pec is a name that will probably be more familiar…").
+      - **Update face:** used his new FM Face portrait.
+      - **Generate missing squad faces…** from FM24's Squad menu: 0 of 29
+        missing, shown in FM24's dialog.

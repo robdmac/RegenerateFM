@@ -8,10 +8,8 @@ reads validated roles, clubs, attributes, and available biography text.
 from __future__ import annotations
 
 import datetime as dt
-import difflib
 import re
 import struct
-import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -134,29 +132,3 @@ def read_person_record(person_id: str, pid: int | None = None) -> tuple[int, Per
     if len(records) != 1:
         raise MemoryUnavailable(f"Expected one canonical FM24 person record; found {len(records)}.")
     return records[0]
-
-
-def _words(name: str) -> list[str]:
-    normalized = unicodedata.normalize("NFKD", name)
-    ascii_name = "".join(char for char in normalized if not unicodedata.combining(char))
-    return re.findall(r"[\w]+", ascii_name.casefold())
-
-
-def _ordered_words(visible: list[str], complete: list[str]) -> bool:
-    """FM24 may omit middle or trailing surnames from its profile heading."""
-    if (len(visible) < 2 or not complete or
-            difflib.SequenceMatcher(None, visible[0], complete[0]).ratio() < .85):
-        return False
-    remaining = iter(complete[1:])
-    return all(any(word == candidate for candidate in remaining) for word in visible[1:])
-
-
-def enrich_profile(person_id: str, profile: dict, pid: int | None = None) -> dict:
-    """Cross-check OCR identity and add the person's full in-game name."""
-    identity = read_identity(person_id, pid)
-    visible = _words(profile["name"])
-    complete = _words(identity.name)
-    if (identity.kind != profile["type"] or profile["age"] not in identity.possible_ages
-            or not _ordered_words(visible, complete)):
-        raise ValueError("The FM24 screen and live person record disagree; no image request was made.")
-    return {**profile, "name": identity.name}

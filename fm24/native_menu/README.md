@@ -9,19 +9,17 @@ chosen (`FMFG` or `FMFU`) from the event's `slct` property. The DLL also adds
 **Overview** menu, below **Export Team for Versus Competition**; choosing it
 emits `FMFS`. The DLL consumes these events and sends an authenticated message
 to the local companion.
-Opening or dismissing the menu does not request a portrait. No browser or X11
-menu window is involved. Generation and profile reading still use the
-existing Linux companion. Progress, the squad confirmation, results and
-errors appear inside FM24 (see "In-game dialogs and progress" below); the
-squad scan still scrolls the table through X11. The automatic skin reload runs
-inside FM24 (see below).
+Opening or dismissing the menu does not request a portrait. Generation and
+profile reading run in the Linux companion, which reads FM24's memory and has
+no X11 code. Progress, the squad confirmation, results and errors appear
+inside FM24 (see "In-game dialogs and progress" below), and the skin reload
+runs inside FM24 (see below).
 
 This is a prototype for **FM24 24.4.2 under Proton 9**, with the exact executable
 listed in [supported_build.json](supported_build.json). The installer and the
 DLL both verify its SHA-256. The DLL also checks the image metadata, original
 handler bytes, and original vtable pointer before installing the hook. Other
-executables remain unhooked. This is an optional integration and does not replace
-the default companion overlay installation.
+executables remain unhooked, and the FM24 companion requires this DLL.
 
 ## Build and install
 
@@ -69,11 +67,9 @@ For Steam/Proton, use this game launch option:
 WINEDLLOVERRIDES="winmm=n,b" %command%
 ```
 
-Start the companion after FM24; the native menu is its default mode
-(`--native-menu` is still accepted, and `--direct-clicks` selects the older X11
-menus). It finds the FM24 game window itself; pass `--window-id` only if it
-reports none or several. Use the tested 1854×1011 window and keep screen IDs
-enabled for the profile/reload checks. For the first test, include
+Start the companion after FM24 (`--native-menu` is still accepted, but the
+native menu is the only mode). Keep screen IDs enabled in the title: the
+companion checks the open screen's header ID. For the first test, include
 `--preview-only`:
 
 ```sh
@@ -110,8 +106,8 @@ opens no profiles and reads no screenshots:
   validated player whose handle matches, the model must have FM24's row count,
   and every drawn row must be in it; otherwise it refuses. Undrawn rows use
   the person record's name (players whose record has no name string use
-  FM24's separate first/surname record). X11 scrolling is kept only as a
-  fallback if the row model cannot be read.
+  FM24's separate first/surname record). If the row model cannot be read, the
+  squad command refuses; nothing is scrolled.
 - **Portrait state:** FM24's graphics index, read in the same pass. A player
   is missing when no `graphics/pictures/person/<id>/portrait` key is indexed.
   The index keeps a key after its FM Face mapping is deleted, so such a
@@ -139,8 +135,7 @@ no title.xml`) holds the rich-text biography at +0x188; its first paragraph,
 with links reduced to their text, is the headline used in the prompt. The
 memory profile and the screen are each read twice, and any difference refuses
 the request. If memory cannot be read the request is refused with a message;
-the screenshot and OCR readers are used only with `--direct-clicks`. The game
-window is looked up only if an X11 fallback runs.
+there is no screenshot or OCR reader.
 
 ## In-game dialogs and progress
 
@@ -172,7 +167,8 @@ its own `FMDY`/`FMDN` events, which the hook consumes.
 Widgets are found afresh every time by a bounded search under the screen's
 root widget (`manager + 0x58`), so the DLL never uses a widget pointer after
 navigation or a reload. If FM24 cannot show a dialog or set progress, the
-companion falls back to the X11 progress window or zenity. The companion's
+message goes to the companion terminal, and an unanswered squad confirmation
+counts as Cancel. The companion's
 commands use the authenticated loopback listener on bridge port + 1:
 `FMFACE24D` (dialogs; replies queued, busy, shown, yes, no, closed, failed)
 and `FMFACE24P` (progress text), with base64 UTF-8 text.
@@ -199,7 +195,7 @@ match, the command carries ID 0 and the companion refuses it. `fmface24.log`
 records the ID and the read time for each click.
 
 The request is bound to that ID. Before any image request, the companion reads
-the open profile (from game memory, with the existing screen fallback) and
+the open profile from game memory and
 refuses unless it is still that person ("The open FM24 profile is now person
 X, not the requested person Y"). No screenshot is taken to bind the click. The
 command also carries its click time, and one that arrives more than 0.75 s
@@ -219,7 +215,8 @@ when the last `chsk` stage returns the stage counter to its resting value. No
 Preferences screen, mouse input, screenshot or X11 is involved, and the open
 screen stays in place. The function addresses are pinned in
 [supported_build.json](supported_build.json). If the DLL does not answer or
-reports a failure, the companion falls back to the X11 Preferences reload.
+reports a failure, the face stays saved and the companion reports that a
+manual Preferences > Reload Skin is needed.
 
 If the companion is not running, the DLL retries for about two seconds and then
 shows a message; the next click tries again, so the companion can be started or

@@ -18,7 +18,6 @@ import collections
 import datetime as dt
 import re
 import struct
-import time
 from dataclasses import dataclass
 
 from live_memory import MemoryUnavailable, _parse_record, find_game_pid
@@ -365,47 +364,3 @@ def read_squad_rows(pid: int | None = None) -> SquadState:
     rows = tuple(drawn.get(person_id) or SquadRow(person_id, record, names[person_id])
                  for person_id, record in records)
     return SquadState(rows, state.total, state.indexed, state.today, state.visible, state.table)
-
-
-def read_full_squad(scroll, pid: int | None = None, steps: int = 60) -> SquadState:
-    """Read every Squad row: from the row model, else by scrolling the table.
-
-    ``scroll(down: bool)`` scrolls the table a few rows; it is only used when
-    the row model cannot be read, and ``None`` refuses instead. The table's own
-    visible-row range tells when its top and bottom are reached, and its row
-    count when every row has been read; otherwise this raises.
-    """
-    pid = pid or find_game_pid()
-    try:
-        return read_squad_rows(pid)
-    except MemoryUnavailable as exc:
-        if scroll is None:
-            raise
-        print(f"FM24 Squad row model unavailable ({exc}); scrolling the table instead.", flush=True)
-    state = read_squad(pid)
-    rows = {row.person_id: row for row in state.rows}
-
-    def step(down: bool):
-        nonlocal state
-        before = state.visible
-        scroll(down)
-        for _ in range(10):  # FM24 redraws the table shortly after scrolling.
-            later = read_squad(pid, catalogue=False)
-            if later.total != state.total:
-                raise MemoryUnavailable("The FM24 Squad table changed while it was being read.")
-            if later.visible != before:
-                break
-            time.sleep(.2)
-        rows.update((row.person_id, row) for row in later.rows)
-        state = SquadState(state.rows, state.total, state.indexed, state.today, later.visible, state.table)
-        return later.visible != before
-
-    for _ in range(steps):
-        if len(rows) == state.total or state.visible[0] == 1 or not step(False):
-            break
-    for _ in range(steps):
-        if len(rows) == state.total or state.visible[1] == state.total or not step(True):
-            break
-    if len(rows) != state.total:
-        raise MemoryUnavailable(f"Read {len(rows)} of {state.total} FM24 Squad rows.")
-    return SquadState(tuple(rows.values()), state.total, state.indexed, state.today, state.visible, state.table)

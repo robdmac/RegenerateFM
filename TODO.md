@@ -6,15 +6,14 @@
    unnecessarily: the DLL's work on FM24's UI thread (event hook, IDLE
    reload check, Squad menu provider), and the companion's memory scans
    (about 1.5 s per 2 GB pass; the squad reader makes two or three).
-2. **Remove the remaining overlays where possible.** Done in native mode
-   (2026-10-15): portrait progress, the squad confirmation, squad progress
-   with Stop, results and errors are FM24 dialogs. Since the same day the
-   native mode uses no X11 at all in its normal path: Squad rows come from the
-   table's row model, the biography from the displayed widget, and no window
-   is looked up or activated. The X11 progress window, table scrolling and
-   zenity remain only as fallbacks, and for `--direct-clicks`.
+2. **Remove the remaining overlays.** Done (2026-10-15). FM24's progress,
+   confirmations, results and errors are FM24 dialogs; squad rows come from
+   the table's row model and the biography from the displayed widget. All X11
+   code (overlays, `--direct-clicks`, screenshots/OCR, scrolling, the
+   Preferences reload fallback) and zenity have been removed; the companion
+   requires the native DLL.
 3. **Compatibility check for macOS and Windows.** The FM24 path is
-   Linux/Proton-specific (process memory via /proc, X11, the WINMM proxy
+   Linux/Proton-specific (process memory via /proc, the WINMM proxy
    DLL loaded through a Proton override); FM26 uses BepInEx. Work out what
    runs, what needs porting, and what must be refused on each platform.
 
@@ -27,7 +26,6 @@
 
 ## Later
 
-- Billed end-to-end run of the native path.
 - Billed check of **Update face** in FM24 and FM26: likeness kept, age and kit
   updated. In FM24, grey the row out when there is no face (the skin popup has
   no per-row enabled state; the DLL would have to change it when the popup opens).

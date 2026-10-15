@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hmac
 import socket
-import subprocess
 import threading
 import time
 
@@ -20,20 +19,16 @@ MAX_CLICK_AGE = .75
 CLOCK_TOLERANCE = .25
 
 
-def _notify_error(message: str) -> None:
-    try:
-        subprocess.Popen(["zenity", "--error", "--title=FM Face", "--no-markup", "--text=" + message],
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except OSError:
-        pass
+def _print_error(message: str) -> None:
+    print(f"FM Face: {message}", flush=True)
 
 
-def start_native_listener(window_id, port, bridge_port, token, engine, handler, *,
+def start_native_listener(port, bridge_port, token, handler, *,
                           notify=None, clock=time.time, generate=None):
     if notify is None:
-        # FM24's own OK dialog through the DLL, else a zenity window.
+        # FM24's own OK dialog through the DLL, else the companion terminal.
         def notify(message):
-            native_notify(getattr(handler, "reload_port", None), token, message, _notify_error)
+            native_notify(getattr(handler, "reload_port", None), token, message, _print_error)
     server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         server.bind(("127.0.0.1", bridge_port))
@@ -52,7 +47,7 @@ def start_native_listener(window_id, port, bridge_port, token, engine, handler, 
         try:
             if action == "squad":
                 # Roster, portrait state and prompts come from game memory.
-                run_native_squad_batch(window_id, handler,
+                run_native_squad_batch(handler,
                                        lambda person_id, profile: generate(handler, person_id, profile),
                                        describe_result)
                 return

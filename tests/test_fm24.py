@@ -1,10 +1,9 @@
-"""FM24 companion HTTP boundaries; no OCR models or billed requests are used."""
+"""FM24 companion HTTP boundaries and memory readers; no billed requests are made."""
 
 from __future__ import annotations
 
 import json
 import ctypes
-import base64
 import datetime as dt
 import os
 import re
@@ -24,11 +23,8 @@ import companion
 import process_memory
 import live_memory
 import native_profile
-import native_portrait
 from graphics import save_versioned_portrait
-from squad_batch import _current_row, _overlap, _portrait_state_ready, _return_to_squad, _title_image, portrait_state
 from fmface import PNG_SIGNATURE
-from PIL import Image
 
 
 class MemoryProbeTests(unittest.TestCase):
@@ -86,176 +82,6 @@ class LiveMemoryTests(unittest.TestCase):
         self.assertEqual(titles, {"3100693": ["Goalkeeping Coach - Inter Miami"]})
         self.assertEqual(ages, {43, 24})
 
-    def test_profile_enrichment_rejects_wrong_person(self):
-        identity = live_memory.PersonIdentity(14008037, "Jorge Walter Theiler",
-                                              dt.date(1964, 5, 12), 2023, "staff")
-        profile = {"type": "staff", "name": "Jorge Theiler", "age": 58}
-        with patch.object(live_memory, "read_identity", return_value=identity):
-            self.assertEqual(live_memory.enrich_profile("14008037", profile)["name"],
-                             "Jorge Walter Theiler")
-            with self.assertRaisesRegex(ValueError, "disagree"):
-                live_memory.enrich_profile("14008037", {**profile, "name": "Other Coach"})
-            with self.assertRaisesRegex(ValueError, "disagree"):
-                live_memory.enrich_profile("14008037", {**profile, "age": 60})
-
-    def test_profile_enrichment_accepts_hidden_trailing_surname(self):
-        identity = live_memory.PersonIdentity(14253394, "Federico Redondo Solari",
-                                              dt.date(2003, 1, 18), 2023, "player")
-        profile = {"type": "player", "name": "Federico Redondo", "age": 19}
-        with patch.object(live_memory, "read_identity", return_value=identity):
-            self.assertEqual(live_memory.enrich_profile("14253394", profile)["name"],
-                             "Federico Redondo Solari")
-            with self.assertRaisesRegex(ValueError, "disagree"):
-                live_memory.enrich_profile("14253394", {**profile, "name": "Federico Gomez"})
-
-    def test_profile_enrichment_accepts_close_given_name_with_matching_surname(self):
-        identity = live_memory.PersonIdentity(20049212, "Shander Antonio Borgelin",
-                                              dt.date(2001, 10, 19), 2023, "player")
-        profile = {"type": "player", "name": "Shanyder Borgelin", "age": 21}
-        with patch.object(live_memory, "read_identity", return_value=identity):
-            self.assertEqual(live_memory.enrich_profile("20049212", profile)["name"],
-                             "Shander Antonio Borgelin")
-            with self.assertRaisesRegex(ValueError, "disagree"):
-                live_memory.enrich_profile("20049212", {**profile, "name": "Shanyder Smith"})
-
-    def test_native_biography_decodes_linked_first_paragraph(self):
-        rich = (b"\x01Q2xpY2sgdG8gdmlldyBzb21lb25lJ3MgcHJvZmlsZQ==\x02Someone\x01 "
-                b"joined \x01Q2xpY2sgdG8gdmlldyBhIGNsdWI=\x02A Club\x01 in 2023 and made a strong impression.\n\n"
-                b"Later career details.")
-        self.assertEqual(native_profile._decode_biography(rich),
-                         "Someone joined A Club in 2023 and made a strong impression.")
-        self.assertEqual(native_profile._decode_biography(b"unverified text"), "")
-
-
-class SquadSafetyTests(unittest.TestCase):
-    def test_native_portrait_index_rejects_bare_lookup_strings(self):
-        key = b"graphics/pictures/person/123/portrait"
-        valid = struct.pack("<II", 1, len(key)) + key + b"\0"
-        self.assertTrue(native_portrait._indexed(valid, key))
-        self.assertFalse(native_portrait._indexed(b"pictures/person/123/portrait\0", key))
-        self.assertFalse(native_portrait._indexed(struct.pack("<II", 0, len(key)) + key + b"\0", key))
-
-    def test_scroll_requires_matching_rows(self):
-        previous = ("A", "B", "C", "D")
-        self.assertEqual(_overlap(previous, ("C", "D", "E")), 2)
-        with self.assertRaisesRegex(ValueError, "skipped rows"):
-            _overlap(previous, ("E", "F"))
-
-    def test_blank_portrait_is_not_a_missing_face(self):
-        blank = Image.new("RGB", (1854, 1011), (32, 32, 32))
-        self.assertEqual(portrait_state(blank), "unknown")
-
-    def test_relocates_row_after_game_recenters_table(self):
-        with patch("squad_batch._read_rows", return_value=[(426, "Noah Allen"),
-                                                         (456, "Sergio Busquets")]):
-            self.assertEqual(_current_row("window", object(), object(), "Noah Allen"), 426)
-
-    def test_waits_for_portrait_after_title_renders(self):
-        with patch("squad_batch.read_portrait_state", return_value="missing"), \
-             patch("squad_batch.portrait_state", side_effect=["unknown", "missing"]), \
-             patch("squad_batch.capture_window", return_value=object()), \
-             patch("squad_batch.read_identity", return_value=SimpleNamespace(player_id="123")), \
-             patch("squad_batch.time.sleep"):
-            self.assertEqual(_portrait_state_ready("window", object(), "123", object()),
-                             "missing")
-
-    def test_native_present_portrait_needs_no_pixel_classification(self):
-        with patch("squad_batch.read_portrait_state", return_value="present"), \
-             patch("squad_batch.portrait_state") as pixels:
-            self.assertEqual(_portrait_state_ready("window", object(), "123", object()),
-                             "present")
-        pixels.assert_not_called()
-
-    def test_native_missing_cannot_override_visible_picture(self):
-        with patch("squad_batch.read_portrait_state", return_value="missing"), \
-             patch("squad_batch.portrait_state", return_value="present"), \
-             patch("squad_batch.read_identity", return_value=SimpleNamespace(player_id="123")):
-            self.assertEqual(_portrait_state_ready("window", object(), "123", object()),
-                             "present")
-
-    def test_return_to_squad_waits_without_reclicking_navigation(self):
-        squad = Image.new("RGB", (1854, 1011), "black")
-        profile = squad.copy()
-        profile.paste("red", (374, 12, 1100, 54))
-        with patch("squad_batch._click") as click, \
-             patch("squad_batch.capture_window", side_effect=[profile, profile, squad]), \
-             patch("squad_batch._squad_title", side_effect=ValueError("loading")), \
-             patch("squad_batch.time.sleep"):
-            _return_to_squad("window", _title_image(squad), object(), "123")
-        click.assert_called_once_with("window", 60, 103)
-
-
-    def _clock(self, step=1.0):
-        now = [0.0]
-
-        def monotonic():
-            now[0] += step
-            return now[0]
-        return monotonic
-
-    def test_return_to_squad_repeats_back_only_while_profile_is_unchanged(self):
-        squad = Image.new("RGB", (1854, 1011), "black")
-        profile = squad.copy()
-        profile.paste("red", (374, 12, 1100, 54))
-        # The first Back is dropped: the same profile stays up until the retry.
-        screens = [profile] * 6 + [squad]
-        with patch("squad_batch._click") as click, \
-             patch("squad_batch.capture_window", side_effect=screens), \
-             patch("squad_batch._squad_title", side_effect=ValueError("not squad")), \
-             patch("squad_batch.time.monotonic", self._clock()), \
-             patch("squad_batch.time.sleep"):
-            _return_to_squad("window", _title_image(squad), object(), "123")
-        self.assertEqual(click.call_count, 2)
-
-    def test_return_to_squad_never_repeats_back_after_navigation_started(self):
-        squad = Image.new("RGB", (1854, 1011), "black")
-        profile, other = squad.copy(), squad.copy()
-        profile.paste("red", (374, 12, 1100, 54))
-        other.paste("blue", (374, 12, 1100, 54))
-        with patch("squad_batch._click") as click, \
-             patch("squad_batch.capture_window", side_effect=[profile, other] + [other] * 200), \
-             patch("squad_batch._squad_title", side_effect=ValueError("not squad")), \
-             patch("squad_batch.time.monotonic", self._clock()), \
-             patch("squad_batch.time.sleep"), \
-             self.assertRaisesRegex(ValueError, "Could not return"):
-            _return_to_squad("window", _title_image(squad), object(), "123")
-        click.assert_called_once()
-
-class GameWindowTests(unittest.TestCase):
-    @staticmethod
-    def _display(windows):
-        import refresh
-
-        def window(wid, cls, name, mapped, children=()):
-            return SimpleNamespace(
-                id=wid, get_wm_class=lambda: cls, get_wm_name=lambda: name,
-                get_attributes=lambda: SimpleNamespace(
-                    map_state=refresh.X.IsViewable if mapped else refresh.X.IsUnmapped),
-                query_tree=lambda: SimpleNamespace(children=list(children)))
-
-        root = window(1, None, None, True, [window(*spec) for spec in windows])
-        return SimpleNamespace(screen=lambda: SimpleNamespace(root=root), close=lambda: None)
-
-    def test_finds_only_the_visible_game_window(self):
-        import refresh
-        game = ("steam_app_2252570", "steam_app_2252570")
-        tree = [(0x10, game, "Default IME", False), (0x11, game, "Steam", False),
-                (0x12, game, "Football Manager 2024", False),
-                (0x4a00005, game, "Football Manager 2024", True),
-                (0x13, ("other", "other"), "Football Manager 2024", True)]
-        with patch.object(refresh.display, "Display", return_value=self._display(tree)):
-            self.assertEqual(refresh.find_game_window(), "0x4a00005")
-
-    def test_refuses_missing_or_ambiguous_game_window(self):
-        import refresh
-        game = ("steam_app_2252570", "steam_app_2252570")
-        for tree in ([], [(0x20, game, "Football Manager 2024", True),
-                          (0x21, game, "Football Manager 2024", True)]):
-            with patch.object(refresh.display, "Display", return_value=self._display(tree)):
-                with self.assertRaisesRegex(ValueError, "exactly one visible FM24"):
-                    refresh.find_game_window()
-
-
 class NativeReloadTests(unittest.TestCase):
     def _dll(self, statuses):
         """A fake DLL reload listener answering each poll with the next status."""
@@ -298,50 +124,33 @@ class NativeReloadTests(unittest.TestCase):
         with self.assertRaisesRegex(TimeoutError, "did not answer"):
             native_reload.request_native_reload(port, "t" * 43, timeout=1.2)
 
-    def test_companion_falls_back_to_preferences_reload(self):
-        handler = SimpleNamespace(reload_port=8770, token="t" * 43, window_id="0x1", engine=None)
-        with patch.object(companion, "request_native_reload") as native, \
-                patch.object(companion, "reload_skin") as preferences:
-            companion.reload_portrait(handler, "42", False)
-            native.assert_called_once_with(8770, "t" * 43)
-            preferences.assert_not_called()
-            native.side_effect = TimeoutError("no reply")
-            companion.reload_portrait(handler, "42", True)
-            preferences.assert_called_once_with("0x1", "42", None, staff=True)
-        handler.reload_port = None
-        with patch.object(companion, "request_native_reload") as native, \
-                patch.object(companion, "reload_skin") as preferences:
-            companion.reload_portrait(handler, "42", False)
-            native.assert_not_called()
-            preferences.assert_called_once()
+    def test_companion_reloads_through_the_dll(self):
+        handler = SimpleNamespace(reload_port=8770, token="t" * 43)
+        with patch.object(companion, "request_native_reload") as native:
+            companion.reload_portrait(handler)
+        native.assert_called_once_with(8770, "t" * 43)
 
 
 class CompanionHttpTests(unittest.TestCase):
+    PLAYER = {"type": "player", "name": "Test Player", "age": 25, "club": "Test Club"}
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         handler = companion.Handler
         handler.token = "a" * 43
-        handler.window_id = "0x123"
         handler.graphics_dir = Path(self.temp.name)
         handler.preview_only = True
-        handler.engine = object()
         handler.nonces = {}
         handler.in_flight = False
-        handler.reload_port = None
-        activate = patch.object(companion, "_activate_game")
-        activate.start()
-        self.addCleanup(activate.stop)
-        overlay = patch.object(companion, "ProgressOverlay")
-        overlay.start()
-        self.addCleanup(overlay.stop)
-        enrichment = patch.object(companion, "enrich_profile", side_effect=lambda _id, profile: profile)
-        enrichment.start()
-        self.addCleanup(enrichment.stop)
-        native = patch.object(companion, "read_open_profile",
-                              side_effect=live_memory.MemoryUnavailable("test fallback"))
-        native.start()
+        handler.reload_port = 8770
+        native = patch.object(companion, "read_native_profile",
+                              side_effect=lambda identity_only=False: ("123", dict(self.PLAYER)))
+        self.native = native.start()
         self.addCleanup(native.stop)
+        progress = patch.object(companion, "start_progress", return_value=None)
+        progress.start()
+        self.addCleanup(progress.stop)
         self.server = companion.ThreadingHTTPServer(("127.0.0.1", 0), handler)
         self.addCleanup(self.server.server_close)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
@@ -351,7 +160,6 @@ class CompanionHttpTests(unittest.TestCase):
 
     def _nonce(self):
         page = urllib.request.urlopen(self.base + "/fm24?key=" + companion.Handler.token).read().decode()
-        self.assertIn("result.warning ? '\\n'+result.warning", page)
         return re.search(r'"nonce": "([^"]+)"', page).group(1)
 
     def _post(self, nonce, expected_id=None, mode="generate"):
@@ -362,10 +170,7 @@ class CompanionHttpTests(unittest.TestCase):
 
     def test_preview_does_not_generate_and_nonce_cannot_be_reused(self):
         nonce = self._nonce()
-        with patch.object(companion, "capture_window", return_value=Image.new("RGB", companion.BASE_SIZE)), \
-             patch.object(companion, "read_staff_profile", side_effect=ValueError("not staff")), \
-             patch.object(companion, "read_player_profile", return_value=("123", {"name": "Test Player"})), \
-             patch.object(companion, "profile_prompt", return_value="test prompt"), \
+        with patch.object(companion, "profile_prompt", return_value="test prompt"), \
              patch.object(companion, "generate_png") as generate:
             response = json.load(urllib.request.urlopen(self._post(nonce)))
             self.assertEqual((response["preview"], response["playerId"], response["prompt"]),
@@ -374,6 +179,7 @@ class CompanionHttpTests(unittest.TestCase):
             with self.assertRaises(urllib.error.HTTPError) as repeated:
                 urllib.request.urlopen(self._post(nonce))
             self.assertEqual(repeated.exception.code, 400)
+        self.assertEqual(self.native.call_args.kwargs, {"identity_only": False})
 
     def test_wrong_host_and_wrong_token_are_rejected(self):
         request = urllib.request.Request(self.base + "/fm24?key=" + companion.Handler.token,
@@ -385,42 +191,56 @@ class CompanionHttpTests(unittest.TestCase):
             urllib.request.urlopen(self.base + "/fm24?key=wrong")
         self.assertEqual(wrong_token.exception.code, 404)
 
-    def test_generation_saves_only_after_valid_capture(self):
+    def test_generation_saves_and_reloads_in_game(self):
         companion.Handler.preview_only = False
-        nonce = self._nonce()
-        with patch.object(companion, "capture_window", return_value=SimpleNamespace(size=(1854, 1011))), \
-             patch.object(companion, "read_staff_profile", side_effect=ValueError("not staff")), \
-             patch.object(companion, "read_player_profile", return_value=("123", {"name": "Test Player"})), \
-             patch.object(companion, "profile_prompt", return_value="test prompt"), \
+        with patch.object(companion, "profile_prompt", return_value="test prompt"), \
              patch.object(companion, "load_env", return_value={"OPENAI_API_KEY": "test-only"}), \
              patch.object(companion, "generate_png", return_value=PNG_SIGNATURE + b"test") as generate, \
-             patch.object(companion, "reload_skin") as reload:
-            response = json.load(urllib.request.urlopen(self._post(nonce)))
-            self.assertTrue(response["ok"])
+             patch.object(companion, "request_native_reload") as reload:
+            response = json.load(urllib.request.urlopen(self._post(self._nonce())))
+            self.assertTrue(response["refreshed"])
             portraits = list(Path(self.temp.name).glob("123-*.png"))
-            self.assertEqual(len(portraits), 1)
-            self.assertEqual(portraits[0].read_bytes(), PNG_SIGNATURE + b"test")
+            self.assertEqual([path.read_bytes() for path in portraits], [PNG_SIGNATURE + b"test"])
             generate.assert_called_once_with({"OPENAI_API_KEY": "test-only"}, "test prompt")
-            reload.assert_called_once()
+            reload.assert_called_once_with(8770, "a" * 43)
+
+    def test_failed_reload_keeps_the_portrait_and_warns(self):
+        companion.Handler.preview_only = False
+        with patch.object(companion, "profile_prompt", return_value="test prompt"), \
+             patch.object(companion, "load_env", return_value={"OPENAI_API_KEY": "test-only"}), \
+             patch.object(companion, "generate_png", return_value=PNG_SIGNATURE + b"test"), \
+             patch.object(companion, "request_native_reload", side_effect=TimeoutError("no reply")):
+            response = json.load(urllib.request.urlopen(self._post(self._nonce())))
+        self.assertEqual((response["ok"], response["refreshed"]), (True, False))
+        self.assertIn("Reload Skin", response["warning"])
+
+    def test_expected_id_is_checked_before_billing(self):
+        companion.Handler.preview_only = False
+        with patch.object(companion, "generate_png") as generate:
+            with self.assertRaises(urllib.error.HTTPError) as rejected:
+                urllib.request.urlopen(self._post(self._nonce(), expected_id="456"))
+            self.assertEqual(rejected.exception.code, 422)
+            self.assertIn("no image request was made", rejected.exception.read().decode())
+            generate.assert_not_called()
 
     def _update(self, *, found, preview):
         companion.Handler.preview_only = preview
-        profile = {"name": "Lionel Messi", "age": 38, "club": "Inter Miami"}
-        with patch.object(companion, "read_update_profile", return_value=("7458500", profile)), \
-             patch.object(companion, "find_existing_portrait", return_value=found) as lookup, \
+        self.PLAYER = {"name": "Lionel Messi", "age": 38, "club": "Inter Miami"}
+        with patch.object(companion, "find_existing_portrait", return_value=found) as lookup, \
              patch.object(companion, "find_game_pid", return_value=1), \
              patch.object(companion, "game_dir_from_process", return_value=Path("/games/fm24")), \
              patch.object(companion, "load_env", return_value={"OPENAI_API_KEY": "test-only"}), \
              patch.object(companion, "generate_png") as generate, \
              patch.object(companion, "edit_png", return_value=PNG_SIGNATURE + b"updated") as edit, \
-             patch.object(companion, "reload_skin"):
+             patch.object(companion, "request_native_reload"):
             try:
-                result = json.load(urllib.request.urlopen(self._post(self._nonce(), "7458500", "update")))
+                result = json.load(urllib.request.urlopen(self._post(self._nonce(), "123", "update")))
             except urllib.error.HTTPError as error:
                 result = {"status": error.code, **json.load(error)}
             generate.assert_not_called()
-            lookup.assert_called_once_with("7458500", Path(self.temp.name), Path("/games/fm24"))
-            return result, edit
+            lookup.assert_called_once_with("123", Path(self.temp.name), Path("/games/fm24"))
+        self.assertEqual(self.native.call_args.kwargs, {"identity_only": True})
+        return result, edit
 
     def test_update_preview_names_the_existing_portrait(self):
         result, edit = self._update(found=(PNG_SIGNATURE + b"photo", "FM24 bundled messi.jpg"), preview=True)
@@ -434,37 +254,17 @@ class CompanionHttpTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(edit.call_args.args[2], PNG_SIGNATURE + b"photo")
         self.assertIn("at age 38", edit.call_args.args[1])
-        saved = list(Path(self.temp.name).glob("7458500-*.png"))
+        saved = list(Path(self.temp.name).glob("123-*.png"))
         self.assertEqual([path.read_bytes() for path in saved], [PNG_SIGNATURE + b"updated"])
 
-    def test_update_reads_only_identity_and_detects_navigation(self):
-        identity = ("7458500", {"type": "player", "name": "Lionel Messi", "age": 35, "club": "Inter Miami"})
-        with patch.object(companion, "read_open_profile", side_effect=[identity, identity]) as native, \
-             patch.object(companion, "read_prompt_profile") as full:
-            self.assertEqual(companion.read_update_profile("0x123", object()), identity)
-            self.assertEqual(native.call_args.kwargs, {"identity_only": True})
-            full.assert_not_called()
-        other = ("2000045865", dict(identity[1], name="Ian Fray"))
-        with patch.object(companion, "read_open_profile", side_effect=[identity, other]):
-            with self.assertRaisesRegex(ValueError, "changed"):
-                companion.read_update_profile("0x123", object())
-        with patch.object(companion, "read_open_profile", side_effect=live_memory.MemoryUnavailable("gone")), \
-             patch.object(companion, "read_prompt_profile", return_value=identity) as full:
-            self.assertEqual(companion.read_update_profile("0x123", object()), identity)
-            full.assert_called_once()
+    def test_update_without_a_face_is_refused_before_any_request(self):
+        result, edit = self._update(found=None, preview=False)
+        self.assertEqual(result["status"], 422)
+        self.assertIn("no face to update", result["error"])
+        edit.assert_not_called()
 
-    def test_native_mode_reads_memory_only_and_never_touches_the_window(self):
-        companion.Handler.native = True
-        self.addCleanup(setattr, companion.Handler, "native", False)
-        profile = {"type": "player", "name": "Lionel Messi", "age": 35, "club": "Inter Miami"}
-        with patch.object(companion, "read_native_profile", return_value=("7458500", profile)) as native, \
-             patch.object(companion, "_activate_game", side_effect=AssertionError("X11 used")), \
-             patch.object(companion, "capture_window", side_effect=AssertionError("X11 used")), \
-             patch.object(companion, "profile_prompt", return_value="test prompt"):
-            result = json.load(urllib.request.urlopen(self._post(self._nonce(), "7458500")))
-        self.assertEqual((result["preview"], result["prompt"]), (True, "test prompt"))
-        self.assertEqual(native.call_args.kwargs, {"identity_only": False})
 
+class NativeProfileReadTests(unittest.TestCase):
     def test_native_profile_takes_biography_from_the_open_screen(self):
         from native_screen import OpenScreen
         profile = {"type": "player", "name": "Lionel Messi", "age": 35}
@@ -486,157 +286,32 @@ class CompanionHttpTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "changed"):
                 companion.read_native_profile()
         with patch.object(companion, "find_game_pid", return_value=1), \
-             patch.object(companion, "read_open_profile", side_effect=live_memory.MemoryUnavailable("gone")), \
-             patch.object(companion, "capture_window", side_effect=AssertionError("no screen fallback")):
+             patch.object(companion, "read_open_profile", side_effect=live_memory.MemoryUnavailable("gone")):
             with self.assertRaisesRegex(ValueError, "from game memory"):
                 companion.read_native_profile()
 
-    def test_update_without_a_face_is_refused_before_any_request(self):
-        result, edit = self._update(found=None, preview=False)
-        self.assertEqual(result["status"], 422)
-        self.assertIn("no face to update", result["error"])
-        edit.assert_not_called()
+    def test_update_reads_identity_only(self):
+        from native_screen import OpenScreen
+        identity = ("7458500", {"type": "player", "name": "Lionel Messi", "age": 35, "club": "Inter Miami"})
+        with patch.object(companion, "find_game_pid", return_value=1), \
+             patch.object(companion, "read_open_profile", side_effect=lambda *a, **k: (identity[0], dict(identity[1]))) as read, \
+             patch.object(companion, "read_open_screen", return_value=OpenScreen("7458500", "A biography.")):
+            self.assertEqual(companion.read_native_profile(identity_only=True), identity)
+        self.assertEqual(read.call_args.kwargs, {"identity_only": True})
 
-    def test_unsupported_window_rejected_before_api_request(self):
-        companion.Handler.preview_only = False
-        nonce = self._nonce()
-        with patch.object(companion, "capture_window", return_value=SimpleNamespace(size=(1600, 900))), \
-             patch.object(companion, "generate_png") as generate:
-            with self.assertRaises(urllib.error.HTTPError) as rejected:
-                urllib.request.urlopen(self._post(nonce))
-            self.assertEqual(rejected.exception.code, 422)
-            self.assertIn("no image request was made", rejected.exception.read().decode())
-            generate.assert_not_called()
 
-    def test_profile_capture_retries_incomplete_attributes(self):
-        screenshot = SimpleNamespace(size=(1854, 1011))
-        with patch.object(companion, "capture_window", return_value=screenshot) as capture, \
-             patch.object(companion, "read_staff_profile", side_effect=ValueError("not staff")), \
-             patch.object(companion, "read_player_profile",
-                          side_effect=[ValueError("Acceleration not drawn"),
-                                       ("123", {"name": "Test Player"})]), \
-             patch.object(companion.time, "sleep"):
-            self.assertEqual(companion.read_visible_profile("0x123", object())[0], "123")
-            self.assertEqual(capture.call_count, 2)
-
-    def test_native_profile_uses_the_biography_shown_on_screen(self):
-        profile = {"type": "staff", "name": "Test Coach", "age": 50,
-                   "nationality": "English", "jobTitle": "Assistant Coach", "club": "Test Club"}
-        candidates = {"Coach's love affair with the club won through in 2008.",
-                      "Test Club icon Test Coach spent his whole career there."}
-        with patch.object(companion, "read_open_profile", side_effect=[("456", profile.copy()),
-                                                                ("456", profile.copy())]) as native, \
-             patch.object(companion, "capture_window", return_value=SimpleNamespace(size=(1854, 1011))), \
-             patch.object(companion, "_biography", return_value="Test Club icon Test Coach spent his"), \
-             patch.object(companion, "read_staff_identity", return_value=("456", "Test Coach", "Assistant Coach", "Test Club")), \
-             patch.object(companion, "biography_candidates", return_value=candidates):
-            person_id, result = companion.read_prompt_profile("0x123", object())
-        self.assertEqual((person_id, result["biographyHeadline"]),
-                         ("456", "Test Club icon Test Coach spent his whole career there."))
-        self.assertEqual(native.call_count, 2)
-
-    def test_biography_screenshot_must_match_native_person_even_when_native_reads_agree(self):
-        for kind in ("player", "staff"):
-            with self.subTest(kind=kind):
-                profile = {"type": kind, "name": "Original Person"}
-                with patch.object(companion, "read_open_profile", return_value=("123", profile)), \
-                     patch.object(companion, "capture_window", return_value=SimpleNamespace(size=(1854, 1011))), \
-                     patch.object(companion, "_biography", return_value="Another person's career headline."), \
-                     patch.object(companion, "read_identity", return_value=SimpleNamespace(player_id="456")), \
-                     patch.object(companion, "read_staff_identity", return_value=("456", "Other", "Coach", "Club")), \
-                     patch.object(companion, "biography_candidates") as candidates, \
-                     self.assertRaisesRegex(ValueError, "changed during biography capture"):
-                    companion.read_prompt_profile("0x123", object())
-                candidates.assert_not_called()
-
-    def test_biography_choice_fails_closed_to_visible_text(self):
-        candidates = {"Someone joined A Club in 2023 and impressed.",
-                      "Someone joined A Club in 2023 and impressed everyone."}
-        # Ambiguous memory paragraphs: use what is visible, never guess.
-        self.assertEqual(native_profile.choose_biography(candidates, "Someone joined A Club in 2023 and"),
-                         "Someone joined A Club in 2023 and")
-        self.assertEqual(native_profile.choose_biography(candidates, ""), "")
-        self.assertEqual(native_profile.choose_biography({"Later paragraph about Someone's return."},
-                                                         "Club icon Someone began his career"),
-                         "Club icon Someone began his career")
-
-    def test_biography_choice_prefers_headline_over_joined_paragraphs(self):
-        headline = "Ryan Sailor is a name recognizable to many, where he plies his trade."
-        candidates = {headline, headline + " Sailor scored his first senior goal for Inter Miami.",
-                      "Ryan Sailor began his career at Real Colorado in 2013."}
-        visible = "Ryan Sailor is a name recognizable to many, where he plies his trade. Sailor scored"
-        self.assertEqual(native_profile.choose_biography(candidates, visible), headline)
-
-    def test_biography_ocr_fallback_drops_link_icon(self):
-        visible = "He was drafted to the MLS in 2022 by !InterMiami, as a 1st round pick (9 overall)!"
-        self.assertEqual(native_profile.choose_biography(set(), visible),
-                         "He was drafted to the MLS in 2022 by InterMiami, as a 1st round pick (9 overall)!")
-
-    def test_biography_candidates_include_headline_linking_person_later(self):
-        def link(text, tooltip):
-            return b"\x01" + base64.b64encode(tooltip.encode()) + b"\x02" + text.encode() + b"\x01"
-        header = b"\x00" * 8 + b"\x01\x00\x00\x00" + b"\x90\x00\x00\x00"
-        headline = (header + link("A Club", "Click to view A Club") + b" icon " +
-                    link("Test Coach", "Click to view Test Coach's profile") +
-                    b" spent his whole career at the club.\n\nLater.\x00")
-        later = (header + link("Coach", "Click to view Test Coach's profile") +
-                 b"'s love affair with the club won through in 2008.\x00")
-        data = b"\xff" * 64 + headline + b"\xff" * 64 + later
-
-        class FakeScan:
-            def __init__(self, pid, overlap):
-                pass
-
-            def __iter__(self):
-                yield 1000, data
-
-            def read(self, address, size):
-                return data[address - 1000:address - 1000 + size]
-
-        with patch.object(native_profile, "MemoryScan", FakeScan):
-            self.assertEqual(native_profile.biography_candidates(1, "Test Coach"),
-                             {"A Club icon Test Coach spent his whole career at the club.",
-                              "Coach's love affair with the club won through in 2008."})
-
-    def test_squad_expected_id_is_checked_before_billing(self):
-        companion.Handler.preview_only = False
-        nonce = self._nonce()
-        with patch.object(companion, "capture_window", return_value=SimpleNamespace(size=(1854, 1011))), \
-             patch.object(companion, "read_staff_profile", side_effect=ValueError("not staff")), \
-             patch.object(companion, "read_player_profile", return_value=("123", {"name": "Test Player"})), \
-             patch.object(companion, "generate_png") as generate:
-            with self.assertRaises(urllib.error.HTTPError) as rejected:
-                urllib.request.urlopen(self._post(nonce, expected_id="456"))
-            self.assertEqual(rejected.exception.code, 422)
-            self.assertIn("no image request was made", rejected.exception.read().decode())
-            generate.assert_not_called()
-
-    def test_staff_generation_uses_staff_reload(self):
-        companion.Handler.preview_only = False
-        nonce = self._nonce()
-        staff = {"type": "staff", "name": "Test Coach", "age": 50,
-                 "nationality": "English", "jobTitle": "Goalkeeping Coach"}
-        with patch.object(companion, "capture_window", return_value=SimpleNamespace(size=(1854, 1011))), \
-             patch.object(companion, "read_staff_profile", return_value=("456", staff)), \
-             patch.object(companion, "read_player_profile") as read_player, \
-             patch.object(companion, "load_env", return_value={"OPENAI_API_KEY": "test-only"}), \
-             patch.object(companion, "generate_png", return_value=PNG_SIGNATURE + b"test"), \
-             patch.object(companion, "reload_skin") as reload:
-            response = json.load(urllib.request.urlopen(self._post(nonce)))
-            self.assertTrue(response["refreshed"])
-            read_player.assert_not_called()
-            reload.assert_called_once_with("0x123", "456", companion.Handler.engine, staff=True)
-
+class GraphicsTests(unittest.TestCase):
     def test_regeneration_uses_new_graphics_mapping(self):
-        directory = Path(self.temp.name)
-        first, older = save_versioned_portrait(directory, "123", PNG_SIGNATURE + b"first")
-        second, previous = save_versioned_portrait(directory, "123", PNG_SIGNATURE + b"second")
-        self.assertNotEqual(first, second)
-        self.assertEqual(older, [])
-        self.assertEqual(previous, [first])
-        config = (directory / "config.xml").read_text()
-        self.assertIn(second.stem, config)
-        self.assertNotIn(first.stem, config)
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            first, older = save_versioned_portrait(directory, "123", PNG_SIGNATURE + b"first")
+            second, previous = save_versioned_portrait(directory, "123", PNG_SIGNATURE + b"second")
+            self.assertNotEqual(first, second)
+            self.assertEqual(older, [])
+            self.assertEqual(previous, [first])
+            config = (directory / "config.xml").read_text()
+            self.assertIn(second.stem, config)
+            self.assertNotIn(first.stem, config)
 
 
 if __name__ == "__main__":
