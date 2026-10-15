@@ -20,8 +20,8 @@ import re
 import struct
 from dataclasses import dataclass
 
-from live_memory import MemoryUnavailable, _parse_record, find_game_pid
-from native_profile import _alternate_name
+from live_memory import MemoryUnavailable, _parse_record, find_game_pid, person_kind
+from native_profile import collect_object_names, _alternate_name
 from process_memory import MemoryScan, fm24_image_base, read_process_bytes
 
 MANAGER_GLOBAL_RVA = 0x63635B8
@@ -65,10 +65,11 @@ class SquadState:
     today: dt.date
     visible: tuple[int, int] = (0, 0)  # first and last visible row, 1-based
     table: int = 0                      # the table widget, for the row model
+    unreadable: tuple[str, ...] = ()    # undrawn players whose names FM24 hasn't loaded
 
     @property
     def complete(self) -> bool:
-        return len(self.rows) == self.total
+        return len(self.rows) + len(self.unreadable) == self.total
 
     @property
     def missing(self) -> tuple[SquadRow, ...]:
@@ -121,8 +122,8 @@ def _player_id(pid: int, person: int) -> str:
     number = struct.unpack_from("<I", raw)[0]
     # Marker byte 13 carries flags (0x02, 0x40 seen); 14 is always 0x58.
     if (raw[:8] != struct.pack("<II", number, number) or raw[12] or raw[14] != 0x58 or
-            raw[15] not in (0x10, 0x12, 0x18) or raw[16] not in (4, 5) or
-            not 1 <= number <= 2_147_483_647):
+            raw[15] not in (0x10, 0x12, 0x18) or not 1 <= number <= 2_147_483_647 or
+            person_kind(pid, record, raw[16]) != "player"):
         raise MemoryUnavailable("A Squad row does not show a validated FM24 player.")
     return str(number)
 
@@ -322,7 +323,8 @@ def _undrawn_names(pid: int, rows: dict[str, int]) -> dict[str, str]:
     """Names of players without a drawn cell, from their person records.
 
     ``rows`` maps person ID to record. Players whose record has no full-name
-    string use FM24's separate first/surname record, found in one pass.
+    string use FM24's separate first/surname record, or its "object: <id> -
+    <name>" text, found in one pass. Players with neither are left out.
     """
     names, alternate = {}, {}
     for person_id, record in rows.items():
@@ -333,6 +335,7 @@ def _undrawn_names(pid: int, rows: dict[str, int]) -> dict[str, str]:
             alternate[struct.pack("<II", int(person_id), int(person_id)) + b"\x09"] = person_id
     found: dict[str, set[str]] = {}
     if alternate:
+        wanted = set(alternate.values())
         for _, data in MemoryScan(pid, 128):
             for needle, person_id in alternate.items():
                 offset = 0
@@ -340,10 +343,10 @@ def _undrawn_names(pid: int, rows: dict[str, int]) -> dict[str, str]:
                     if (name := _alternate_name(data[offset:offset + 128])) is not None:
                         found.setdefault(person_id, set()).add(name)
                     offset += 1
+            collect_object_names(data, wanted, found)
     for person_id in alternate.values():
-        if len(found.get(person_id, ())) != 1:
-            raise MemoryUnavailable(f"Could not read the name of FM24 player {person_id}.")
-        names[person_id] = found[person_id].pop()
+        if len(found.get(person_id, ())) == 1:
+            names[person_id] = found[person_id].pop()
     return names
 
 
@@ -378,5 +381,6 @@ def read_squad_rows(pid: int | None = None) -> SquadState:
     names = _undrawn_names(pid, {person_id: record for person_id, record in records
                                  if person_id not in drawn})
     rows = tuple(drawn.get(person_id) or SquadRow(person_id, record, names[person_id])
-                 for person_id, record in records)
-    return SquadState(rows, state.total, state.indexed, state.today, state.visible, state.table)
+                 for person_id, record in records if person_id in drawn or person_id in names)
+    unreadable = tuple(person_id for person_id, _ in records if person_id not in drawn and person_id not in names)
+    return SquadState(rows, state.total, state.indexed, state.today, state.visible, state.table, unreadable)

@@ -26,8 +26,9 @@
 - In-game squad generation: done (memory roster from the row model, portrait
   index, prompts by ID; a billed two-face batch with Stop passed). Memory
   reads were made faster on 2026-10-16 (Generate about 10 s to 3.4 s, squad
-  8.5 s to 4.2 s). Remaining: the "All Players" view, which has a row the
-  reader refuses.
+  8.5 s to 4.2 s). The "All Players" view now works: reserve and youth
+  players are read, and the few undrawn players whose names FM24 hasn't
+  loaded are left out with a note.
 
 ## Later
 

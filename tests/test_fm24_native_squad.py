@@ -240,7 +240,7 @@ class NativeBatchTests(unittest.TestCase):
         self.notices = []
         for name, value in (("read_squad_rows", lambda *a, **k: self.full),
                             ("squad_club", lambda *a: "Club"),
-                            ("confirm_batch", lambda missing, total, preview_only=False, native=None: True),
+                            ("confirm_batch", lambda missing, total, preview_only=False, native=None, skipped=0: True),
                             ("NativeProgress", Progress),
                             ("notify", lambda port, token, text, fallback: self.notices.append(text))):
             patcher = patch.object(squad_batch, name, value)
@@ -315,3 +315,6 @@ class ConfirmationTests(unittest.TestCase):
             self.assertFalse(squad_batch.confirm_batch(2, 5, native=(8770, "t")))
         self.assertIn("2 of 5 squad players have no portrait", dialog.call_args.args[4])
         self.assertFalse(squad_batch.confirm_batch(2, 5, native=None))
+        with patch.object(squad_batch, "show_dialog", return_value="no") as dialog:
+            squad_batch.confirm_batch(2, 5, native=(8770, "t"), skipped=1)
+        self.assertIn("1 player was left out because FM24 hasn't loaded their names", dialog.call_args.args[4])

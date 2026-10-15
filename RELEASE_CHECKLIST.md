@@ -770,3 +770,22 @@ The FM24 companion now requires the native DLL and has no X11 code.
 - [x] The companion refuses to start on macOS with an explanation. The
       installer gives the Proton launch option only off Windows.
 - [ ] Run on real Windows: the DLL, the installer and the companion.
+
+## Reserve and youth players; All Players view: 2026-10-16
+
+- [x] **Record types:** person records of type 0 or 1 belong to staff and to
+      reserve or youth players. Player versus staff is now decided by the
+      record's position ratings (players 1–20 with a 20, staff all zeros), not
+      by the type alone. Before, type-0 players would have got a staff-style
+      prompt, and type-1 players were refused.
+- [x] **Header club:** a reserve player's header names the team they play in
+      ("LA Galaxy II"), so the header check accepts the contract club or the
+      playing club.
+- [x] **Missing names:** when a record has no name string and no
+      first/surname record, the name comes from FM24's
+      "object: <id> - <name>" texts, which exist for people just viewed, but
+      only when exactly one name is found. Nolan Anderson (16, LA Galaxy II
+      goalkeeper, type 1) now reads correctly.
+- [x] **All Players view (LA Galaxy, 37 rows):** 34 players read and 13 lack
+      faces. 3 undrawn players whose names FM24 hasn't loaded are left out, and
+      the confirmation says so instead of refusing the whole command.

@@ -45,7 +45,13 @@ class LiveMemoryTests(unittest.TestCase):
         struct.pack_into("<I", record, 0x3c, 0x1234)
         name = "Jorge Walter Theiler".encode()
         string = struct.pack("<I", len(name)) + name + b"\0" + bytes(75)
-        with patch.object(live_memory, "read_process_bytes", side_effect=[bytes(record), string]):
+        ratings = bytes(15)  # staff records hold no position ratings
+
+        def read(pid, address, size):
+            return {0x1000: bytes(record), 0x1000 + live_memory.POSITION_RATINGS: ratings,
+                    0x1234: string}[address][:size]
+
+        with patch.object(live_memory, "read_process_bytes", side_effect=read):
             identity = live_memory._parse_record(123, 0x1000, 14008037)
         self.assertEqual(identity.name, "Jorge Walter Theiler")
         self.assertEqual(identity.birth_date, dt.date(1964, 5, 12))
@@ -54,8 +60,18 @@ class LiveMemoryTests(unittest.TestCase):
 
         for marker in live_memory._MARKERS[1:]:
             record[12:16] = marker
-            with patch.object(live_memory, "read_process_bytes", side_effect=[bytes(record), string]):
+            with patch.object(live_memory, "read_process_bytes", side_effect=read):
                 self.assertEqual(live_memory._parse_record(123, 0x1000, 14008037), identity)
+
+        # Reserve and youth players also use types 0 and 1; their position ratings say so.
+        ratings = bytes([1, 1, 15, 1, 1, 1, 1, 20, 1, 1, 1, 1, 1, 1, 1])
+        for record_type in (0, 1):
+            struct.pack_into("<I", record, 16, record_type)
+            with patch.object(live_memory, "read_process_bytes", side_effect=read):
+                self.assertEqual(live_memory._parse_record(123, 0x1000, 14008037).kind, "player")
+        ratings = bytes(15)
+        with patch.object(live_memory, "read_process_bytes", side_effect=read):
+            self.assertIsNone(live_memory._parse_record(123, 0x1000, 14008037))  # type 1 without ratings
 
     def test_native_rating_offsets_match_two_live_profile_snapshots(self):
         # These bytes came from two FM24 24.4.2 game records. Expected values

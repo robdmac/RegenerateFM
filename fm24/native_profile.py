@@ -12,8 +12,8 @@ import datetime as dt
 import re
 import struct
 
-from live_memory import (MemoryUnavailable, PersonIdentity,
-                         _record_addresses, find_game_pid, read_person_record)
+from live_memory import (RECORD_TYPES, MemoryUnavailable, PersonIdentity, _record_addresses,
+                         find_game_pid, person_kind, read_person_record)
 from process_memory import MemoryScan, read_process_bytes
 
 
@@ -95,22 +95,51 @@ def _record_with_alternate_name(pid: int, person_id: str) -> tuple[int, PersonId
             raw = read_process_bytes(pid, address, 128)
             # Marker byte 13 carries flags (0x02 and 0x40 seen); type 5 is a player too.
             if (raw[:8] == struct.pack("<II", number, number) and not raw[12] and raw[14] == 0x58 and
-                    raw[15] in (0x10, 0x12, 0x18) and raw[16] in (0, 4, 5) and raw[17:20] == b"\0\0\0"):
+                    raw[15] in (0x10, 0x12, 0x18) and raw[16] in RECORD_TYPES and raw[17:20] == b"\0\0\0"):
                 if _u32(pid, address + 0x3c) == 0:
                     year = struct.unpack_from("<H", raw, 0x36)[0]
                     day, birth_year = struct.unpack_from("<HH", raw, 0x38)
                     birth = dt.date(birth_year, 1, 1) + dt.timedelta(days=day - 1)
-                    if 1900 <= birth_year <= year - 14 and birth.year == birth_year:
-                        record_addresses.append((address, year, birth,
-                                                 "staff" if raw[16] == 0 else "player"))
+                    kind = person_kind(pid, address, raw[16])
+                    if 1900 <= birth_year <= year - 14 and birth.year == birth_year and kind:
+                        record_addresses.append((address, year, birth, kind))
             if (name := _alternate_name(raw)) is not None:
                 names.add(name)
         except (OSError, ValueError, UnicodeDecodeError, struct.error, OverflowError):
             continue
+    if len(record_addresses) == 1 and not names:
+        # Some reserve and youth players have neither name string resident;
+        # FM24 then holds "object: <id> - <name>" texts for people just viewed.
+        names = object_names(pid, {person_id}).get(person_id, set())
     if len(record_addresses) != 1 or len(names) != 1:
         raise MemoryUnavailable("Could not validate the alternate FM24 name record.")
     address, year, birth, kind = record_addresses[0]
     return address, PersonIdentity(number, names.pop(), birth, year, kind)
+
+
+_OBJECT_NAME = re.compile(rb"object: ([1-9][0-9]{0,9}) - ([^,\x00\r\n]{2,80})[,\x00]")
+
+
+def object_names(pid: int, person_ids: set[str], data_chunks=None) -> dict[str, set[str]]:
+    """Names in FM24's "object: <id> - <name>" texts for these people, in one pass."""
+    found: dict[str, set[str]] = {}
+    for _, data in (data_chunks if data_chunks is not None else MemoryScan(pid, 128)):
+        collect_object_names(data, person_ids, found)
+    return found
+
+
+def collect_object_names(data: bytes, person_ids: set[str], found: dict[str, set[str]]) -> None:
+    offset = 0
+    while (offset := data.find(b"object: ", offset)) >= 0:
+        match = _OBJECT_NAME.match(data, offset)
+        if match and match.group(1).decode() in person_ids:
+            try:
+                name = match.group(2).decode("utf-8").strip()
+            except UnicodeDecodeError:
+                name = ""
+            if name and name.isprintable():
+                found.setdefault(match.group(1).decode(), set()).add(name)
+        offset += 8
 
 
 # Person records stay at one address while the game runs. Remember where each
@@ -304,11 +333,13 @@ def _profile(pid: int, record: int, identity: PersonIdentity, names: list[str], 
              identity_only: bool) -> dict:
     nation = _nation(pid, record)
     club = _club(pid, record)
-    if not any(title.endswith(" - " + club) for title in names):
+    playing = _playing_club(pid, record, club) if identity.kind == "player" else club
+    # The header names the contract club, or for a reserve player the team they play in.
+    shown = [title for title in names if title.endswith((" - " + club, " - " + playing))]
+    if not shown:
         raise MemoryUnavailable("FM24 title and live contract club disagree.")
     if identity.kind == "staff":
-        jobs = {title.rsplit(" - ", 1)[0].split("\x00")[-1].strip()
-                for title in names if title.endswith(" - " + club)}
+        jobs = {title.rsplit(" - ", 1)[0].split("\x00")[-1].strip() for title in shown}
         if len(jobs) != 1 or not next(iter(jobs)):
             raise MemoryUnavailable("Could not verify the FM24 staff job title.")
         if identity_only:
@@ -317,13 +348,11 @@ def _profile(pid: int, record: int, identity: PersonIdentity, names: list[str], 
                 "age": age, "nationality": nation,
                 "jobTitle": jobs.pop(), "club": club}
     if identity_only:
-        return {"type": "player", "name": identity.name, "age": age,
-                "club": _playing_club(pid, record, club)}
+        return {"type": "player", "name": identity.name, "age": age, "club": playing}
     raw = read_process_bytes(pid, record - 0x6d, 54)
     height_cm = struct.unpack("<H", read_process_bytes(pid, record - 0x136, 2))[0]
     rated_position = _position(pid, record)
-    roles = {title.rsplit(" - ", 1)[0].strip() for title in names
-             if title.endswith(" - " + club)}
+    roles = {title.rsplit(" - ", 1)[0].strip() for title in shown}
     if len(roles) != 1:
         raise MemoryUnavailable("Could not verify the FM24 position title.")
     position = roles.pop()
@@ -331,7 +360,7 @@ def _profile(pid: int, record: int, identity: PersonIdentity, names: list[str], 
     if family not in position and not (family == "Midfielder" and "M (" in position):
         raise MemoryUnavailable("FM24 position ratings and title disagree.")
     profile = {"type": "player", "name": identity.name, "age": age,
-               "nationality": nation, "position": position, "club": _playing_club(pid, record, club),
+               "nationality": nation, "position": position, "club": playing,
                "height": _height(height_cm),
                "physical": _attributes(raw, PHYSICAL),
                "mental": _attributes(raw, MENTAL)}
@@ -365,7 +394,7 @@ def squad_player_profile(pid: int, record: int, name: str, club: str, today: dt.
     """
     raw = read_process_bytes(pid, record, 0x40)
     number = struct.unpack_from("<I", raw)[0]
-    if raw[:8] != struct.pack("<II", number, number) or raw[16] not in (4, 5):
+    if raw[:8] != struct.pack("<II", number, number) or person_kind(pid, record, raw[16]) != "player":
         raise MemoryUnavailable("Not a validated FM24 player record.")
     day, birth_year = struct.unpack_from("<HH", raw, 0x38)
     birth = dt.date(birth_year, 1, 1) + dt.timedelta(days=day - 1)

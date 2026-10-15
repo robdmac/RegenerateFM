@@ -48,6 +48,29 @@ def _record_addresses(pid: int, person_id: int):
             offset += 1
 
 
+# Record type at +16: 4 and 5 are players with full detail; 0 and 1 are seen
+# both for staff and for reserve or youth players. Players' records hold
+# position ratings (1-20, 20 at their natural position) at -0x7c, staff
+# records zeros, so the ratings say which a type 0 or 1 record is.
+RECORD_TYPES = (0, 1, 4, 5)
+POSITION_RATINGS = -0x7c
+POSITION_COUNT = 15
+
+
+def person_kind(pid: int, address: int, record_type: int) -> str | None:
+    """"player", "staff", or None when the record cannot be classified."""
+    if record_type in (4, 5):
+        return "player"
+    if record_type not in RECORD_TYPES:
+        return None
+    ratings = read_process_bytes(pid, address + POSITION_RATINGS, POSITION_COUNT)
+    if not any(ratings):
+        return "staff" if record_type == 0 else None
+    if all(1 <= value <= 20 for value in ratings) and max(ratings) == 20:
+        return "player"
+    return None
+
+
 def _parse_record(pid: int, address: int, person_id: int) -> PersonIdentity | None:
     try:
         raw = read_process_bytes(pid, address, _RECORD_SIZE)
@@ -56,8 +79,8 @@ def _parse_record(pid: int, address: int, person_id: int) -> PersonIdentity | No
         # Marker byte 13 carries flags (0x02 and 0x40 seen); type 5 is a player too.
         if raw[12] or raw[14] != 0x58 or raw[15] not in (0x10, 0x12, 0x18):
             return None
-        kind_value = struct.unpack_from("<I", raw, 16)[0]
-        if kind_value not in (0, 4, 5):
+        kind = person_kind(pid, address, struct.unpack_from("<I", raw, 16)[0])
+        if kind is None:
             return None
         game_year = struct.unpack_from("<H", raw, 0x36)[0]
         birth_day, birth_year = struct.unpack_from("<HH", raw, 0x38)
@@ -72,8 +95,7 @@ def _parse_record(pid: int, address: int, person_id: int) -> PersonIdentity | No
         name = name_raw[4:4 + length].decode("utf-8")
         if not re.fullmatch(r"[^\x00-\x1f\x7f]{3,80}", name):
             return None
-        return PersonIdentity(person_id, name, birth_date, game_year,
-                              "staff" if kind_value == 0 else "player")
+        return PersonIdentity(person_id, name, birth_date, game_year, kind)
     except (OSError, ValueError, UnicodeDecodeError, struct.error, OverflowError):
         return None
 

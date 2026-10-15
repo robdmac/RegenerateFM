@@ -21,11 +21,17 @@ def _terminal(text: str) -> None:
 
 
 def confirm_batch(missing: int, total: int, *, preview_only: bool = False,
-                  native: tuple[int, str] | None = None) -> bool:
+                  native: tuple[int, str] | None = None, skipped: int = 0) -> bool:
     """Ask in FM24's own dialog before any request; ``native`` is the DLL's
-    port and token. Without an answer from FM24, nothing is generated."""
+    port and token. Without an answer from FM24, nothing is generated.
+    ``skipped`` players could not be read (FM24 has not loaded their names)."""
+    note = (f" {skipped} {'player was' if skipped == 1 else 'players were'} left out because FM24 "
+            "hasn't loaded their names; scroll the list to them and run it again to include them."
+            if skipped else "")
     if not missing:
-        notify(*(native or (None, "")), f"All {total} squad players already have portraits.", _terminal)
+        notify(*(native or (None, "")),
+               f"All {total - skipped} squad players read already have portraits.{note}"
+               if skipped else f"All {total} squad players already have portraits.", _terminal)
         return False
     action = "Preview faces" if preview_only else "Generate faces"
     bill = "No API requests will be made in preview mode." if preview_only else \
@@ -34,7 +40,7 @@ def confirm_batch(missing: int, total: int, *, preview_only: bool = False,
         try:
             return show_dialog(*native, "confirm", f"{action}?",
                                f"{missing} of {total} squad players have no portrait. "
-                               f"{action} for the {missing} missing players? {bill}",
+                               f"{action} for the {missing} missing players? {bill}{note}",
                                timeout=600) == "yes"
         except TimeoutError:
             return False
@@ -73,7 +79,8 @@ def run_native_squad_batch(handler, generate, describe=str, *, pid: int | None =
         state = read_squad_rows(pid)
         missing = state.missing
         print(f"FM24 squad scan complete: {len(missing)} missing of {state.total} players.", flush=True)
-        if not confirm_batch(len(missing), state.total, preview_only=handler.preview_only, native=native):
+        if not confirm_batch(len(missing), state.total, preview_only=handler.preview_only, native=native,
+                             skipped=len(state.unreadable)):
             return
         club = squad_club(pid, [row.record for row in state.rows])
         # Every prompt is validated before the first billed request.
