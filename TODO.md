@@ -26,7 +26,13 @@
 
 ## Later
 
-- Billed check of **Update face** in FM24 and FM26: likeness kept, age and kit
-  updated. In FM24, grey the row out when there is no face (the skin popup has
-  no per-row enabled state; the DLL would have to change it when the popup opens).
-- Repo name and git setup.
+- **FM24 Update face:** grey the row out when there is no face. The skin popup
+  has no per-row enabled state, so the DLL would have to change it when the
+  popup opens.
+- **FM24 Overview dropdown item:** add Generate and Update face to the player
+  Overview dropdown (code-generated; needs DLL work like the Squad menu item).
+- **FM26 Actions menu timing:** opened about 5 s after a profile loads, the
+  menu can lack the FM Face items until it is reopened.
+- **Release build:** rebuild the FM26 plugin in `hotreload/bin` (it predates
+  Update face and the loan-club fix), then `make_release.py`.
+- **Remote repo:** git is set up locally as FMFace; nothing has been pushed.
