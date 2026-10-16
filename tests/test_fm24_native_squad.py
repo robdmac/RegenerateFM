@@ -69,6 +69,17 @@ class PlayingClubTests(unittest.TestCase):
             with self.assertRaises(MemoryUnavailable):
                 native_profile._playing_club(1, record, "Inter Miami")
 
+    def test_reserve_team_ids_above_two_billion_are_accepted(self):
+        record, reserve = 0x1000, 2_000_016_224  # Inter Miami II
+        words = {record + native_profile.PLAYING_CLUB: 0x5000, 0x5000 + 12: reserve, 0x5000 + 16: reserve,
+                 0x5000 + 0x30: 0x6000, 0x6000 + 12: reserve, 0x6000 + 0xc8: 0x7000}
+        with patch.object(native_profile, "_u32", side_effect=lambda pid, address: words.get(address, 0)), \
+                patch.object(native_profile, "_text", side_effect=lambda pid, address, limit=80: "Inter Miami II"):
+            self.assertEqual(native_profile._playing_club(1, record, "Inter Miami"), "Inter Miami II")
+            words[0x5000 + 16] = reserve + 1  # the ID's copy must still match
+            with self.assertRaises(MemoryUnavailable):
+                native_profile._playing_club(1, record, "Inter Miami")
+
 
 class RecordCacheTests(unittest.TestCase):
     def test_record_address_is_reused_until_its_header_changes(self):

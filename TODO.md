@@ -36,9 +36,9 @@
   companion as the menu opens and sets the row's `disa` property.
 - **FM24 Overview tab menu items:** done (2026-10-16). Generate new face and
   Update face are appended to player and staff Overview tab menus.
-- **FM24 staff at a reserve team:** a staff member contracted to a reserve
-  team (Federico Higuaín, Inter Miami II) fails with "Invalid FM24 club
-  object." The contract's club pointer is not a club record there.
+- **FM24 reserve teams:** done (2026-10-16). FM's added reserve and youth
+  teams have club IDs above 2,000,000,000, which the club check refused;
+  Federico Higuaín (staff) and Cole Jensen (player) at Inter Miami II now read.
 - **FM26 Actions menu timing:** done (2026-10-16). The items are added as soon
   as the profile header exists and the ID is read on click.
 - **Release build:** done (2026-10-16). Plugin version 0.8.0 was rebuilt into

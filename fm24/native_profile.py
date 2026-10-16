@@ -255,8 +255,11 @@ PLAYING_CLUB = -0x154
 
 
 def _club_name(pid: int, club: int) -> str:
+    # Reserve and youth teams added by FM have IDs from 2,000,000,000 up
+    # (Inter Miami II is 2,000,016,224), so the ID is only checked against its
+    # copy at +16 and the club details' own.
     club_id = _u32(pid, club + 12)
-    if not 1 <= club_id <= 2_000_000_000 or club_id != _u32(pid, club + 16):
+    if not 1 <= club_id < 0xffffffff or club_id != _u32(pid, club + 16):
         raise MemoryUnavailable("Invalid FM24 club object.")
     details = _u32(pid, club + 0x30)
     if _u32(pid, details + 12) != club_id:
