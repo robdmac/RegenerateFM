@@ -1,29 +1,114 @@
 # FM Face
 
-FM Face generates portraits on demand for Football Manager players and staff. On the tested FM26 26.3.2 build, click a player or staff portrait to open a native **Generate new face** menu; the **Actions > Generate face** command remains available. Both menus also have **Update face**, which refreshes a person's existing face instead of inventing a new one. It sends the face the game shows now (an FM Face portrait or the game's own photo) to the image edit endpoint and asks for the same person at their current age, wearing their current club's kit. It is greyed out when the person has no face. OpenAI refuses to edit real photos of very famous people (Lionel Messi was refused, and nothing is saved); lesser-known players' photos and generated faces work. It is one billed request, and the input image adds input tokens. On **Squad > Overview**, the Squad dropdown also has **Generate faces…** for players in that displayed squad who have no portrait. The squad command scans the full roster and asks for confirmation with the exact count before making billed requests. Both individual commands read the visible profile and reload the portrait in game. Player prompts use name, age, nationality, position, club, height, all eight physical stats, and strongest and weakest other stats. Staff prompts use name, age, nationality, and job title. When the profile's Career biography has been shown in this game session, its headline paragraph is also included. An animation covers the picture while individual generation runs. This project is independent of Sports Interactive and FM ActionLink. Structured player and staff prompts include five seeded appearance traits: facial proportions, features, hair, facial hair and expression. Choices are saved by person ID under `.fmface-appearances/` in the configured graphics directory and reused on regeneration. Keep that folder when moving your portraits. Rendering quality can be set with `OPENAI_IMAGE_QUALITY` in `.env`; the default is `medium`, and `low` is available for cheaper preview comparisons. Preview mode derives the same choices without writing them. The instructions stay consistent; a new image generation can still change facial identity.
+FM Face makes new portraits for Football Manager players and staff who don't have one, and updates the faces they already have. You choose **Generate new face** or **Update face** from the person's portrait menu in the game. The face is created from their profile and appears in the game a few seconds later. A whole squad can be done in one go.
 
-## Use it in FM26
+- **Football Manager 26** (26.3.2) through a BepInEx plugin.
+- **Football Manager 2024** (24.4.2), experimental, through a small DLL and a companion program.
 
-1. The server needs Python 3 with Pillow (`python3-pil` on Debian/Ubuntu, or `pip install Pillow`). The image API's smallest square output is 1024×1024, so generated faces are scaled to FM's 256×256 portrait size before saving.
-1. Copy `.env.example` to `.env`, add your `OPENAI_API_KEY`, and set `FM_GRAPHICS_DIR` to the FM26 *user-data* folder ending in `graphics/fmface`. The Steam game installation folder is not the graphics destination. On Linux, run `chmod 600 .env` to keep the key private. A ChatGPT subscription is separate from API billing.
-2. Install BepInEx IL2CPP and FM ActionLink, then build and install the native plugin as described in [hotreload/README.md](hotreload/README.md). For a fresh install, `install_fm26.py --game "/path/to/Football Manager 26" --loader-zip "/path/to/loader.zip" --actionlink-zip "/path/to/actionlink.zip"` can install the downloaded releases; add `--apply` after checking its dry run. It refuses to overwrite files. The Proton launch needs the Steam option `WINEDLLOVERRIDES="winhttp=n,b" %command%`.
-3. Run `python3 fmface.py serve` from this folder, or enable the optional user service below. Open a player or staff **Overview**, left-click the portrait, and choose **Generate new face**. You can also use **Actions > Generate face**. For a profile with a biography, visit its **Career** tab once first, then return to **Overview**. Each successful command makes one billed image API request. The result is saved to `FM_GRAPHICS_DIR` and the game reloads the portrait automatically. Repeat to replace that person's FM Face portrait; the old image remains if generation fails. For a squad, open **Squad > Overview**, open the top **Squad** dropdown and choose **Generate faces…** below the menu. Review the missing-portrait count, then confirm. The plugin opens each missing player's profile, generates one portrait at a time, and reloads it in game. **Stop after current face** ends the batch after any in-progress request and reload; there is a five-second gap before the next player. The squad command never replaces a player who already has a portrait.
+The images come from OpenAI's image API, using your own API key. Each face costs one request on your OpenAI account. FM Face is independent of Sports Interactive, SEGA and FM ActionLink. It has been tested on Linux with Steam/Proton; Windows should work but is untested (see [Platform support](#platform-support)).
 
-The server rereads `.env` for each request. The in-game commands require `FM_GRAPHICS_DIR` and check that it is the same folder FM26 reloads before making an image API request. The in-game error tooltip and `BepInEx/LogOutput.log` show server or API errors. The plugin is pinned to FM26 26.3.2 and disables its controls after an unverified game update.
+## 1. Get an OpenAI API key
 
-To have the local server available after login, run `python3 install_service.py` from this checkout. It creates a user service pointing at the current project directory and starts it. Use `systemctl --user status fmface.service` to check it. The service reads the key from `.env`; the key is not stored in the service file.
+You need an OpenAI **API** account. A ChatGPT subscription (Plus, Pro and so on) is billed separately and doesn't give API access.
+
+1. Sign up or log in at [platform.openai.com](https://platform.openai.com/).
+2. Add credit. Go to **Settings > Billing**, add a payment method and buy some credit; a few dollars is enough to start. If you leave **auto recharge** off, OpenAI can never charge more than the credit you bought.
+3. Verify your organisation if asked. OpenAI may require **Settings > Organization > General > Verify Organization** before its image models work. Without it, the first face fails with an error saying your organisation must be verified. Verification can take a few minutes to apply after it's done.
+4. Create the key. Open [API keys](https://platform.openai.com/api-keys) and choose **Create new secret key**. Copy it now: OpenAI shows it only once. It starts with `sk-`.
+
+Treat the key like a password. Anyone who has it can spend your credit. FM Face only keeps it in the `.env` file on your computer and sends it only to OpenAI.
+
+**What it costs:** each generated or updated face is one image request, typically a few cents or less at the default `medium` quality. `low` quality is cheaper. Check the [Usage](https://platform.openai.com/usage) page after your first few faces to see your real cost. Previews (`--preview-only` for FM24) and imports of existing PNGs make no request and cost nothing.
+
+## 2. Install FM Face
+
+1. Install **Python 3.9 or newer**.
+2. Download this repository and open a terminal in its folder.
+3. Install Pillow: `python3 -m pip install Pillow` (or `python3-pil` on Debian and Ubuntu).
+4. Copy `.env.example` to `.env` and paste your key after `OPENAI_API_KEY=`:
+
+   ```sh
+   cp .env.example .env
+   chmod 600 .env    # Linux and macOS: only your user can read it
+   ```
+
+   Never share or commit `.env`. The other settings are explained in [Settings](#settings).
+
+Then set up your game below.
+
+## 3a. Set up FM26
+
+1. **Find the graphics folder.** Find FM26's **user-data** folder (the one containing `graphics` and `skins`, not the Steam installation folder) and create `graphics/fmface` inside it. Set `FM_GRAPHICS_DIR` in `.env` to that `graphics/fmface` folder.
+2. **Install BepInEx and FM ActionLink.** Download [BepInEx 6.0.0-be.760 Unity IL2CPP Windows x64](https://builds.bepinex.dev/projects/bepinex_be/) and [FM ActionLink 1.0.0](https://sortitoutsi.net/content/77820/fm-actionlink-free-plugin-for-modders-connect-fm-screens-to-external-tools). The installer checks both ZIPs and does a dry run first:
+
+   ```sh
+   python3 install_fm26.py --game "/path/to/Football Manager 26" \
+     --loader-zip "/path/to/bepinex.zip" --actionlink-zip "/path/to/actionlink.zip"
+   ```
+
+   If the dry run looks right, run it again with `--apply`. It refuses to overwrite existing files.
+3. **Linux only:** set FM26's Steam launch option to `WINEDLLOVERRIDES="winhttp=n,b" %command%`.
+4. **Build and install the plugin** with the .NET 6 SDK, as described in [hotreload/README.md](hotreload/README.md).
+5. **Start the server:** `python3 fmface.py serve`. On Linux you can start it automatically at login instead (see [Run the server in the background](#run-the-server-in-the-background)).
+
+### Use it in FM26
+
+Keep the server running while you play.
+
+- **Generate new face:** open a player or staff **Overview**, left-click the portrait and choose **Generate new face**, or use **Actions > Generate face**. The new face loads automatically. Choosing it again replaces that FM Face portrait; if generation fails, the old one stays.
+- **Update face:** in the same menus. It refreshes the face the person already has (an FM Face portrait or the game's own photo) at their current age, in their current club's kit. It is greyed out when the person has no face.
+- **Squad:** open **Squad > Overview**, open the top **Squad** dropdown and choose **Generate faces…**. FM Face counts the players with no portrait and asks before making any request. It then does one face at a time. **Stop after current face** ends the batch after the face in progress. Players who already have a portrait are never replaced.
+- **Biographies:** for a profile with a biography, visit its **Career** tab once before generating, then return to **Overview**. The biography's headline paragraph is then included.
+
+Errors appear in the portrait's tooltip and in `BepInEx/LogOutput.log`. The plugin turns its buttons off if FM26 updates to an untested build.
+
+## 3b. Set up FM24 (experimental)
+
+FM24 needs a few more steps:
+- a Python virtual environment;
+- a small skin built from your own copy of FM24's panels;
+- a native DLL;
+- a companion program that runs while you play.
+
+The full steps are in [fm24/README.md](fm24/README.md). It uses the same `.env` key from step 2.
+
+In FM24, the portrait popup and the profile's **Overview** tab menu have **Generate new face** and **Update face**. The Squad screen's **Overview** menu has **Generate missing squad faces…**. Progress, confirmations and errors appear in FM24's own dialogs.
+
+## Settings
+
+All settings are in `.env`. The server rereads it for every request, so changes apply without a restart.
+
+| Setting | Meaning |
+|---|---|
+| `OPENAI_API_KEY` | Your OpenAI API key (required). |
+| `OPENAI_IMAGE_MODEL` | The image model. The default is `gpt-image-2.5-sunburst`. |
+| `OPENAI_IMAGE_QUALITY` | `low`, `medium` (default), `high`, `xhigh`, `max` or `auto`. Higher quality costs more per face. |
+| `FM_GRAPHICS_DIR` | FM26's user-data `graphics/fmface` folder. Required for the in-game buttons; the plugin and server check they agree before any request. FM24's companion takes its folder on the command line instead. |
+
+## Run the server in the background
+
+On Linux, `python3 install_service.py` creates and starts a user service for FM26's server, so it's running whenever you log in. Check it with `systemctl --user status fmface.service`. The service reads the key from `.env`; the key isn't copied into the service file.
 
 ## Web app and import
 
-The web form at <http://127.0.0.1:8767/> remains available for manually described portraits. After saving through the web form or importing a PNG, restart FM26 to load it. The app maps both ordinary and generated-player ID forms when you generate from the native FM26 button. The manual web form's **Generated player** option chooses the `r-<ID>` mapping explicitly.
+The web form at <http://127.0.0.1:8767/> (while the server runs) makes a portrait from a description you type. After saving through the form or importing a PNG, restart FM26 to load it. The form's **Generated player** option saves it for a generated (newgen) player's ID.
+
+To install a PNG you already have, with no API request:
 
 ```bash
 python3 fmface.py import --player-id 123456 --png /path/to/portrait.png --newgen
 ```
 
-Add `--replace` to overwrite a portrait already created for that ID. Generated images and `.env` should stay private.
+Add `--replace` to overwrite a portrait FM Face already created for that ID. For FM24, import into FM24's own user-data `graphics/fmface` folder and reload the skin in Preferences.
 
-FM24 24.4.2 support is experimental and runs through a [native DLL](fm24/native_menu/README.md) pinned to the tested executable on Steam/Proton. FM24's own portrait popup offers **Generate new face** and **Update face**, and the Squad **Overview** menu ends with **Generate missing squad faces…**. The FM24 companion reads profiles, biographies and squad rows from game memory, shows progress and confirmations in FM24's own dialogs, and reloads new faces inside the game; it has no X11 code. A billed single face and a billed two-face squad batch with Stop have been run this way. Setup and current limits are in [fm24/README.md](fm24/README.md). For manual FM24 imports, use its own user-data `graphics/fmface` directory and reload the skin in Preferences; the FM26 plugin does not manage FM24 graphics.
+## How faces are made
+
+- **Player prompts** use the player's name, age, nationality, position, club, height, all eight physical attributes, and their three strongest and three weakest other attributes.
+- **Staff prompts** use name, age, nationality, job title and club.
+- **Biography:** both kinds include the biography's headline paragraph when the game has shown it.
+- **Appearance traits:** each person gets five seeded appearance traits: facial proportions, features, hair, facial hair and expression. They're saved by person ID under `.fmface-appearances/` in the graphics folder and reused when you regenerate, so keep that folder when moving portraits. A new image can still change the face itself.
+- **Size:** the API returns 1024×1024 images, which are scaled to FM's 256×256 portrait size.
+- **Update face** sends the current face to OpenAI's image edit endpoint, which adds input-image cost to the request. OpenAI refuses to edit real photos of very famous people (Lionel Messi was refused, and nothing is saved). Lesser-known players' photos and generated faces work.
 
 ## Platform support
 
@@ -38,6 +123,11 @@ Everything has been tested on Linux with Steam/Proton. Status elsewhere:
 
 ## Release scope
 
-The native plugin has been tested on FM26 26.3.2 with the vanilla skin, BepInEx 6.0.0-be.760, and FM ActionLink 1.0.0. Its squad scanner matched all 49 players in the test save. A three-face billed batch generated and reloaded every missing portrait; a fresh scan from a scrolled squad list then checked 49 of 49 players and found zero missing. Its game-binary checks disable the buttons on other FM26 builds. The FM24 flows have been tested on FM24 24.4.2 with its vanilla-based skin through the native DLL: previews of every command, a billed single face and a billed squad batch with Stop. Other skins, resolutions, languages, and game builds remain unverified. Both servers run locally and each successful generation uses a billed OpenAI API request; importing an existing PNG does not.
+- **FM26:** tested on 26.3.2 with the vanilla skin, BepInEx 6.0.0-be.760 and FM ActionLink 1.0.0.
+  - Its squad scanner matched all 49 players in the test save.
+  - A three-face billed batch generated and reloaded every missing portrait; a fresh scan afterwards found none missing.
+  - Its game-binary checks disable the buttons on other FM26 builds.
+- **FM24:** tested on 24.4.2 with its vanilla-based skin through the native DLL: previews of every command, a billed single face and a billed squad batch with Stop.
+- **Not yet checked:** other skins, resolutions, languages and game builds.
 
-Run `python3 make_release.py` after building the plugin to create a ZIP containing only the public source, docs, license, tests, and plugin DLL. It does not include `.env`, portraits, the translated third-party research guide, or dependency binaries. FM Face's own code and documentation are licensed under [MIT](LICENSE).
+Run `python3 make_release.py` after building the plugin to create a ZIP containing only the public source, docs, license, tests and plugin DLL. It leaves out `.env`, portraits, the translated third-party research guide and dependency binaries. FM Face's own code and documentation are licensed under [MIT](LICENSE).

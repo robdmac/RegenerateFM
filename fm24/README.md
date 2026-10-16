@@ -46,7 +46,7 @@ If anything can't be verified, the request is refused before any image is reques
    ```
 
    The builder creates a private local token and refuses to overwrite an existing skin. Keep `.fm24-auth` private.
-5. Copy `.env.example` to `.env` and set `OPENAI_API_KEY` there. Keep the file private (`chmod 600 .env`). Each generated or updated face is one billed image API request. The FM24 companion uses the graphics path passed on its command line; `FM_GRAPHICS_DIR` in `.env` is for the main web app and FM26.
+5. Copy `.env.example` to `.env` and set `OPENAI_API_KEY` there. Keep the file private (`chmod 600 .env`). Each generated or updated face is one billed image API request. If you don't have a key yet, follow [Get an OpenAI API key](../README.md#1-get-an-openai-api-key). The FM24 companion uses the graphics path passed on its command line; `FM_GRAPHICS_DIR` in `.env` is for the main web app and FM26.
 6. Install the [native DLL](native_menu/README.md) with FM24 closed and add its Steam launch option. In FM24 Preferences, select **FM Face** and enable screen IDs in the title. Then run:
 
    ```sh
