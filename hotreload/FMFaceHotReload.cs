@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
-using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -21,13 +20,12 @@ using UnityEngine.UIElements;
 
 namespace FMFaceHotReload
 {
-    [BepInPlugin("fmface.hotreload", "FM Face", "0.8.0")]
+    [BepInPlugin("fmface.hotreload", "FM Face", "0.9.0")]
     [BepInDependency(Plugin.Guid)]
     public sealed class HotReloadPlugin : BasePlugin
     {
         internal static HotReloadPlugin Instance;
         internal static bool WaitingForGraphics;
-        private static readonly HttpClient Client = new HttpClient { Timeout = TimeSpan.FromMinutes(4) };
         private static readonly Regex Tags = new Regex("<[^>]*>", RegexOptions.Compiled);
         private static readonly Regex AgePattern = new Regex(@"\b(\d{1,2}) years old\b", RegexOptions.Compiled);
         private static readonly Regex IdPattern = new Regex(@"\bID:\s*(\d{1,20})\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -63,6 +61,10 @@ namespace FMFaceHotReload
         private readonly Dictionary<long, string> _biographyCache = new Dictionary<long, string>();
         private Harmony _harmony;
         private FaceMenuContributor _menuContributor;
+        private BepInEx.Configuration.ConfigEntry<string> _apiKey;
+        private BepInEx.Configuration.ConfigEntry<string> _model;
+        private BepInEx.Configuration.ConfigEntry<string> _quality;
+        private BepInEx.Configuration.ConfigEntry<string> _apiBaseUrl;
         private static readonly TimeSpan GenerationTimeout = TimeSpan.FromMinutes(5);
         private static readonly TimeSpan GraphicsTimeout = TimeSpan.FromSeconds(30);
 
@@ -74,6 +76,7 @@ namespace FMFaceHotReload
                 return;
             }
             Instance = this;
+            BindSettings();
             ClassInjector.RegisterTypeInIl2Cpp<FaceMenuContributor>(new RegisterTypeOptions
             {
                 Interfaces = new[] { typeof(IMenuContributor) }
@@ -84,6 +87,34 @@ namespace FMFaceHotReload
             _harmony.PatchAll(typeof(MenuOpenPatch));
             AddComponent<StaffWatcher>();
             Log.LogInfo("FM Face Actions and portrait menu integration loaded");
+        }
+
+        // BepInEx/config/fmface.hotreload.cfg. It is reread before each
+        // request, so a key added while FM26 runs is used on the next click.
+        private void BindSettings()
+        {
+            _apiKey = Config.Bind("OpenAI", "ApiKey", "",
+                "Your OpenAI API key (it starts with sk-). Each generated or updated face is one billed image request.");
+            _model = Config.Bind("OpenAI", "Model", "gpt-image-2.5-sunburst", "OpenAI image model.");
+            _quality = Config.Bind("OpenAI", "Quality", "medium",
+                new BepInEx.Configuration.ConfigDescription("Rendering quality; higher costs more per face.",
+                    new BepInEx.Configuration.AcceptableValueList<string>(FaceGenerator.Qualities)));
+            _apiBaseUrl = Config.Bind("OpenAI", "ApiBaseUrl", "https://api.openai.com/v1",
+                "Image API address. Leave this unchanged unless you are testing.");
+        }
+
+        private ImageSettings CurrentSettings()
+        {
+            Config.Reload();
+            var settings = new ImageSettings
+            {
+                ApiKey = (_apiKey.Value ?? "").Trim(),
+                Model = (_model.Value ?? "").Trim(),
+                Quality = (_quality.Value ?? "").Trim().ToLowerInvariant(),
+                BaseUrl = (_apiBaseUrl.Value ?? "").Trim()
+            };
+            FaceGenerator.CheckSettings(settings);
+            return settings;
         }
 
         private bool SupportedGameBuild()
@@ -143,7 +174,8 @@ namespace FMFaceHotReload
                                      : CaptureProfile(personId.Value, out picture, out root);
                 if (snapshot.BiographyHeadline == null && _biographyCache.TryGetValue(personId.Value, out string cachedBiography))
                     snapshot.BiographyHeadline = cachedBiography;
-                string reference = null;
+                var settings = CurrentSettings();
+                byte[] reference = null;
                 if (update)
                 {
                     if (!HasFace(picture))
@@ -157,7 +189,7 @@ namespace FMFaceHotReload
                             (snapshot.BiographyHeadline != null));
                 _pending = new PendingGeneration
                 {
-                    Task = RequestPortrait(personId.Value, snapshot, update ? "update" : "generate", reference),
+                    Task = RequestPortrait(personId.Value, snapshot, settings, update ? "update" : "generate", reference),
                     Overlay = overlay,
                     Message = message,
                     StartedUtc = System.DateTime.UtcNow
@@ -194,7 +226,7 @@ namespace FMFaceHotReload
                 if (System.DateTime.UtcNow - pending.StartedUtc < GenerationTimeout)
                     return;
                 _pending = null;
-                ShowError(pending.Overlay, pending.Message, "Portrait request timed out. Check the local generator before retrying.");
+                ShowError(pending.Overlay, pending.Message, "Portrait request timed out. Try again.");
                 Log.LogError("Face generation timed out; request lock released");
                 return;
             }
@@ -226,23 +258,6 @@ namespace FMFaceHotReload
                 ShowError(pending.Overlay, pending.Message, error.Message);
                 Log.LogError("Face generation failed: " + error);
             }
-        }
-
-        private sealed class ProfileSnapshot
-        {
-            public string Type = "player";
-            public string Name;
-            public int Age;
-            public string Nationality;
-            public string JobTitle;
-            public string Position;
-            public string Club;
-            public string Height;
-            public string BiographyHeadline;
-            public Dictionary<string, object> Physical = new Dictionary<string, object>();
-            public Dictionary<string, object> Technical = new Dictionary<string, object>();
-            public Dictionary<string, object> Mental = new Dictionary<string, object>();
-            public Dictionary<string, object> Goalkeeping = new Dictionary<string, object>();
         }
 
         private static ProfileSnapshot CaptureProfile(long playerId, out VisualElement picture, out VisualElement root)
@@ -521,6 +536,7 @@ namespace FMFaceHotReload
             public float LastY = -1;
             public int SearchSteps;
             public Task<GenerationResult> Request;
+            public ImageSettings Settings;
             public long PersonId;
             public int GraphicsSerial;
             public Label Status;
@@ -609,6 +625,16 @@ namespace FMFaceHotReload
             if (_pending != null || WaitingForGraphics || _squadScan != null || _squadBatch != null)
             {
                 Log.LogWarning("Squad scan cannot start while another FM Face operation is active");
+                return;
+            }
+            try
+            {
+                CurrentSettings();
+            }
+            catch (Exception error)
+            {
+                Log.LogWarning(error.Message);
+                ShowSquadDialog(error.Message, "Close", () => CancelSquadScan());
                 return;
             }
             var root = CurrentRoot();
@@ -744,9 +770,20 @@ namespace FMFaceHotReload
                 CancelSquadScan();
                 return;
             }
+            ImageSettings settings;
+            try
+            {
+                settings = CurrentSettings();
+            }
+            catch (Exception error)
+            {
+                Log.LogWarning(error.Message);
+                ShowSquadDialog(error.Message, "Close", () => CancelSquadScan());
+                return;
+            }
             var status = ShowSquadDialog("Opening the first missing player…", "Stop after current face",
                 () => RequestStopSquadBatch());
-            var batch = new SquadBatch { List = list, Status = status };
+            var batch = new SquadBatch { List = list, Status = status, Settings = settings };
             batch.Queue.AddRange(missing);
             _squadBatch = batch;
             list.scrollOffset = new Vector2(list.scrollOffset.x, 0);
@@ -898,7 +935,7 @@ namespace FMFaceHotReload
                 profile.BiographyHeadline = biography;
             batch.PersonId = personId;
             batch.Status.text = "Generating " + target.Name + " (" + (batch.Index + 1) + "/" + batch.Queue.Count + ")…";
-            batch.Request = RequestPortrait(personId, profile);
+            batch.Request = RequestPortrait(personId, profile, batch.Settings);
             SetBatchStage(batch, SquadStage.Request);
             Log.LogInfo("Squad portrait request started for " + target.Name + " (" + personId + ")");
         }
@@ -1310,9 +1347,9 @@ namespace FMFaceHotReload
             Generate(personId, staff, update);
         }
 
-        // The face FM26 is showing, as base64 PNG, for "Update face". The local
-        // generator prefers its own full-size file when this is a generated face.
-        private string CaptureReferencePng(VisualElement picture)
+        // The face FM26 is showing, as a PNG, for "Update face". The generator
+        // prefers FM Face's own saved file when this is a generated face.
+        private byte[] CaptureReferencePng(VisualElement picture)
         {
             var image = FindNamed(picture, "PersonImage")?.TryCast<SI.UI.Image>();
             var sprite = image?.sprite;
@@ -1355,7 +1392,7 @@ namespace FMFaceHotReload
                     rgba[i * 4 + 3] = pixel.a;
                 }
                 Log.LogInfo("Captured the current portrait (" + width + "x" + height + ")");
-                return Convert.ToBase64String(EncodePng(rgba, width, height));
+                return Png.Encode(rgba, width, height, bottomUp: true);
             }
             catch (Exception error)
             {
@@ -1369,59 +1406,6 @@ namespace FMFaceHotReload
                 if (copy != null)
                     UnityEngine.Object.Destroy(copy);
             }
-        }
-
-        // RGBA rows from Unity (bottom row first) as an 8-bit RGBA PNG.
-        private static byte[] EncodePng(byte[] rgba, int width, int height)
-        {
-            var raw = new byte[(width * 4 + 1) * height];
-            for (int row = 0; row < height; row++)
-                Buffer.BlockCopy(rgba, (height - 1 - row) * width * 4, raw, row * (width * 4 + 1) + 1, width * 4);
-            byte[] compressed;
-            using (var buffer = new MemoryStream())
-            {
-                using (var zlib = new System.IO.Compression.ZLibStream(buffer, System.IO.Compression.CompressionLevel.Optimal))
-                    zlib.Write(raw, 0, raw.Length);
-                compressed = buffer.ToArray();
-            }
-            var header = new byte[13];
-            WriteBigEndian(header, 0, (uint)width);
-            WriteBigEndian(header, 4, (uint)height);
-            header[8] = 8;  // bit depth
-            header[9] = 6;  // RGBA
-            using (var png = new MemoryStream())
-            {
-                png.Write(new byte[] { 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a }, 0, 8);
-                WriteChunk(png, "IHDR", header);
-                WriteChunk(png, "IDAT", compressed);
-                WriteChunk(png, "IEND", new byte[0]);
-                return png.ToArray();
-            }
-        }
-
-        private static void WriteChunk(Stream stream, string type, byte[] data)
-        {
-            var bytes = new byte[12 + data.Length];
-            WriteBigEndian(bytes, 0, (uint)data.Length);
-            Encoding.ASCII.GetBytes(type, 0, 4, bytes, 4);
-            Buffer.BlockCopy(data, 0, bytes, 8, data.Length);
-            uint crc = 0xffffffff;
-            for (int i = 4; i < 8 + data.Length; i++)
-            {
-                crc ^= bytes[i];
-                for (int bit = 0; bit < 8; bit++)
-                    crc = (crc >> 1) ^ (0xedb88320 & (uint)-(int)(crc & 1));
-            }
-            WriteBigEndian(bytes, 8 + data.Length, ~crc);
-            stream.Write(bytes, 0, bytes.Length);
-        }
-
-        private static void WriteBigEndian(byte[] bytes, int offset, uint value)
-        {
-            bytes[offset] = (byte)(value >> 24);
-            bytes[offset + 1] = (byte)(value >> 16);
-            bytes[offset + 2] = (byte)(value >> 8);
-            bytes[offset + 3] = (byte)value;
         }
 
         private static VisualElement BuildOverlay(VisualElement picture, out Label message)
@@ -1477,67 +1461,18 @@ namespace FMFaceHotReload
         }
 
         private static async Task<GenerationResult> RequestPortrait(long playerId, ProfileSnapshot profile,
-            string mode = "generate", string referencePng = null)
+            ImageSettings settings, string mode = "generate", byte[] shownPng = null)
         {
-            string marker = null;
             try
             {
                 string folder = GraphicsFolder();
-                Directory.CreateDirectory(folder);
-                string token = Guid.NewGuid().ToString("N");
-                marker = Path.Combine(folder, ".fmface-location-" + token);
-                File.WriteAllText(marker, token, Encoding.ASCII);
-                var payload = new
-                {
-                    playerId = playerId.ToString(),
-                    locationToken = token,
-                    mode,
-                    referencePng,
-                    profile = new
-                    {
-                        type = profile.Type,
-                        name = profile.Name, age = profile.Age, nationality = profile.Nationality,
-                        jobTitle = profile.JobTitle, biographyHeadline = profile.BiographyHeadline,
-                        position = profile.Position, club = profile.Club, height = profile.Height,
-                        physical = profile.Physical, technical = profile.Technical,
-                        mental = profile.Mental, goalkeeping = profile.Goalkeeping
-                    }
-                };
-                using (var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json"))
-                using (var response = await Client.PostAsync("http://127.0.0.1:8767/generate-auto", content).ConfigureAwait(false))
-                {
-                    var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-                    if (response.IsSuccessStatusCode)
-                    {
-                        using (var json = JsonDocument.Parse(body))
-                        {
-                            var result = json.RootElement;
-                            var returnedToken = result.GetProperty("locationToken").GetString();
-                            var savedFolder = result.GetProperty("graphicsDir").GetString();
-                            if (!string.Equals(returnedToken, token, StringComparison.Ordinal) ||
-                                string.IsNullOrWhiteSpace(savedFolder))
-                                return new GenerationResult { Error = "Generator did not confirm the FM26 graphics folder." };
-                            return new GenerationResult { Success = true, GraphicsDir = savedFolder };
-                        }
-                    }
-                    try
-                    {
-                        using (var json = JsonDocument.Parse(body))
-                            return new GenerationResult { Error = json.RootElement.GetProperty("error").GetString() };
-                    }
-                    catch (Exception) { }
-                    return new GenerationResult { Error = "Local generator returned HTTP " + (int)response.StatusCode };
-                }
+                await FaceGenerator.MakePortrait(settings, folder, playerId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                                                 profile, mode == "update", shownPng).ConfigureAwait(false);
+                return new GenerationResult { Success = true, GraphicsDir = folder };
             }
             catch (Exception error)
             {
-                return new GenerationResult { Error = error.Message + " (start fmface.py serve if it is stopped)" };
-            }
-            finally
-            {
-                if (marker != null)
-                    try { File.Delete(marker); }
-                    catch (Exception error) { Instance?.Log.LogWarning("Could not remove graphics-folder check file: " + error.Message); }
+                return new GenerationResult { Error = error.Message };
             }
         }
 

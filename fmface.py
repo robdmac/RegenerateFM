@@ -26,18 +26,17 @@ from pathlib import Path
 
 from appearance import appearance_instruction, appearance_traits
 
-ROOT = Path(__file__).resolve().parent
+# A packaged FM24 companion (fm24/build_exe.py) keeps .env beside its executable.
+ROOT = Path(sys.executable if getattr(sys, "frozen", False) else __file__).resolve().parent
 DEFAULT_OUTPUT = ROOT / "output" / "fm26_faces"
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 ID_RE = re.compile(r"^[0-9]{1,20}$")
-LOCATION_TOKEN_RE = re.compile(r"^[0-9a-f]{32}$")
 MAX_BODY = 32_768
 # Football Manager draws portraits at 256×256; the image API's smallest
 # square output is 1024×1024, so generated faces are scaled down to this.
 PORTRAIT_SIZE = 256
-# An in-game "Update face" request carries the current portrait as a PNG.
+# The largest existing portrait sent to the image edit endpoint.
 MAX_REFERENCE = 8 << 20
-MAX_AUTO_BODY = MAX_BODY + MAX_REFERENCE * 4 // 3 + 4096
 PHYSICAL_STATS = (
     "Acceleration", "Agility", "Balance", "Jumping Reach",
     "Natural Fitness", "Pace", "Stamina", "Strength",
@@ -94,23 +93,6 @@ def validate_id(value: str) -> str:
 def output_dir(env: dict[str, str]) -> Path:
     configured = env.get("FM_GRAPHICS_DIR", "").strip()
     return Path(configured).expanduser() if configured else DEFAULT_OUTPUT
-
-
-def auto_output_dir(env: dict[str, str], token: object) -> Path:
-    configured = env.get("FM_GRAPHICS_DIR", "").strip()
-    if not configured:
-        raise ValueError("FM_GRAPHICS_DIR is required for in-game generation; set it in .env before generating.")
-    if not isinstance(token, str) or not LOCATION_TOKEN_RE.fullmatch(token):
-        raise ValueError("The game graphics-folder check is missing or invalid.")
-    directory = Path(configured).expanduser().resolve()
-    marker = directory / f".fmface-location-{token}"
-    try:
-        matches = marker.is_file() and marker.read_text(encoding="ascii") == token
-    except (OSError, UnicodeError):
-        matches = False
-    if not matches:
-        raise ValueError("FM_GRAPHICS_DIR does not match the folder FM26 reloads. Check .env before generating.")
-    return directory
 
 
 def portrait_prompt(description: str) -> str:
@@ -439,35 +421,6 @@ def check_graphics_config(directory: Path) -> None:
     load_graphics_maps(directory)
 
 
-def current_portrait(directory: Path, player_id: str) -> bytes | None:
-    """FM Face's saved portrait for this ID, if config.xml still maps it."""
-    player_id = validate_id(player_id)
-    path = directory / f"{player_id}.png"
-    if not path.is_file():
-        return None
-    _, maps = load_graphics_maps(directory)
-    targets = {f"graphics/pictures/person/{prefix}{player_id}/portrait" for prefix in ("", "r-")}
-    if not any(record.get("from") == player_id and record.get("to") in targets for record in maps):
-        return None
-    png = path.read_bytes()
-    return png if png.startswith(PNG_SIGNATURE) and len(png) <= MAX_REFERENCE else None
-
-
-def _reference_png(value: object) -> bytes | None:
-    """The game's current picture of the person, sent as base64 PNG."""
-    if value is None or value == "":
-        return None
-    if not isinstance(value, str) or len(value) > MAX_REFERENCE * 4 // 3 + 4:
-        raise ValueError("The current portrait sent by the game is invalid or too large.")
-    try:
-        png = base64.b64decode(value, validate=True)
-    except (ValueError, binascii.Error) as exc:
-        raise ValueError("The current portrait sent by the game is not valid base64.") from exc
-    if not png.startswith(PNG_SIGNATURE):
-        raise ValueError("The current portrait sent by the game is not a PNG.")
-    return png
-
-
 def save_portrait(directory: Path, player_id: str, png: bytes, *, newgen: bool | None, replace: bool) -> Path:
     player_id = validate_id(player_id)
     if not png.startswith(PNG_SIGNATURE):
@@ -514,7 +467,6 @@ class FaceHandler(BaseHTTPRequestHandler):
     selected_id = ""
     port = 8767
     save_lock = threading.Lock()
-    in_flight: set[str] = set()
     form_token = secrets.token_urlsafe(32)
 
     def _local_host(self) -> bool:
@@ -578,7 +530,7 @@ class FaceHandler(BaseHTTPRequestHandler):
         except ValueError:
             self.send_error(400, "Invalid Content-Length")
             return
-        if length < 1 or length > (MAX_AUTO_BODY if self.path == "/generate-auto" else MAX_BODY):
+        if length < 1 or length > MAX_BODY:
             self.send_error(413)
             return
         origin = self.headers.get("Origin", "")
@@ -598,55 +550,6 @@ class FaceHandler(BaseHTTPRequestHandler):
             type(self).selected_id = player_id
             self._send(204, b"", "text/plain")
             threading.Thread(target=webbrowser.open, args=(f"http://127.0.0.1:{self.port}/?player_id={player_id}",), daemon=True).start()
-            return
-        if self.path == "/generate-auto":
-            try:
-                payload = json.loads(body)
-                player_id = validate_id(str(payload["playerId"]))
-                mode = payload.get("mode", "generate")
-                if mode not in ("generate", "update"):
-                    raise ValueError("Unknown portrait request mode.")
-                if mode == "update":
-                    update_prompt(payload["profile"])
-                else:
-                    profile_prompt(payload["profile"], person_id=player_id)
-                env = self._current_env()
-                token = payload.get("locationToken")
-                directory = auto_output_dir(env, token)
-                check_graphics_config(directory)
-                reference = None
-                if mode == "update":
-                    prompt = update_prompt(payload["profile"])
-                    # Prefer FM Face's own full-size file to the game's on-screen copy.
-                    shown = _reference_png(payload.get("referencePng"))
-                    reference = current_portrait(directory, player_id) or shown
-                    if reference is None:
-                        raise ValueError("This person has no face to update yet. Use Generate face instead.")
-                else:
-                    prompt = profile_prompt(payload["profile"], person_id=player_id,
-                                            appearance_dir=directory)
-                with self.save_lock:
-                    if player_id in self.in_flight:
-                        raise FileExistsError("A portrait for this player is already being generated.")
-                    self.in_flight.add(player_id)
-            except (ValueError, KeyError, TypeError, OSError, ET.ParseError) as exc:
-                self._send_json(400, {"ok": False, "error": str(exc)})
-                return
-            except FileExistsError as exc:
-                self._send_json(409, {"ok": False, "error": str(exc)})
-                return
-            try:
-                png = edit_png(env, prompt, reference) if reference else generate_png(env, prompt)
-                with self.save_lock:
-                    save_portrait(directory, player_id, png, newgen=None, replace=True)
-            except (ValueError, FileExistsError, RuntimeError, OSError, ET.ParseError) as exc:
-                self._send_json(502, {"ok": False, "error": str(exc)})
-                return
-            finally:
-                with self.save_lock:
-                    self.in_flight.discard(player_id)
-            self._send_json(200, {"ok": True, "playerId": player_id,
-                                  "graphicsDir": str(directory), "locationToken": token})
             return
         if self.path != "/generate":
             self.send_error(404)

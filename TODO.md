@@ -53,4 +53,13 @@
   `hotreload/bin` and installed in FM26, and `dist/fmface-0.8.0.zip` was made.
   The unpacked zip passes all tests and holds no key or token. Not yet
   published anywhere.
-- **Remote repo:** git is set up locally as FMFace; nothing has been pushed.
+- **Remote repo:** pushed to github.com/robdmac/FMFace.
+- **FM26 without the Python server:** done in code (2026-10-16). Plugin 0.9.0
+  calls OpenAI itself (`hotreload/FaceGenerator.cs`), with its key in
+  `BepInEx/config/fmface.hotreload.cfg`; the prompts, saved files and requests
+  match `fmface.py` in tests. Still to do: a live FM26 check, then one billed
+  face.
+- **Packaged FM24 companion:** done (2026-10-16). `fm24/build_exe.py` builds
+  `dist/fmface-fm24/fmface-fm24.exe` (PyInstaller, one folder). Under Wine in
+  FM24's prefix it read the squad, showed FM24's dialog and answered face
+  checks. Skin building and DLL install still need Python once.

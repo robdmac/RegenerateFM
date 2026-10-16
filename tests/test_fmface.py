@@ -8,7 +8,7 @@ import threading
 import unittest
 import urllib.error
 import urllib.request
-import uuid
+import urllib.parse
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from unittest.mock import patch
@@ -29,14 +29,6 @@ def real_png(size=1024, colour=(200, 120, 90, 255)):
 
 
 class PortraitTests(unittest.TestCase):
-    @staticmethod
-    def _auto_request(url, player_id, profile, game_graphics_dir):
-        token = uuid.uuid4().hex
-        (Path(game_graphics_dir) / f".fmface-location-{token}").write_text(token)
-        return urllib.request.Request(url, data=json.dumps({
-            "playerId": player_id, "profile": profile, "locationToken": token,
-        }).encode(), headers={"Content-Type": "application/json"})
-
     def test_profile_prompt_includes_identity_all_physical_and_extreme_other_stats(self):
         profile = {
             "name": "Jak Stewart", "age": 21, "nationality": "English",
@@ -108,74 +100,6 @@ class PortraitTests(unittest.TestCase):
             profile_prompt({"type": "staff", "name": "Alex Morgan", "age": 45,
                             "nationality": "Welsh"})
 
-    def test_auto_endpoint_accepts_staff_and_maps_person_portrait(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            prior_env, prior_reload = FaceHandler.env, FaceHandler.reload_env
-            FaceHandler.env = {"FM_GRAPHICS_DIR": tmp}
-            FaceHandler.reload_env = False
-            server = ThreadingHTTPServer(("127.0.0.1", 0), FaceHandler)
-            worker = threading.Thread(target=server.serve_forever, daemon=True)
-            worker.start()
-            try:
-                profile = {"type": "staff", "name": "Alex Morgan", "age": 45,
-                           "nationality": "Wales", "jobTitle": "Assistant Manager",
-                           "biographyHeadline": "Morgan started coaching in 2021."}
-                request = self._auto_request(
-                    f"http://127.0.0.1:{server.server_port}/generate-auto",
-                    "5118334", profile, tmp)
-                with patch("fmface.generate_png", return_value=PNG_SIGNATURE + b"staff image") as generate:
-                    with urllib.request.urlopen(request) as response:
-                        result = json.load(response)
-                        self.assertTrue(result["ok"])
-                        self.assertEqual(result["graphicsDir"], str(Path(tmp).resolve()))
-                        self.assertEqual(result["locationToken"], json.loads(request.data)["locationToken"])
-                    self.assertIn("Morgan started coaching in 2021.", generate.call_args.args[1])
-                self.assertEqual((Path(tmp) / "5118334.png").read_bytes(), PNG_SIGNATURE + b"staff image")
-                destinations = {record.get("to") for record in ET.parse(Path(tmp) / "config.xml")
-                                .getroot().findall("./list[@id='maps']/record")}
-                self.assertIn("graphics/pictures/person/5118334/portrait", destinations)
-            finally:
-                server.shutdown()
-                server.server_close()
-                worker.join(timeout=3)
-                FaceHandler.env, FaceHandler.reload_env = prior_env, prior_reload
-
-    def test_auto_endpoint_rejects_missing_or_mismatched_graphics_dir_before_api(self):
-        with tempfile.TemporaryDirectory() as game_dir, tempfile.TemporaryDirectory() as wrong_dir:
-            prior_env, prior_reload = FaceHandler.env, FaceHandler.reload_env
-            FaceHandler.reload_env = False
-            server = ThreadingHTTPServer(("127.0.0.1", 0), FaceHandler)
-            worker = threading.Thread(target=server.serve_forever, daemon=True)
-            worker.start()
-            try:
-                url = f"http://127.0.0.1:{server.server_port}/generate-auto"
-                profile = {"type": "staff", "name": "Alex Morgan", "age": 45,
-                           "nationality": "Wales", "jobTitle": "Assistant Manager"}
-                with patch("fmface.generate_png") as generate:
-                    FaceHandler.env = {"FM_GRAPHICS_DIR": ""}
-                    with self.assertRaises(urllib.error.HTTPError) as missing:
-                        urllib.request.urlopen(self._auto_request(url, "5118334", profile, game_dir))
-                    self.assertEqual(missing.exception.code, 400)
-                    self.assertIn("FM_GRAPHICS_DIR is required", missing.exception.read().decode())
-
-                    FaceHandler.env = {"FM_GRAPHICS_DIR": wrong_dir}
-                    with self.assertRaises(urllib.error.HTTPError) as mismatched:
-                        urllib.request.urlopen(self._auto_request(url, "5118334", profile, game_dir))
-                    self.assertEqual(mismatched.exception.code, 400)
-                    self.assertIn("does not match", mismatched.exception.read().decode())
-
-                    FaceHandler.env = {"FM_GRAPHICS_DIR": game_dir}
-                    (Path(game_dir) / "config.xml").write_text("<broken")
-                    with self.assertRaises(urllib.error.HTTPError) as malformed:
-                        urllib.request.urlopen(self._auto_request(url, "5118334", profile, game_dir))
-                    self.assertEqual(malformed.exception.code, 400)
-                    generate.assert_not_called()
-            finally:
-                server.shutdown()
-                server.server_close()
-                worker.join(timeout=3)
-                FaceHandler.env, FaceHandler.reload_env = prior_env, prior_reload
-
     def test_server_rejects_nonlocal_host_before_generation(self):
         with tempfile.TemporaryDirectory() as tmp:
             prior_env, prior_reload = FaceHandler.env, FaceHandler.reload_env
@@ -186,9 +110,9 @@ class PortraitTests(unittest.TestCase):
             worker.start()
             try:
                 url = f"http://127.0.0.1:{server.server_port}"
-                profile = {"type": "staff", "name": "Alex Morgan", "age": 45,
-                           "nationality": "Wales", "jobTitle": "Assistant Manager"}
-                request = self._auto_request(url + "/generate-auto", "5118334", profile, tmp)
+                form = urllib.parse.urlencode({"player_id": "5118334", "description": "short hair",
+                                               "csrf_token": FaceHandler.form_token}).encode()
+                request = urllib.request.Request(url + "/generate", data=form)
                 request.add_header("Host", f"attacker.example:{server.server_port}")
                 with patch("fmface.generate_png") as generate:
                     with self.assertRaises(urllib.error.HTTPError) as rejected:
@@ -201,50 +125,6 @@ class PortraitTests(unittest.TestCase):
                 self.assertEqual(rejected_get.exception.code, 403)
                 with urllib.request.urlopen(f"http://localhost:{server.server_port}/") as response:
                     self.assertEqual(response.status, 200)
-            finally:
-                server.shutdown()
-                server.server_close()
-                worker.join(timeout=3)
-                FaceHandler.env, FaceHandler.reload_env = prior_env, prior_reload
-
-    def test_auto_generation_regenerates_and_preserves_prior_image_on_api_failure(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            profile = {
-                "name": "Jak Stewart", "age": 21, "nationality": "English",
-                "position": "Goalkeeper", "club": "Example FC", "height": "190 cm",
-                "physical": dict.fromkeys(("Acceleration", "Agility", "Balance", "Jumping Reach",
-                                           "Natural Fitness", "Pace", "Stamina", "Strength"), 10),
-                "technical": {"Passing": 10, "First Touch": 10, "Dribbling": 10},
-                "mental": {"Decisions": 10, "Bravery": 10, "Vision": 10},
-            }
-            prior_env, prior_reload = FaceHandler.env, FaceHandler.reload_env
-            FaceHandler.env = {"FM_GRAPHICS_DIR": tmp}
-            FaceHandler.reload_env = False
-            server = ThreadingHTTPServer(("127.0.0.1", 0), FaceHandler)
-            worker = threading.Thread(target=server.serve_forever, daemon=True)
-            worker.start()
-            try:
-                url = f"http://127.0.0.1:{server.server_port}/generate-auto"
-                request = lambda: self._auto_request(url, "200123", profile, tmp)
-                first = PNG_SIGNATURE + b"first image"
-                second = PNG_SIGNATURE + b"second image"
-                with patch("fmface.generate_png", side_effect=[first, RuntimeError("API failed"), second]) as generate:
-                    with urllib.request.urlopen(request()) as response:
-                        self.assertTrue(json.load(response)["ok"])
-                    self.assertEqual((Path(tmp) / "200123.png").read_bytes(), first)
-                    with self.assertRaises(urllib.error.HTTPError) as failure:
-                        urllib.request.urlopen(request())
-                    self.assertEqual(failure.exception.code, 502)
-                    self.assertEqual((Path(tmp) / "200123.png").read_bytes(), first)
-                    with urllib.request.urlopen(request()) as response:
-                        self.assertTrue(json.load(response)["ok"])
-                    self.assertEqual((Path(tmp) / "200123.png").read_bytes(), second)
-                    self.assertEqual(generate.call_count, 3)
-                records = ET.parse(Path(tmp) / "config.xml").getroot().findall("./list[@id='maps']/record")
-                self.assertEqual({record.get("to") for record in records}, {
-                    "graphics/pictures/person/200123/portrait",
-                    "graphics/pictures/person/r-200123/portrait",
-                })
             finally:
                 server.shutdown()
                 server.server_close()
@@ -383,56 +263,6 @@ class PortraitTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "PNG"):
                 fmface.edit_png(env, "update", b"GIF89a")
             request.assert_not_called()
-
-    def test_auto_update_uses_saved_face_then_game_picture_and_refuses_without_one(self):
-        profile = {"name": "Lionel Messi", "age": 38, "club": "Inter Miami"}
-        with tempfile.TemporaryDirectory() as tmp:
-            prior_env, prior_reload = FaceHandler.env, FaceHandler.reload_env
-            FaceHandler.env = {"FM_GRAPHICS_DIR": tmp}
-            FaceHandler.reload_env = False
-            server = ThreadingHTTPServer(("127.0.0.1", 0), FaceHandler)
-            worker = threading.Thread(target=server.serve_forever, daemon=True)
-            worker.start()
-            url = f"http://127.0.0.1:{server.server_port}/generate-auto"
-
-            def update(reference=None):
-                request = self._auto_request(url, "7458500", profile, tmp)
-                payload = json.loads(request.data)
-                payload["mode"] = "update"
-                if reference is not None:
-                    payload["referencePng"] = base64.b64encode(reference).decode()
-                request.data = json.dumps(payload).encode()
-                return urllib.request.urlopen(request)
-
-            try:
-                game_picture = PNG_SIGNATURE + b"game photo"
-                with patch("fmface.edit_png") as edit, patch("fmface.generate_png") as generate:
-                    with self.assertRaises(urllib.error.HTTPError) as refused:
-                        update()
-                    self.assertIn("no face to update", json.load(refused.exception)["error"])
-                    edit.assert_not_called()
-                    edit.return_value = PNG_SIGNATURE + b"first update"
-                    with update(game_picture) as response:
-                        self.assertTrue(json.load(response)["ok"])
-                    self.assertEqual(edit.call_args.args[2], game_picture)
-                    self.assertIn("at age 38", edit.call_args.args[1])
-                    # Now FM Face's saved full-size face is the starting point.
-                    edit.return_value = PNG_SIGNATURE + b"second update"
-                    with update(game_picture) as response:
-                        self.assertTrue(json.load(response)["ok"])
-                    self.assertEqual(edit.call_args.args[2], PNG_SIGNATURE + b"first update")
-                    generate.assert_not_called()
-                self.assertEqual((Path(tmp) / "7458500.png").read_bytes(), PNG_SIGNATURE + b"second update")
-                with patch("fmface.edit_png") as edit:
-                    with self.assertRaises(urllib.error.HTTPError) as invalid:
-                        update(b"GIF89a not a png")
-                    self.assertEqual(invalid.exception.code, 400)
-                    edit.assert_not_called()
-            finally:
-                server.shutdown()
-                server.server_close()
-                worker.join(timeout=3)
-                FaceHandler.env, FaceHandler.reload_env = prior_env, prior_reload
 
     def test_web_page_renders_without_api_key(self):
         from io import BytesIO

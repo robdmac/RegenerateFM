@@ -19,11 +19,14 @@ PUBLIC_FILES = (
     "install_service.py",
     "make_release.py",
     "hotreload/FMFaceHotReload.cs",
+    "hotreload/FaceGenerator.cs",
     "hotreload/FMFaceHotReload.csproj",
     "hotreload/README.md",
     "fm24/README.md",
     "fm24/requirements.txt",
     "fm24/build_skin.py",
+    "fm24/build_exe.py",
+    "fm24/requirements-exe.txt",
     "fm24/companion.py",
     "fm24/companion_client.py",
     "fm24/existing_portrait.py",
@@ -55,6 +58,9 @@ PUBLIC_FILES = (
     "tests/test_fm24_native_menu.py",
     "tests/test_fm24_native_squad.py",
     "tests/test_fmface.py",
+    "tests/test_fm26_generator.py",
+    "tests/fm26_generator/GeneratorCheck.csproj",
+    "tests/fm26_generator/Program.cs",
     "hotreload/bin/Release/net6.0/FMFaceHotReload.dll",
 )
 
@@ -69,11 +75,21 @@ def main() -> None:
     missing = [name for name in PUBLIC_FILES if not (ROOT / name).is_file()]
     if missing:
         raise SystemExit("Release files are missing: " + ", ".join(missing))
+    # The packaged FM24 companion (fm24/build_exe.py), when it has been built.
+    companion = ROOT / "dist" / "fmface-fm24"
+    packaged = sorted(path for path in companion.rglob("*") if path.is_file()) if companion.is_dir() else []
+    if packaged and not (companion / "fmface-fm24.exe").is_file():
+        raise SystemExit("dist/fmface-fm24 has no fmface-fm24.exe; rebuild it with fm24/build_exe.py.")
+    if any(path.name in (".env", ".fm24-auth") for path in packaged):
+        raise SystemExit("dist/fmface-fm24 holds a private .env or .fm24-auth; remove it first.")
     target.parent.mkdir(exist_ok=True)
     with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for name in PUBLIC_FILES:
             archive.write(ROOT / name, f"fmface-{version}/{name}")
-    print(f"Created {target} with {len(PUBLIC_FILES)} public files")
+        for path in packaged:
+            archive.write(path, f"fmface-{version}/fmface-fm24/{path.relative_to(companion).as_posix()}")
+    note = f" and the {len(packaged)}-file FM24 companion" if packaged else " (FM24 companion not built)"
+    print(f"Created {target} with {len(PUBLIC_FILES)} public files{note}")
 
 
 if __name__ == "__main__":

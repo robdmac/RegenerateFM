@@ -23,7 +23,7 @@ if sys.platform != "win32" and not sys.platform.startswith("linux"):
              "of FM24 is a separate program that the FM Face DLL and memory reader do not support.")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from fmface import check_graphics_config, edit_png, generate_png, load_env, profile_prompt, update_prompt
+from fmface import ROOT, check_graphics_config, edit_png, generate_png, load_env, profile_prompt, update_prompt
 from existing_portrait import find_existing_portrait, game_dir_from_process, has_existing_portrait
 from graphics import save_versioned_portrait
 from live_memory import MemoryUnavailable, find_game_pid
@@ -333,10 +333,25 @@ again.onclick=()=>{{sessionStorage.removeItem('fmface-fm24-ran');location.reload
                 type(self).in_flight = False
 
 
+def _default_graphics_dir() -> Path | None:
+    """FM24's user-data graphics/fmface folder on Windows (Documents may be redirected)."""
+    if sys.platform != "win32":
+        return None
+    import ctypes
+    buffer = ctypes.create_unicode_buffer(260)
+    if ctypes.windll.shell32.SHGetFolderPathW(None, 5, None, 0, buffer) != 0:  # CSIDL_PERSONAL
+        return None
+    return Path(buffer.value) / "Sports Interactive" / "Football Manager 2024" / "graphics" / "fmface"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--auth-file", type=Path, required=True)
-    parser.add_argument("--graphics-dir", type=Path, required=True)
+    parser.add_argument("--auth-file", type=Path, default=ROOT / ".fm24-auth",
+                        help="the token file build_skin.py wrote (default: .fm24-auth beside FM Face)")
+    default_graphics = _default_graphics_dir()
+    parser.add_argument("--graphics-dir", type=Path, default=default_graphics, required=default_graphics is None,
+                        help="FM24's user-data graphics/fmface folder" +
+                             (f" (default: {default_graphics})" if default_graphics else ""))
     parser.add_argument("--port", type=int, default=8768)
     # Accepted for old scripts; the native menu is the only mode.
     parser.add_argument("--native-menu", action="store_true", help=argparse.SUPPRESS)
@@ -345,10 +360,16 @@ def main() -> None:
     args = parser.parse_args()
     if not 1024 <= args.native_port <= 65534:
         parser.error("--native-port must be between 1024 and 65534")
-    token = args.auth_file.read_text(encoding="ascii").strip()
+    try:
+        token = args.auth_file.read_text(encoding="ascii").strip()
+    except (OSError, UnicodeError) as exc:
+        parser.error(f"Could not read the FM24 token file {args.auth_file} ({exc}). "
+                     "fm24/build_skin.py writes it when it builds the FM Face skin.")
     if len(token) < 40:
         parser.error("Invalid FM24 callback token file.")
     graphics_dir = args.graphics_dir.expanduser().resolve()
+    if args.graphics_dir == default_graphics and graphics_dir.parent.is_dir():
+        graphics_dir.mkdir(exist_ok=True)
     if not graphics_dir.is_dir() or graphics_dir.name != "fmface" or graphics_dir.parent.name != "graphics" or graphics_dir.parent.parent.name != "Football Manager 2024":
         parser.error("--graphics-dir must be the existing Football Manager 2024/graphics/fmface directory")
     Handler.token = token
@@ -375,5 +396,25 @@ def main() -> None:
     server.serve_forever()
 
 
+def _main_packaged() -> None:
+    """A double-clicked companion.exe closes its window on exit; keep errors readable."""
+    def pause():
+        try:
+            input("Press Enter to close.")
+        except (EOFError, OSError):
+            pass
+    try:
+        main()
+    except SystemExit as exc:
+        if exc.code not in (None, 0):
+            pause()
+        raise
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        pause()
+        raise SystemExit(1)
+
+
 if __name__ == "__main__":
-    main()
+    _main_packaged() if getattr(sys, "frozen", False) else main()

@@ -46,7 +46,7 @@ If anything can't be verified, the request is refused before any image is reques
    ```
 
    The builder creates a private local token and refuses to overwrite an existing skin. Keep `.fm24-auth` private.
-5. Copy `.env.example` to `.env` and set `OPENAI_API_KEY` there. Keep the file private (`chmod 600 .env`). Each generated or updated face is one billed image API request. If you don't have a key yet, follow [Get an OpenAI API key](../README.md#1-get-an-openai-api-key). The FM24 companion uses the graphics path passed on its command line; `FM_GRAPHICS_DIR` in `.env` is for the main web app and FM26.
+5. Copy `.env.example` to `.env` and set `OPENAI_API_KEY` there. Keep the file private (`chmod 600 .env`). Each generated or updated face is one billed image API request. If you don't have a key yet, follow [Get an OpenAI API key](../README.md#1-get-an-openai-api-key). The FM24 companion uses the graphics path passed on its command line; `FM_GRAPHICS_DIR` in `.env` is only for the web app and `import`.
 6. Install the [native DLL](native_menu/README.md) with FM24 closed and add its Steam launch option. In FM24 Preferences, select **FM Face** and enable screen IDs in the title. Then run:
 
    ```sh
@@ -54,6 +54,31 @@ If anything can't be verified, the request is refused before any image is reques
      --auth-file .fm24-auth \
      --graphics-dir '/path/to/Football Manager 2024/graphics/fmface'
    ```
+
+## Packaged companion for Windows
+
+`fmface-fm24.exe` is the same companion packaged with Python, Pillow and zstandard, so players don't need to install Python to run it.
+
+**Using it:**
+1. Put `.env` (with `OPENAI_API_KEY`) and `.fm24-auth` beside `fmface-fm24.exe`.
+2. Start FM24, then double-click the exe.
+
+**Defaults:** with no arguments it reads `.fm24-auth` from its own folder. It finds `Documents\Sports Interactive\Football Manager 2024\graphics\fmface` itself, and creates it if FM24's user-data folder exists. The same options as above (`--graphics-dir`, `--preview-only` and so on) still work. If it stops with an error, the window stays open until you press Enter.
+
+**Building it:** run `fm24/build_exe.py` with a Windows Python 3.11 that has `fm24/requirements-exe.txt` installed. On Linux, a Windows Python under Wine works:
+
+```sh
+wine python.exe -m pip install -r fm24/requirements-exe.txt
+wine python.exe fm24/build_exe.py
+```
+
+The output is the folder `dist/fmface-fm24/`, about 30 MB, which `make_release.py` adds to the release ZIP. It's a folder rather than one file because one-file packages unpack themselves on every start, which is slower and more often flagged by antivirus software.
+
+**Note on antivirus:** a program that reads another program's memory can still be flagged. Signing the exe would reduce that.
+
+**Testing it under Proton:** the exe has been run under Wine in FM24's Proton prefix. Start it with `WINEFSYNC=1` (Proton's wineserver uses fsync) and pipe its output (`| cat`); under Wine, redirecting it straight to a file fails to set up its output streams.
+
+Setup steps 2–4 (building the skin) and installing the DLL still need Python and MinGW once, as above.
 
 ## Use
 
