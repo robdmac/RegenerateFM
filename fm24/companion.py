@@ -125,7 +125,7 @@ def face_exists(handler, person_id: str) -> bool:
             handler.game_dir = game_dir_from_process(find_game_pid())
         except (MemoryUnavailable, OSError, ValueError):
             pass
-    # The DLL waits at most 100 ms, so the game archive is indexed in the
+    # The DLL waits at most 30 ms, so the game archive is indexed in the
     # background on first use; until then there is no answer.
     return has_existing_portrait(person_id, handler.graphics_dir, handler.game_dir, wait=False)
 

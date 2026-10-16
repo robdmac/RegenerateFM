@@ -257,9 +257,16 @@ the rows. The DLL then:
   `FMFACE24F 1 <serial> <person> <token>` on the bridge port; the reply is
   `FMFACE24F <serial> yes|no`. On `no` it sets the `FMFU` row's `disa`
   property, which FM24 draws greyed out and ignores clicks on; on `yes` it
-  clears it. The UI thread waits at most 100 ms. Without an answer (no
+  clears it. The UI thread waits at most 30 ms. Without an answer (no
   companion, an older companion, a failed check) the row stays enabled and
-  the companion refuses an update without a face, as before. The companion
+  the companion refuses an update without a face, as before. After an
+  unanswered check the DLL stops waiting: Wine reports nothing for a closed
+  loopback port, so without a companion every menu would otherwise pause
+  30 ms. It still sends each check, and the first reply, even a late one,
+  makes it wait again. The check uses an unconnected socket and accepts
+  replies only from the bridge port: under Wine a connected UDP socket that
+  once met the closed port (FM24 started before the companion) stopped
+  waking `select` for every other reply. The companion
   answers from `has_existing_portrait`, which follows the same config.xml
   mappings as **Update face** without decoding any picture: parsed configs
   are cached until the file changes, and other graphics folders are walked
@@ -267,8 +274,13 @@ the rows. The DLL then:
   to index, so that runs in the background on the first check (or at
   companion start if FM24 is running), and until it finishes there is no
   answer. `fmface24.log` records each check
-  (`FMFACE24_POPUP` or `FMFACE24_OVERVIEW_MENU`, the person, the answer and
-  the time taken).
+  (`FMFACE24_POPUP` or `FMFACE24_OVERVIEW_MENU`, the person, the answer, and
+  the microseconds spent reading the ID and waiting for the answer). Measured
+  on 2026-10-16: the ID read takes 1–2 ms and the answer about 0.5 ms (8 ms
+  for the first check after FM24 starts), so a menu opens about 2–3 ms later
+  than without FM Face. Without a companion the first menu pauses 30 ms and
+  later ones about 0.2 ms; after the companion starts, one check goes
+  unanswered and the rest are answered in about 0.3 ms.
 
 ## Validated route
 

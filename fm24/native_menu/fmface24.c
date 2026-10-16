@@ -763,13 +763,13 @@ static SOCKET open_bridge(void)
    widget), and greys out Update face, in that menu and in the portrait
    popup, when the companion says the person shown has no face: FM24 greys a
    row whose 'disa' property is true and ignores clicks on it. Without an
-   answer within 100 ms the row stays enabled, and the companion refuses an
+   answer within 30 ms the row stays enabled, and the companion refuses an
    update without a face as before. */
 #define POPUP_ROOT_ITEM 0x4f8
 #define ITEM_PROPERTIES 0x08
 #define ITEM_CHILDREN   0x38
 #define MAX_POPUP_ROWS  16
-#define FACE_TIMEOUT_MS 100
+#define FACE_TIMEOUT_MS 30
 
 /* The fourcc code of an item's property; 0 if absent or unreadable. */
 static unsigned int item_fourcc(const unsigned char *item, unsigned int key)
@@ -791,6 +791,26 @@ static unsigned int item_fourcc(const unsigned char *item, unsigned int key)
 static SOCKET face_socket = INVALID_SOCKET;
 static BOOL face_network;
 static LONG face_serial;
+/* Set after a check goes unanswered: Wine reports no error for a closed
+   loopback port, so without a companion every menu would wait the full
+   timeout. While quiet the DLL still sends each check but doesn't wait; any
+   reply, even a late one to an earlier check, shows the companion is
+   answering and ends it. */
+static BOOL face_quiet;
+
+/* Unlike the click bridge's, this socket is not connected: under Wine a
+   connected UDP socket that once met a closed port (no companion yet) stops
+   waking select for every other reply, so later checks timed out. Replies
+   are accepted only from the bridge port on loopback. */
+static struct sockaddr_in face_destination(void)
+{
+    struct sockaddr_in destination;
+    memset(&destination, 0, sizeof(destination));
+    destination.sin_family = AF_INET;
+    destination.sin_port = htons(bridge_port);
+    destination.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    return destination;
+}
 
 /* UI thread only. 1 if the companion says the person has a face, 0 if not,
    -1 without an answer. "FMFACE24F 1 <serial> <person> <token>" goes to the
@@ -802,31 +822,41 @@ static int query_face(LONG person)
         if (WSAStartup(MAKEWORD(2,2), &data)) return -1;
         face_network = TRUE;
     }
-    if (face_socket == INVALID_SOCKET && (face_socket = open_bridge()) == INVALID_SOCKET) return -1;
+    if (face_socket == INVALID_SOCKET && (face_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == INVALID_SOCKET)
+        return -1;
+    struct sockaddr_in destination = face_destination(), source;
     LONG serial = ++face_serial;
     char packet[256], yes[48], no[48];
     int count = snprintf(packet, sizeof(packet), "FMFACE24F 1 %ld %ld %s", (long)serial, (long)person, bridge_token);
     snprintf(yes, sizeof(yes), "FMFACE24F %ld yes", (long)serial);
     snprintf(no, sizeof(no), "FMFACE24F %ld no", (long)serial);
-    if (send(face_socket, packet, count, 0) != count) goto failed;
-    ULONGLONG deadline = GetTickCount64() + FACE_TIMEOUT_MS;
+    if (sendto(face_socket, packet, count, 0, (struct sockaddr *)&destination, sizeof(destination)) != count)
+        goto failed;
+    ULONGLONG deadline = GetTickCount64() + (face_quiet ? 0 : FACE_TIMEOUT_MS);
     for (;;) {
         ULONGLONG now = GetTickCount64();
-        if (now >= deadline) return -1;
         fd_set readable;
         FD_ZERO(&readable);
         FD_SET(face_socket, &readable);
-        struct timeval wait = {0, (long)(deadline - now) * 1000};
+        struct timeval wait = {0, now < deadline ? (long)(deadline - now) * 1000 : 0};
         int ready = select(0, &readable, NULL, NULL, &wait);
         if (ready == SOCKET_ERROR) goto failed;
-        if (!ready) return -1;
+        if (!ready) { face_quiet = TRUE; return -1; }
         char reply[64];
-        int received = recv(face_socket, reply, sizeof(reply) - 1, 0);
+        int length = sizeof(source);
+        int received = recvfrom(face_socket, reply, sizeof(reply) - 1, 0, (struct sockaddr *)&source, &length);
         if (received <= 0) {
-            if (WSAGetLastError() == WSAECONNRESET) return -1;  /* No companion listening. */
+            if (WSAGetLastError() == WSAECONNRESET) { face_quiet = TRUE; return -1; }  /* No companion listening. */
             goto failed;
         }
         reply[received] = 0;
+        if (length != sizeof(source) || source.sin_port != destination.sin_port ||
+            source.sin_addr.s_addr != destination.sin_addr.s_addr || strncmp(reply, "FMFACE24F ", 10))
+            continue;
+        if (face_quiet) {  /* The companion is answering again: wait for this check. */
+            face_quiet = FALSE;
+            deadline = GetTickCount64() + FACE_TIMEOUT_MS;
+        }
         if (!strcmp(reply, yes)) return 1;
         if (!strcmp(reply, no)) return 0;
     }
@@ -925,14 +955,18 @@ static void popup_opened(void *manager, void *event)
     for (int i = 0; i < count; ++i)
         if (item_fourcc(rows[i], SKIN_ID('i','d',' ',' ')) == UPDATE_ITEM) update = rows[i];
     if (!update) return;
-    ULONGLONG started = GetTickCount64();
+    LARGE_INTEGER f, t0, t1, t2;
+    QueryPerformanceFrequency(&f); QueryPerformanceCounter(&t0);
     LONG person = popup_person_id(manager, popup);
+    QueryPerformanceCounter(&t1);
     int face = person ? query_face(person) : -1;
+    QueryPerformanceCounter(&t2);
     set_flag(update + ITEM_PROPERTIES, SKIN_ID('d','i','s','a'), face == 0);
-    char line[128];
-    snprintf(line, sizeof(line), "FMFACE24_%s person=%ld face=%s ms=%ld",
+    char line[160];
+    snprintf(line, sizeof(line), "FMFACE24_%s person=%ld face=%s id_us=%lld query_us=%lld",
              popup_id == SKIN_ID('P','p','r','f') ? "OVERVIEW_MENU" : "POPUP", (long)person,
-             face == 1 ? "yes" : face == 0 ? "no" : "unknown", (long)(GetTickCount64() - started));
+             face == 1 ? "yes" : face == 0 ? "no" : "unknown",
+             (t1.QuadPart - t0.QuadPart) * 1000000 / f.QuadPart, (t2.QuadPart - t1.QuadPart) * 1000000 / f.QuadPart);
     log_line(line);
 }
 
@@ -1043,7 +1077,7 @@ static DWORD WINAPI bridge_worker(LPVOID unused)
             socket_fd = INVALID_SOCKET;
         }
         log_line("FMFACE24_COMPANION_UNAVAILABLE");
-        show_message(L"The FM24 Face companion is unavailable. Start it with --native-menu and try again.");
+        show_message(L"The FM Face companion isn't running. Start fm24/companion.py and try again.");
     }
     if (socket_fd != INVALID_SOCKET) closesocket(socket_fd);
     if (network) WSACleanup();

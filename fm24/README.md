@@ -65,7 +65,7 @@ Leave the companion running while you play; the menus work only while it runs.
   - a facepack picture from your graphics folder
   - FM24's bundled squad photo, read from `data/game/graphics.fmf` with its mask as transparency
 
-  For a person with no face, **Update face** is greyed out in both menus (the companion answers the DLL's check as the menu opens). If the companion doesn't answer within 100 ms the item stays enabled, and the companion refuses before making any request. OpenAI refuses to edit real photos of very famous people (Lionel Messi was refused); lesser-known players' photos and generated faces work.
+  For a person with no face, **Update face** is greyed out in both menus (the companion answers the DLL's check as the menu opens). If the companion doesn't answer within 30 ms the item stays enabled, and the companion refuses before making any request. OpenAI refuses to edit real photos of very famous people (Lionel Messi was refused); lesser-known players' photos and generated faces work.
 - **Generate missing squad faces…:** on the Squad screen, choose it from the **Overview** menu.
   - It reads every row from memory, including rows FM24 hasn't drawn, and asks in an FM24 dialog before any request.
   - It then generates and reloads one face at a time. Choose **Stop after this face** to end after the current one.
