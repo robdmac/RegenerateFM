@@ -32,6 +32,9 @@
     "stringFreeRva": "0x192e8a0",
     "valueFourccRva": "0x197d3d0"
   },
+  "profileMenu": {
+    "overviewTabVtableRva": "0x5679168"
+  },
   "dialog": {
     "showQueryRva": "0x10bfcc0",
     "recordInitRva": "0x1973210",

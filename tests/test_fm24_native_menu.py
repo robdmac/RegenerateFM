@@ -224,6 +224,34 @@ class NativeBridgeTests(unittest.TestCase):
             with self.assertRaises(socket.timeout):
                 bridge.reply()
 
+    def test_face_check_answers_for_the_popup(self):
+        asked = []
+        bridge = Bridge(self, has_face=lambda person: asked.append(person) or person == "123")
+        for serial, person, answer in ((1, "123", b"FMFACE24F 1 yes"), (2, "456", b"FMFACE24F 2 no")):
+            bridge.client.sendto(f"FMFACE24F 1 {serial} {person} {KEY}".encode(), bridge.address)
+            self.assertEqual(bridge.reply(), answer)
+        for packet in ("FMFACE24F 1 3 123 incorrect", f"FMFACE24F 2 3 123 {KEY}", f"FMFACE24F 1 3 ../1 {KEY}",
+                       f"FMFACE24F 1 3 123 {KEY} extra"):
+            bridge.client.sendto(packet.encode(), bridge.address)
+            with self.assertRaises(socket.timeout):
+                bridge.reply()
+        self.assertEqual(asked, ["123", "456"])
+        # Clicks still work on the same port.
+        with patch.object(native_listener, "run_native_squad_batch"):
+            bridge.send(1, action="squad")
+            self.assertEqual(bridge.reply(), b"FMFACE24 ACK 1 accepted")
+
+    def test_failed_face_check_sends_no_answer(self):
+        # The DLL then leaves "Update face" enabled; the update is refused later.
+        bridge = Bridge(self, has_face=lambda person: (_ for _ in ()).throw(OSError("unreadable")))
+        bridge.client.sendto(f"FMFACE24F 1 1 123 {KEY}".encode(), bridge.address)
+        with self.assertRaises(socket.timeout):
+            bridge.reply()
+        no_check = Bridge(self)
+        no_check.client.sendto(f"FMFACE24F 1 1 123 {KEY}".encode(), no_check.address)
+        with self.assertRaises(socket.timeout):
+            no_check.reply()
+
     def test_occupied_bridge_port_is_a_clear_startup_error(self):
         holder = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         holder.bind(("127.0.0.1", 0))
@@ -232,6 +260,35 @@ class NativeBridgeTests(unittest.TestCase):
                 native_listener.start_native_listener(1, holder.getsockname()[1], KEY, None)
         finally:
             holder.close()
+
+
+class NativeDllSourceTests(unittest.TestCase):
+    """The DLL source against the build data and the companion's protocol."""
+
+    source = (Path(__file__).resolve().parents[1] / "fm24" / "native_menu" / "fmface24.c").read_text()
+
+    def test_every_game_address_comes_from_the_supported_build(self):
+        supported = json.loads((Path(install.__file__).with_name("supported_build.json")).read_text())
+        generated = set()
+        for group, prefix in (("skinReload", "RELOAD_"), ("squadMenu", "SQUAD_MENU_"), ("dialog", "DIALOG_"),
+                              ("profileMenu", "PROFILE_MENU_")):
+            for key in supported[group]:
+                generated.add(prefix + "".join("_" + c if c.isupper() else c.upper() for c in key))
+        import re
+        used = set(re.findall(r"\b((?:RELOAD|SQUAD_MENU|DIALOG|PROFILE_MENU)_[A-Z_]+_(?:RVA|OFFSET))\b", self.source))
+        self.assertIn("PROFILE_MENU_OVERVIEW_TAB_VTABLE_RVA", used)
+        self.assertLessEqual(used, generated)
+        build = (Path(install.__file__).with_name("build.py")).read_text()
+        self.assertIn('("profileMenu", "PROFILE_MENU_")', build)
+
+    def test_clicks_name_the_game_run_not_the_reused_process_id(self):
+        self.assertIn('(unsigned long long)bridge_instance, (long)serial', self.source)
+        self.assertNotIn("GetCurrentProcessId()", self.source)
+
+    def test_face_check_packets_match_the_listener(self):
+        self.assertIn('"FMFACE24F 1 %ld %ld %s", (long)serial, (long)person, bridge_token', self.source)
+        self.assertIn('"FMFACE24F %ld yes"', self.source)
+        self.assertIn('"FMFACE24F %ld no"', self.source)
 
 
 class NativeSkinTests(unittest.TestCase):

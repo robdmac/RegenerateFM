@@ -12,6 +12,7 @@ from __future__ import annotations
 import io
 import os
 import threading
+import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -137,6 +138,93 @@ def find_existing_portrait(person_id: str, graphics_dir: Path, game_dir: Path | 
     if found is None and game_dir is not None:
         found = _bundled_portrait(game_dir, person_id)
     return found
+
+
+# For "has this person a face?" while FM24's portrait menu opens: parsed
+# configs are kept until the file changes, and the folder walk for configs
+# outside FM Face's own folder is repeated at most every CONFIG_RESCAN seconds.
+CONFIG_RESCAN = 30.0
+_index_lock = threading.Lock()
+_config_folders: dict[Path, tuple[float, list[Path]]] = {}
+_config_people: dict[Path, tuple[tuple[int, int], dict[str, list[str]]]] = {}
+
+
+def _people(config: Path) -> dict[str, list[str]]:
+    """Person ID -> mapped file stems for one config.xml (cached by mtime and size)."""
+    stat = config.stat()
+    key = (stat.st_mtime_ns, stat.st_size)
+    cached = _config_people.get(config)
+    if cached and cached[0] == key:
+        return cached[1]
+    people: dict[str, list[str]] = {}
+    if stat.st_size <= MAX_CONFIG:
+        try:
+            root = ET.fromstring(config.read_bytes())
+        except ET.ParseError:
+            root = None
+        prefix = "graphics/pictures/person/"
+        for record in root.iter("record") if root is not None else ():
+            target = (record.get("to") or "").strip().replace("\\", "/").casefold()
+            stem = record.get("from")
+            if stem and target.startswith(prefix) and target.endswith("/portrait"):
+                people.setdefault(target[len(prefix):-len("/portrait")].removeprefix("r-"), []).append(stem)
+    _config_people[config] = (key, people)
+    return people
+
+
+def _configs(graphics_root: Path, preferred: Path, now: float) -> list[Path]:
+    cached = _config_folders.get(graphics_root)
+    if cached is None or now - cached[0] > CONFIG_RESCAN:
+        found = []
+        for folder, directories, files in os.walk(graphics_root):
+            directories.sort()
+            if "config.xml" in files and Path(folder) != preferred:
+                found.append(Path(folder) / "config.xml")
+        cached = _config_folders[graphics_root] = (now, found)
+    return [preferred / "config.xml", *cached[1]]
+
+
+def _bundled_ready(archive: Path) -> bool:
+    """Whether the archive's index is built; if not, build it in the background."""
+    try:
+        key = (str(archive), archive.stat().st_mtime_ns)
+    except OSError:
+        return True  # No archive: nothing to wait for.
+    with _bundled_lock:
+        if key in _bundled:
+            return True
+    threading.Thread(target=lambda: _bundled_index(archive), daemon=True).start()
+    return False
+
+
+def has_existing_portrait(person_id: str, graphics_dir: Path, game_dir: Path | None, *, clock=time.monotonic,
+                          wait=True) -> bool:
+    """Whether find_existing_portrait would find a portrait, without decoding it.
+
+    With ``wait=False`` a game archive whose index isn't built yet (about half
+    a second) raises RuntimeError at once and is indexed in the background."""
+    person_id = validate_id(person_id)
+    with _index_lock:
+        for config in _configs(graphics_dir.parent, graphics_dir, clock()):
+            try:
+                stems = _people(config).get(person_id, ())
+                for stem in stems:
+                    for suffix in IMAGE_SUFFIXES:
+                        path = config.parent / (stem + suffix)
+                        if path.is_file() and path.stat().st_size <= MAX_IMAGE:
+                            return True
+            except OSError:
+                continue
+    if game_dir is None:
+        return False
+    archive = game_dir / "data" / "game" / "graphics.fmf"
+    if not archive.is_file():
+        return False
+    if not wait and not _bundled_ready(archive):
+        raise RuntimeError("FM24's bundled pictures are still being indexed.")
+    entries, mapped = _bundled_index(archive)
+    stem = mapped.get(person_id)
+    return stem is not None and any(stem + suffix in entries for suffix in IMAGE_SUFFIXES)
 
 
 def game_dir_from_process(pid: int) -> Path | None:

@@ -24,7 +24,7 @@ if sys.platform != "win32" and not sys.platform.startswith("linux"):
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from fmface import check_graphics_config, edit_png, generate_png, load_env, profile_prompt, update_prompt
-from existing_portrait import find_existing_portrait, game_dir_from_process
+from existing_portrait import find_existing_portrait, game_dir_from_process, has_existing_portrait
 from graphics import save_versioned_portrait
 from live_memory import MemoryUnavailable, find_game_pid
 from native_profile import read_open_profile, reread_profile
@@ -116,6 +116,25 @@ def existing_portrait(handler, person_id: str, name: str) -> tuple[bytes, str]:
         raise ValueError(f"{name} has no face to update yet. Choose Generate new face instead; "
                          "no image request was made.")
     return found
+
+
+def face_exists(handler, person_id: str) -> bool:
+    """Whether "Update face" has a portrait to start from (for the DLL's popup)."""
+    if handler.game_dir is None:
+        try:
+            handler.game_dir = game_dir_from_process(find_game_pid())
+        except (MemoryUnavailable, OSError, ValueError):
+            pass
+    # The DLL waits at most 100 ms, so the game archive is indexed in the
+    # background on first use; until then there is no answer.
+    return has_existing_portrait(person_id, handler.graphics_dir, handler.game_dir, wait=False)
+
+
+def _quietly(function, *args) -> None:
+    try:
+        function(*args)
+    except (OSError, ValueError, RuntimeError):
+        pass
 
 
 def reload_portrait(handler) -> None:
@@ -344,9 +363,13 @@ def main() -> None:
                        "Is another companion already running?\n")
     from native_listener import start_native_listener
     try:
-        start_native_listener(args.port, args.native_port, token, Handler, generate=generate_for_profile)
+        start_native_listener(args.port, args.native_port, token, Handler, generate=generate_for_profile,
+                              has_face=lambda person_id: face_exists(Handler, person_id))
     except RuntimeError as exc:
         parser.exit(1, f"{exc}\n")
+    # Index the portraits now, so the first popup's face check is quick (the
+    # game archive only if FM24 is already running).
+    threading.Thread(target=lambda: _quietly(face_exists, Handler, "1"), daemon=True).start()
     print(f"FM24 companion listening on 127.0.0.1:{args.port} "
           f"({'preview' if args.preview_only else 'generation'} mode)", flush=True)
     server.serve_forever()

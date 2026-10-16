@@ -32,11 +32,13 @@
 
 ## Later
 
-- **FM24 Update face:** grey the row out when there is no face. The skin popup
-  has no per-row enabled state, so the DLL would have to change it when the
-  popup opens.
-- **FM24 Overview dropdown item:** add Generate and Update face to the player
-  Overview dropdown (code-generated; needs DLL work like the Squad menu item).
+- **FM24 Update face greyed out:** done (2026-10-16). The DLL asks the
+  companion as the menu opens and sets the row's `disa` property.
+- **FM24 Overview tab menu items:** done (2026-10-16). Generate new face and
+  Update face are appended to player and staff Overview tab menus.
+- **FM24 staff at a reserve team:** a staff member contracted to a reserve
+  team (Federico Higuaín, Inter Miami II) fails with "Invalid FM24 club
+  object." The contract's club pointer is not a club record there.
 - **FM26 Actions menu timing:** done (2026-10-16). The items are added as soon
   as the profile header exists and the ID is read on click.
 - **Release build:** done (2026-10-16). Plugin version 0.8.0 was rebuilt into

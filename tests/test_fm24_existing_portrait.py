@@ -4,6 +4,7 @@ import io
 import struct
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -85,6 +86,8 @@ class ExistingPortraitTests(unittest.TestCase):
             club + "lionel messi_[mask].png": masked.getvalue(),
         })
         existing_portrait._bundled.clear()
+        existing_portrait._config_folders.clear()
+        existing_portrait._config_people.clear()
 
     def test_reads_files_from_an_archive(self):
         archive = self.game / "data" / "game" / "graphics.fmf"
@@ -122,6 +125,45 @@ class ExistingPortraitTests(unittest.TestCase):
         self.assertIsNone(existing_portrait.find_existing_portrait("7458500", self.fmface, None))
         with self.assertRaises(ValueError):
             existing_portrait.find_existing_portrait("../7458500", self.fmface, self.game)
+
+    def test_face_check_matches_the_lookup_without_decoding(self):
+        # The DLL greys out "Update face" on the portrait popup and Overview
+        # menu when this says no.
+        now = [0.0]
+        check = lambda person: existing_portrait.has_existing_portrait(person, self.fmface, self.game,
+                                                                      clock=lambda: now[0])
+        self.assertTrue(check("7458500"))
+        self.assertFalse(check("123"))
+        self.assertFalse(existing_portrait.has_existing_portrait("7458500", self.fmface, None, clock=lambda: now[0]))
+        # FM Face's own folder is read again as soon as its config changes.
+        (self.fmface / "config.xml").write_text(
+            '<record><list id="maps"><record from="123-0123456789abcdef" '
+            'to="graphics/pictures/person/r-123/portrait"/></list></record>')
+        self.assertFalse(check("123"))  # Mapped, but the picture is missing.
+        (self.fmface / "123-0123456789abcdef.png").write_bytes(image_bytes("RGBA", (0, 255, 0, 255), "PNG"))
+        self.assertTrue(check("123"))
+        self.assertIsNotNone(existing_portrait.find_existing_portrait("123", self.fmface, None))
+        # Another folder's config is found by the next walk.
+        facepack = self.graphics / "facepack"
+        facepack.mkdir()
+        (facepack / "config.xml").write_text(
+            '<record><list id="maps"><record from="kim" to="graphics/pictures/person/456/portrait"/>'
+            '</list></record>')
+        (facepack / "kim.jpg").write_bytes(image_bytes("RGB", (1, 2, 3), "JPEG"))
+        self.assertFalse(check("456"))
+        now[0] += existing_portrait.CONFIG_RESCAN + 1
+        self.assertTrue(check("456"))
+        with self.assertRaises(ValueError):
+            check("../456")
+
+    def test_face_check_does_not_wait_for_the_archive_index(self):
+        with self.assertRaisesRegex(RuntimeError, "indexed"):
+            existing_portrait.has_existing_portrait("7458500", self.fmface, self.game, wait=False)
+        for _ in range(100):
+            if existing_portrait._bundled:
+                break
+            time.sleep(.05)
+        self.assertTrue(existing_portrait.has_existing_portrait("7458500", self.fmface, self.game, wait=False))
 
 
 if __name__ == "__main__":

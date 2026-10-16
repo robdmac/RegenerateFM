@@ -32,6 +32,10 @@ Steps marked **billed** make one image API request each.
    arrow: expect "Generate new face was chosen for person X, but FM24 now
    shows person Y", with X the clicked person, and no preview. `fmface24.log`
    and the companion line must name the clicked person's ID.
+5b. On a player and a staff profile, open the **Overview** tab menu: it ends
+   with Generate new face and Update face. Each sends the preview for the
+   person shown. On a person with no face, Update face is greyed out in both
+   the portrait popup and the Overview menu, and clicking it does nothing.
 6. Squad → **Overview** menu → Generate missing squad faces… (last item): the
    scan runs and the confirmation shows the missing count. Cancel.
 7. The same item anywhere else FM24 shows **Export Team for Versus
@@ -593,8 +597,9 @@ through it yet.
 - [x] FM26: `ImageConversion.EncodeToPNG` fails in the IL2CPP interop layer
       ("Instances of abstract classes cannot be created"), so the plugin
       reads the pixels back and encodes the PNG itself.
-- [ ] FM24's skin popup cannot grey out a row. For a person with no face, the
-      companion refuses before any request.
+- [x] FM24's Update face row is now greyed out for a person with no face
+      (see "FM24 profile menus" below). Without the companion's answer the
+      row stays enabled and the companion refuses before any request.
 - [ ] Billed update requests in both games, checking likeness and that the
       kit and age change.
 
@@ -801,3 +806,39 @@ The FM24 companion now requires the native DLL and has no X11 code.
       opened 0.6 s after Craig MacGillivray's profile showed both items, and
       Update face sent the update prompt (age 32, MK Dons kit) with his
       173×250 photo.
+
+## FM24 profile menus: 2026-10-16
+
+All checks ran live in FM24 24.4.2 with a `--preview-only` companion. No API
+requests were made.
+
+- [x] **Update face greyed out:** when a menu opens (`meop`), the DLL asks the
+      companion `FMFACE24F` whether the person has a face and sets the row's
+      `disa` property. Portrait popup: Edison Azcona (2000045863) and Ryan
+      Sailor (2000155624) showed `face=yes` with the row enabled. Federico
+      Higuaín (956737, staff, silhouette) showed `face=no` with the row greyed
+      out, and clicking it sent nothing.
+- [x] **Overview tab menu:** Generate new face and Update face are appended
+      below Follow, on the first opening. Azcona: Generate and Update sent
+      the profile and update previews (the update preview named his FM Face
+      portrait). Jorge Theiler (14008037, staff): Generate sent the staff
+      preview. Higuaín: Update face greyed out and ignored. Clicking the tab
+      label itself sends nothing. `fmface24.log` names the person for each.
+- [x] New pinned layout: popup root item `+0x4f8` with rows at `+0x38`, and
+      the Overview tab class vtable `0x5679168`
+      (`profileMenu.overviewTabVtableRva`).
+- [ ] Higuaín's Generate is refused: "Invalid FM24 club object." He is
+      contracted to the reserve team (Inter Miami II). This predates the menus.
+- [x] Fixed: after an FM24 restart, the first clicks could be ignored or
+      answered from the previous run. Wine reused the Windows process ID, so
+      the companion read serial 1 of the new run as a replay. Its cached
+      "accepted" was sent without starting anything (Azcona at 01:37), or a
+      lower serial was dropped and FM24 said the companion was unavailable
+      (01:48). Click packets now name the run by the DLL's start time in
+      milliseconds instead of the process ID.
+- [x] Face checks took 1–38 ms. One check timed out (102 ms, the row stayed
+      enabled): it was the first lookup needing FM24's bundled-picture index,
+      which takes about half a second to build. That index is now built in the
+      background, and the check sends no answer until it is ready. After a
+      companion restart with FM24 running, Higuaín's check answered `no` in
+      2 ms. Theiler's popup Update face sent the update preview.

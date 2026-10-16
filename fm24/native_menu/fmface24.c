@@ -16,6 +16,7 @@
 #define STAGE_EVENT   0x6368736bu /* chsk: one queued stage of a skin change */
 #define DIALOG_YES    0x464d4459u /* FMDY: FM Face dialog answered Yes or OK */
 #define DIALOG_NO     0x464d444eu /* FMDN: FM Face dialog answered No */
+#define MENU_OPEN     0x6d656f70u /* meop: a popup menu opened; posted to the popup button's parent */
 
 extern void *fmface_exports[];
 extern const char *fmface_export_names[];
@@ -32,6 +33,10 @@ static volatile LONG sequence;
 static SRWLOCK pending_lock = SRWLOCK_INIT;
 static struct { unsigned int event, item; LONG64 click_ms; LONG person; LONG read_ms; } pending;
 static unsigned short bridge_port;
+/* Names this game run in click packets (the start time in milliseconds).
+   Wine reuses Windows process IDs, so after a restart a process ID alone
+   made the companion take serial 1 for a replay of the previous run's. */
+static LONG64 bridge_instance;
 static char bridge_token[129];
 static WCHAR log_path[MAX_PATH];
 static unsigned char *game_base;
@@ -170,20 +175,20 @@ static int widget_children(const unsigned char *object, unsigned char **children
 static unsigned char *search_children[MAX_CHILDREN];
 static unsigned char *search_stack[MAX_SEARCH];
 
-/* Reads the person ID shown in the open screen's header, starting from the
-   FM Face menu that was clicked. Runs on FM24's UI thread inside the menu
+/* Reads the person ID shown in the open screen's header, starting from FM
+   Face's portrait popup (the clicked menu's source widget). Runs on FM24's UI thread inside the menu
    callback, so the header cannot change to another screen while it is read.
    Every read is guarded, and any surprise (wrong source widget, no unique
    header or subtitle, no "(ID:n)") returns 0, which the companion refuses. */
-static LONG clicked_person_id(void *manager, void *event)
+static LONG popup_person_id(void *manager, unsigned char *popup)
 {
-    unsigned char *source, *object, *head = NULL, *subs = NULL;
-    if (!event || !read_pointer((unsigned char *)event + EVENT_SOURCE, &source)) return 0;
+    unsigned char *object, *head = NULL, *subs = NULL;
     unsigned int skin_id;
-    if (!widget_id(source, manager, &skin_id) ||
-        (skin_id != SKIN_ID('f','m','n','P') && skin_id != SKIN_ID('f','m','n','S')))
+    if (!widget_id(popup, manager, &skin_id) ||
+        (skin_id != SKIN_ID('f','m','n','P') && skin_id != SKIN_ID('f','m','n','S') &&
+         skin_id != SKIN_ID('P','p','r','f')))
         return 0;
-    object = source;
+    object = popup;
     for (int depth = 0; depth < 64 && !head && widget_id(object, manager, &skin_id); ++depth) {
         int count = widget_children(object, search_children, MAX_CHILDREN);
         for (int i = 0; i < count; ++i) {
@@ -232,12 +237,20 @@ static LONG clicked_person_id(void *manager, void *event)
     return value <= 0x7fffffffu ? (LONG)value : 0;
 }
 
-/* The portrait popup row that was chosen: FMFG (Generate new face) or FMFU
-   (Update face). FM24 posts the popup's select_event, FMFG, for every row and
-   names the row in the event's 'slct' property. An event keeps its properties
-   as a vector of {fourcc key, value pointer} at +0; a fourcc value holds its
-   code at +8. The 'slct' value must have the same type as the event's own
-   'evid' value, which is always FMFG here. Anything else returns 0. */
+static LONG clicked_person_id(void *manager, void *event)
+{
+    unsigned char *source;
+    if (!event || !read_pointer((unsigned char *)event + EVENT_SOURCE, &source)) return 0;
+    return popup_person_id(manager, source);
+}
+
+/* The row that was chosen: FMFG (Generate new face) or FMFU (Update face).
+   The portrait popup posts its select_event, FMFG, for every row and names
+   the row in the event's 'slct' property; a row FM Face adds to the Overview
+   tab menu sends its own ID as the event, with the same 'slct'. An event
+   keeps its properties as a vector of {fourcc key, value pointer} at +0; a
+   fourcc value holds its code at +8. The 'slct' value must have the same type
+   as the event's own 'evid' value. Anything else returns 0. */
 #define MAX_PROPERTIES 32
 static unsigned int selected_item(void *event)
 {
@@ -257,8 +270,10 @@ static unsigned int selected_item(void *event)
         else if (key == SKIN_ID('s','l','c','t')) slct_value = properties[i].value;
     }
     if (!read_game(evid_value, &evid, sizeof(evid)) || !read_game(slct_value, &slct, sizeof(slct)) ||
-        evid.code != PROFILE_EVENT || slct.type != evid.type)
+        (evid.code != PROFILE_EVENT && evid.code != UPDATE_ITEM) || slct.type != evid.type)
         return 0;
+    /* A row of the Overview tab menu sends its own ID as the event. */
+    if (evid.code == UPDATE_ITEM && slct.code != UPDATE_ITEM) return 0;
     return slct.code == PROFILE_EVENT || slct.code == UPDATE_ITEM ? slct.code : 0;
 }
 
@@ -628,10 +643,13 @@ static void perf_report(void)
 #define ORIGINAL_EVENT original_event
 #endif
 
+static void popup_opened(void *manager, void *event);
+
 static int handle_event(void *object, unsigned int id, void *event)
 {
-    if (id != PROFILE_EVENT && id != SQUAD_EVENT) {
+    if (id != PROFILE_EVENT && id != SQUAD_EVENT && id != UPDATE_ITEM) {
         if ((id == DIALOG_YES || id == DIALOG_NO) && dialog_tick(object, id)) return 1;
+        if (id == MENU_OPEN) popup_opened(object, event);
         int result = ORIGINAL_EVENT(object, id, event);
         if (id == IDLE_EVENT || id == SKIN_EVENT || id == STAGE_EVENT) reload_tick(object, id);
         if (id == IDLE_EVENT) dialog_tick(object, id);
@@ -643,9 +661,10 @@ static int handle_event(void *object, unsigned int id, void *event)
        profile is still that person, and refuses a command that arrives late. */
     LONG64 click_ms = unix_ms();
     ULONGLONG started = GetTickCount64();
-    LONG person = id == PROFILE_EVENT ? clicked_person_id(object, event) : 0;
-    unsigned int item = id == PROFILE_EVENT ? selected_item(event) : 0;
-    queue_click(id, item, click_ms, person, (LONG)(GetTickCount64() - started));
+    BOOL profile = id == PROFILE_EVENT || id == UPDATE_ITEM;
+    LONG person = profile ? clicked_person_id(object, event) : 0;
+    unsigned int item = profile ? selected_item(event) : 0;
+    queue_click(profile ? PROFILE_EVENT : id, item, click_ms, person, (LONG)(GetTickCount64() - started));
     return 1;
 }
 
@@ -735,6 +754,188 @@ static SOCKET open_bridge(void)
     return socket_fd;
 }
 
+/* Profile menus. A popup button keeps its rows as menu items: a root item
+   (popup + 0x4f8, whose 'id  ' is the popup's skin ID) holds them as a
+   vector of item pointers at +0x38, and each item keeps its properties, like
+   an event, at +8. When a menu opens, its popup posts meop to its parent
+   container, before FM24 draws the rows. The DLL then adds Generate new face
+   and Update face to a person profile's Overview tab menu (once per tab
+   widget), and greys out Update face, in that menu and in the portrait
+   popup, when the companion says the person shown has no face: FM24 greys a
+   row whose 'disa' property is true and ignores clicks on it. Without an
+   answer within 100 ms the row stays enabled, and the companion refuses an
+   update without a face as before. */
+#define POPUP_ROOT_ITEM 0x4f8
+#define ITEM_PROPERTIES 0x08
+#define ITEM_CHILDREN   0x38
+#define MAX_POPUP_ROWS  16
+#define FACE_TIMEOUT_MS 100
+
+/* The fourcc code of an item's property; 0 if absent or unreadable. */
+static unsigned int item_fourcc(const unsigned char *item, unsigned int key)
+{
+    unsigned char *range[2];
+    struct { unsigned long long key; unsigned char *value; } properties[MAX_PROPERTIES];
+    struct { void *type; unsigned int code, unused; } value;
+    if (!read_game(item + ITEM_PROPERTIES, range, sizeof(range)) || range[1] <= range[0] ||
+        (size_t)(range[1] - range[0]) > sizeof(properties) || (range[1] - range[0]) % sizeof(properties[0]) ||
+        !read_game(range[0], properties, (SIZE_T)(range[1] - range[0])))
+        return 0;
+    int count = (int)((range[1] - range[0]) / sizeof(properties[0]));
+    for (int i = 0; i < count; ++i)
+        if ((unsigned int)properties[i].key == key)
+            return read_game(properties[i].value, &value, sizeof(value)) ? value.code : 0;
+    return 0;
+}
+
+static SOCKET face_socket = INVALID_SOCKET;
+static BOOL face_network;
+static LONG face_serial;
+
+/* UI thread only. 1 if the companion says the person has a face, 0 if not,
+   -1 without an answer. "FMFACE24F 1 <serial> <person> <token>" goes to the
+   bridge port; the reply is "FMFACE24F <serial> <yes|no>". */
+static int query_face(LONG person)
+{
+    if (!face_network) {
+        WSADATA data;
+        if (WSAStartup(MAKEWORD(2,2), &data)) return -1;
+        face_network = TRUE;
+    }
+    if (face_socket == INVALID_SOCKET && (face_socket = open_bridge()) == INVALID_SOCKET) return -1;
+    LONG serial = ++face_serial;
+    char packet[256], yes[48], no[48];
+    int count = snprintf(packet, sizeof(packet), "FMFACE24F 1 %ld %ld %s", (long)serial, (long)person, bridge_token);
+    snprintf(yes, sizeof(yes), "FMFACE24F %ld yes", (long)serial);
+    snprintf(no, sizeof(no), "FMFACE24F %ld no", (long)serial);
+    if (send(face_socket, packet, count, 0) != count) goto failed;
+    ULONGLONG deadline = GetTickCount64() + FACE_TIMEOUT_MS;
+    for (;;) {
+        ULONGLONG now = GetTickCount64();
+        if (now >= deadline) return -1;
+        fd_set readable;
+        FD_ZERO(&readable);
+        FD_SET(face_socket, &readable);
+        struct timeval wait = {0, (long)(deadline - now) * 1000};
+        int ready = select(0, &readable, NULL, NULL, &wait);
+        if (ready == SOCKET_ERROR) goto failed;
+        if (!ready) return -1;
+        char reply[64];
+        int received = recv(face_socket, reply, sizeof(reply) - 1, 0);
+        if (received <= 0) {
+            if (WSAGetLastError() == WSAECONNRESET) return -1;  /* No companion listening. */
+            goto failed;
+        }
+        reply[received] = 0;
+        if (!strcmp(reply, yes)) return 1;
+        if (!strcmp(reply, no)) return 0;
+    }
+failed:
+    closesocket(face_socket);
+    face_socket = INVALID_SOCKET;
+    return -1;
+}
+
+/* The rows of a popup's menu; -1 unless the popup's root item names it. */
+static int popup_rows(unsigned char *popup, unsigned int popup_id, unsigned char **root, unsigned char **rows)
+{
+    unsigned char *range[2];
+    if (!read_pointer(popup + POPUP_ROOT_ITEM, root) || item_fourcc(*root, SKIN_ID('i','d',' ',' ')) != popup_id ||
+        !read_game(*root + ITEM_CHILDREN, range, sizeof(range)) || range[1] < range[0] ||
+        (size_t)(range[1] - range[0]) > MAX_POPUP_ROWS * sizeof(rows[0]) || (range[1] - range[0]) % sizeof(rows[0]) ||
+        (range[1] > range[0] && !read_game(range[0], rows, (SIZE_T)(range[1] - range[0]))))
+        return -1;
+    return (int)((range[1] - range[0]) / sizeof(rows[0]));
+}
+
+/* A person profile's Overview tab menu (FM24's 'Pprf' tab button, a popup
+   subclass) lists FM24's person actions (Set Nickname, Follow or Unfollow);
+   FM Face appends its two rows to it. */
+static BOOL person_overview(unsigned char **rows, int count)
+{
+    for (int i = 0; i < count; ++i) {
+        unsigned int id = item_fourcc(rows[i], SKIN_ID('i','d',' ',' '));
+        if (id == SKIN_ID('n','i','c','k') || id == SKIN_ID('S','U','B','S') || id == SKIN_ID('U','S','U','B'))
+            return TRUE;
+    }
+    return FALSE;
+}
+
+static void set_fourcc(void *record, unsigned int key, unsigned int code)
+{
+    unsigned char value[64] __attribute__((aligned(16))) = {0};
+    GAME_FUNCTION(fourcc_function, SQUAD_MENU_VALUE_FOURCC_RVA)(value, code);
+    GAME_FUNCTION(set_function, RELOAD_EVENT_SET_RVA)(record, key, value);
+    GAME_FUNCTION(value_function, RELOAD_VALUE_FREE_RVA)(value);
+}
+
+/* A row whose event (evid) is its ID. FM24 sends a chosen row's properties
+   as an event to the tab button, from where an event nobody handles reaches
+   the screen's handler like the portrait popup's. */
+static void add_menu_row(unsigned char *root, unsigned int id, const char *label)
+{
+    unsigned char text[16] __attribute__((aligned(16))) = {0};
+    void *item = NULL;
+    GAME_FUNCTION(string_init_function, SQUAD_MENU_STRING_INIT_RVA)(text, label, -1);
+    GAME_FUNCTION(item_new_function, SQUAD_MENU_ITEM_NEW_RVA)(root, &item, text, id,
+                                                             SKIN_ID('E','N','O','N'), SKIN_ID('N','U','L','L'));
+    GAME_FUNCTION(value_function, SQUAD_MENU_STRING_FREE_RVA)(text);
+    if (!item) return;
+    set_fourcc((unsigned char *)item + ITEM_PROPERTIES, SKIN_ID('i','d',' ',' '), id);
+    set_fourcc((unsigned char *)item + ITEM_PROPERTIES, SKIN_ID('e','v','i','d'), id);
+    /* Drop this function's reference; the root item holds its own. */
+    if (!InterlockedDecrement((volatile LONG *)((unsigned char *)item + 0x20)))
+        (*(release_function *)*(void **)item)(item, 1);
+}
+
+/* UI thread only, for every meop event: the source is the opened popup's
+   parent container. */
+static void popup_opened(void *manager, void *event)
+{
+    unsigned char *parent, *popup = NULL, *root = NULL, *rows[MAX_POPUP_ROWS], *update = NULL;
+    unsigned int skin_id, popup_id = 0;
+    int count = 0;
+    if (!event || !read_pointer((unsigned char *)event + EVENT_SOURCE, &parent)) return;
+    int children = widget_children(parent, search_children, MAX_CHILDREN);
+    for (int i = 0; i < children; ++i) {
+        unsigned char *child = search_children[i];
+        void *vtable;
+        if (!widget_id(child, manager, &skin_id)) continue;
+        if (skin_id == SKIN_ID('P','p','r','f') &&
+            (!read_game(child, &vtable, sizeof(vtable)) || vtable != game_base + PROFILE_MENU_OVERVIEW_TAB_VTABLE_RVA))
+            continue;
+        if (skin_id != SKIN_ID('f','m','n','P') && skin_id != SKIN_ID('f','m','n','S') && skin_id != SKIN_ID('P','p','r','f'))
+            continue;
+        if (popup) return;
+        popup = child;
+        popup_id = skin_id;
+    }
+    if (!popup || (count = popup_rows(popup, popup_id, &root, rows)) < 0) return;
+    if (popup_id == SKIN_ID('P','p','r','f')) {
+        if (!person_overview(rows, count)) return;
+        BOOL present = FALSE;
+        for (int i = 0; i < count; ++i)
+            if (item_fourcc(rows[i], SKIN_ID('i','d',' ',' ')) == PROFILE_EVENT) present = TRUE;
+        if (!present) {
+            add_menu_row(root, PROFILE_EVENT, "Generate new face");
+            add_menu_row(root, UPDATE_ITEM, "Update face");
+            if ((count = popup_rows(popup, popup_id, &root, rows)) < 0) return;
+        }
+    }
+    for (int i = 0; i < count; ++i)
+        if (item_fourcc(rows[i], SKIN_ID('i','d',' ',' ')) == UPDATE_ITEM) update = rows[i];
+    if (!update) return;
+    ULONGLONG started = GetTickCount64();
+    LONG person = popup_person_id(manager, popup);
+    int face = person ? query_face(person) : -1;
+    set_flag(update + ITEM_PROPERTIES, SKIN_ID('d','i','s','a'), face == 0);
+    char line[128];
+    snprintf(line, sizeof(line), "FMFACE24_%s person=%ld face=%s ms=%ld",
+             popup_id == SKIN_ID('P','p','r','f') ? "OVERVIEW_MENU" : "POPUP", (long)person,
+             face == 1 ? "yes" : face == 0 ? "no" : "unknown", (long)(GetTickCount64() - started));
+    log_line(line);
+}
+
 enum { REPLY_NONE, REPLY_ACCEPTED, REPLY_BUSY, REPLY_STALE, REPLY_SOCKET_ERROR };
 
 /* Send one click and wait for the ACK carrying this exact sequence. The
@@ -818,8 +1019,8 @@ static DWORD WINAPI bridge_worker(LPVOID unused)
         }
         LONG serial = InterlockedIncrement(&sequence);
         char packet[256];
-        int count = snprintf(packet, sizeof(packet), "FMFACE24 5 %lu %ld %s %lld %ld %s",
-                             (unsigned long)GetCurrentProcessId(), (long)serial,
+        int count = snprintf(packet, sizeof(packet), "FMFACE24 5 %llu %ld %s %lld %ld %s",
+                             (unsigned long long)bridge_instance, (long)serial,
                              id == SQUAD_EVENT ? "squad" : item == UPDATE_ITEM ? "update" : "profile",
                              (long long)click_ms, (long)person, bridge_token);
         int result = exchange(socket_fd, packet, count, serial);
@@ -1035,6 +1236,7 @@ static void install_event_hook(void)
     }
     bridge_token[length] = 0;
     bridge_port = (unsigned short)port;
+    bridge_instance = unix_ms();
     if (!supported_executable()) { log_line("FMFACE24_UNSUPPORTED_EXECUTABLE"); return; }
     unsigned char *base = game_base = (unsigned char *)GetModuleHandleW(NULL);
     IMAGE_DOS_HEADER *dos = (IMAGE_DOS_HEADER *)base;

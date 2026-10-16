@@ -24,7 +24,7 @@ def _print_error(message: str) -> None:
 
 
 def start_native_listener(port, bridge_port, token, handler, *,
-                          notify=None, clock=time.time, generate=None):
+                          notify=None, clock=time.time, generate=None, has_face=None):
     if notify is None:
         # FM24's own OK dialog through the DLL, else the companion terminal.
         def notify(message):
@@ -38,7 +38,8 @@ def start_native_listener(port, bridge_port, token, handler, *,
                            "Is another companion already running?") from exc
     server.settimeout(.5)
     busy = threading.Lock()
-    # Per game process: last sequence and the reply sent for it. The DLL
+    # Per game run (the DLL's start time, not the process ID, which Wine
+    # reuses after a restart): last sequence and the reply sent for it. The DLL
     # retransmits an unanswered click with the same sequence; it gets the same
     # reply and never starts a second request.
     last_reply: dict[str, tuple[int, bytes]] = {}
@@ -69,8 +70,27 @@ def start_native_listener(port, bridge_port, token, handler, *,
         finally:
             busy.release()
 
+    def answer_face(fields, peer):
+        """"FMFACE24F 1 <serial> <person> <token>": does the person shown in
+        FM24's portrait popup have a face? The DLL greys out "Update face"
+        on "no" and leaves it enabled without an answer."""
+        magic, version, serial, person, key = fields
+        if (peer[0] != "127.0.0.1" or version != "1" or not serial.isdecimal() or
+                not person.isdecimal() or not hmac.compare_digest(key, token) or has_face is None):
+            return
+        try:
+            answer = "yes" if has_face(person) else "no"
+        except (OSError, ValueError, RuntimeError) as exc:
+            print(f"FM24 face check failed (Update face stays enabled): {exc}", flush=True)
+            return
+        server.sendto(f"FMFACE24F {serial} {answer}".encode(), peer)
+
     def handle(packet, peer):
-        magic, version, pid, serial, action, clicked, person, key = packet.decode("ascii").split()
+        fields = packet.decode("ascii").split()
+        if fields and fields[0] == "FMFACE24F":
+            answer_face(fields, peer)
+            return
+        magic, version, pid, serial, action, clicked, person, key = fields
         if (peer[0] != "127.0.0.1" or magic != "FMFACE24" or version != "5" or
                 not pid.isdecimal() or not serial.isdecimal() or not clicked.isdecimal() or
                 not person.isdecimal() or

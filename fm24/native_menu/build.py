@@ -39,8 +39,10 @@ def main() -> None:
         constants.append(f"#define {name} {supported[key]}u")
     # Functions of the validated build: FM24's own "reload current skin"
     # sequence, the Squad "Players" menu provider that the DLL extends, and
-    # the query/message dialog functions FM24 uses for its own questions.
-    for group, prefix in (("skinReload", "RELOAD_"), ("squadMenu", "SQUAD_MENU_"), ("dialog", "DIALOG_")):
+    # the query/message dialog functions FM24 uses for its own questions, and
+    # the class of a person profile's Overview tab menu.
+    for group, prefix in (("skinReload", "RELOAD_"), ("squadMenu", "SQUAD_MENU_"), ("dialog", "DIALOG_"),
+                          ("profileMenu", "PROFILE_MENU_")):
         for key, value in supported[group].items():
             name = prefix + "".join("_" + c if c.isupper() else c.upper() for c in key)
             constants.append(f"#define {name} {value}u")

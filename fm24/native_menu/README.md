@@ -7,8 +7,11 @@ popup's `select_event`, `FMFG`, for either row; the DLL reads which row was
 chosen (`FMFG` or `FMFU`) from the event's `slct` property. The DLL also adds
 **Generate missing squad faces…** as the last item of FM24's own Squad screen
 **Overview** menu, below **Export Team for Versus Competition**; choosing it
-emits `FMFS`. The DLL consumes these events and sends an authenticated message
-to the local companion.
+emits `FMFS`. It adds **Generate new face** and **Update face** to a player
+or staff profile's **Overview** tab menu, below **Follow**, and greys out
+**Update face** in both profile menus when the person has no face (see
+"Profile menus" below). The DLL consumes these events and sends an
+authenticated message to the local companion.
 Opening or dismissing the menu does not request a portrait. Generation and
 profile reading run in the Linux companion, which reads FM24's memory and has
 no X11 code. Progress, the squad confirmation, results and errors appear
@@ -227,6 +230,45 @@ bridge events.
 To uninstall, close FM24 and run the installer with the same game and skin paths
 and `--remove`; then remove the Steam DLL override. The original FM Face panels
 are restored. The installer only removes the DLL whose checksum it recorded.
+
+## Profile menus
+
+FM24's popup buttons keep their rows as menu items. The popup's root item
+(`popup + 0x4f8`, whose `id  ` is the popup's skin ID) holds the rows as a
+vector of item pointers at `+0x38`; each item keeps its properties at `+8`,
+like an event. When a menu opens, the popup posts `meop` to its parent
+container, which reaches the screen handler the DLL hooks before FM24 draws
+the rows. The DLL then:
+
+- **Overview tab menu:** a person profile's **Overview** tab is a `Pprf`
+  button of FM24's tab-menu class (a `popup_button` subclass; its vtable,
+  `profileMenu.overviewTabVtableRva` = `0x5679168`, is checked). If its rows
+  include FM24's person actions (`nick` Set Nickname, `SUBS` Follow or `USUB`
+  Unfollow), the DLL appends two rows with FM24's own `itemNew`, once per tab
+  widget: `FMFG` **Generate new face** and `FMFU` **Update face**, each with
+  its ID as `id  ` and `evid`. FM24 sends a chosen row's properties as an
+  event to the tab button; nothing handles it there, so it reaches the screen
+  handler with the tab (`Pprf`) as its source and `slct` naming the row. The
+  person ID is read from the header exactly as for the portrait popup,
+  starting from the tab. The skin's `actions/person actions.xml` can't be
+  used: FM24 loads it from `actions.fmf` and ignores a skin copy.
+- **Update face greyed out:** for the portrait popup (`fmnP`/`fmnS`) and the
+  Overview tab menu, the DLL reads the person ID and asks the companion
+  `FMFACE24F 1 <serial> <person> <token>` on the bridge port; the reply is
+  `FMFACE24F <serial> yes|no`. On `no` it sets the `FMFU` row's `disa`
+  property, which FM24 draws greyed out and ignores clicks on; on `yes` it
+  clears it. The UI thread waits at most 100 ms. Without an answer (no
+  companion, an older companion, a failed check) the row stays enabled and
+  the companion refuses an update without a face, as before. The companion
+  answers from `has_existing_portrait`, which follows the same config.xml
+  mappings as **Update face** without decoding any picture: parsed configs
+  are cached until the file changes, and other graphics folders are walked
+  at most every 30 seconds. FM24's bundled pictures take about half a second
+  to index, so that runs in the background on the first check (or at
+  companion start if FM24 is running), and until it finishes there is no
+  answer. `fmface24.log` records each check
+  (`FMFACE24_POPUP` or `FMFACE24_OVERVIEW_MENU`, the person, the answer and
+  the time taken).
 
 ## Validated route
 
