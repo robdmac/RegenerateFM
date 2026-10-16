@@ -61,7 +61,11 @@ namespace FMFaceHotReload
         private readonly Dictionary<long, string> _biographyCache = new Dictionary<long, string>();
         private Harmony _harmony;
         private FaceMenuContributor _menuContributor;
-        private BepInEx.Configuration.ConfigEntry<string> _apiKey;
+        private VisualElement _keyDialog;
+        private Task<string> _keyCheck;
+        private string _keyChecking;
+        private Label _keyStatus;
+        private Action _afterKeySaved;
         private BepInEx.Configuration.ConfigEntry<string> _model;
         private BepInEx.Configuration.ConfigEntry<string> _quality;
         private BepInEx.Configuration.ConfigEntry<string> _apiBaseUrl;
@@ -89,12 +93,11 @@ namespace FMFaceHotReload
             Log.LogInfo("FM Face Actions and portrait menu integration loaded");
         }
 
-        // BepInEx/config/fmface.hotreload.cfg. It is reread before each
-        // request, so a key added while FM26 runs is used on the next click.
+        // Model and quality are in BepInEx/config/fmface.hotreload.cfg, reread
+        // before each request. The key is kept apart (KeyStore) and asked for
+        // in the game.
         private void BindSettings()
         {
-            _apiKey = Config.Bind("OpenAI", "ApiKey", "",
-                "Your OpenAI API key (it starts with sk-). Each generated or updated face is one billed image request.");
             _model = Config.Bind("OpenAI", "Model", "gpt-image-2.5-sunburst", "OpenAI image model.");
             _quality = Config.Bind("OpenAI", "Quality", "medium",
                 new BepInEx.Configuration.ConfigDescription("Rendering quality; higher costs more per face.",
@@ -106,9 +109,19 @@ namespace FMFaceHotReload
         private ImageSettings CurrentSettings()
         {
             Config.Reload();
+            string key;
+            try
+            {
+                key = KeyStore.Load(KeyStore.DefaultPath);
+            }
+            catch (Exception error) when (error is IOException || error is UnauthorizedAccessException)
+            {
+                Log.LogWarning("Could not read the saved OpenAI key: " + error.Message);
+                key = null;
+            }
             var settings = new ImageSettings
             {
-                ApiKey = (_apiKey.Value ?? "").Trim(),
+                ApiKey = key ?? "",
                 Model = (_model.Value ?? "").Trim(),
                 Quality = (_quality.Value ?? "").Trim().ToLowerInvariant(),
                 BaseUrl = (_apiBaseUrl.Value ?? "").Trim()
@@ -164,6 +177,8 @@ namespace FMFaceHotReload
                 Log.LogWarning("Could not identify the current person; no image request was made");
                 return;
             }
+            if (!KeyReady(() => Generate(personId, staff, update)))
+                return;
             VisualElement picture = null;
             VisualElement root = null;
             VisualElement overlay = null;
@@ -238,6 +253,8 @@ namespace FMFaceHotReload
                 {
                     ShowError(pending.Overlay, pending.Message, result.Error);
                     Log.LogError("Face generation failed: " + result.Error);
+                    if (result.KeyRejected)
+                        ShowKeyDialog("OpenAI didn't accept the saved key. Paste a new one.", null);
                     return;
                 }
                 Log.LogInfo("Portrait saved to " + result.GraphicsDir);
@@ -487,6 +504,7 @@ namespace FMFaceHotReload
                     return;
                 plugin.CheckRefreshTimeout();
                 plugin.PollGeneration();
+                plugin.PollKeyCheck();
                 if (Time.unscaledTime < _nextScan)
                     return;
                 _nextScan = Time.unscaledTime + 0.5f;
@@ -627,6 +645,8 @@ namespace FMFaceHotReload
                 Log.LogWarning("Squad scan cannot start while another FM Face operation is active");
                 return;
             }
+            if (!KeyReady(StartSquadScan))
+                return;
             try
             {
                 CurrentSettings();
@@ -952,6 +972,8 @@ namespace FMFaceHotReload
             if (!result.Success)
             {
                 StopSquadBatch("Portrait request failed for " + batch.Queue[batch.Index].Name + ": " + result.Error);
+                if (result.KeyRejected)
+                    ShowKeyDialog("OpenAI didn't accept the saved key. Paste a new one.", null);
                 return;
             }
             Log.LogInfo("Squad portrait saved for " + batch.Queue[batch.Index].Name + " to " + result.GraphicsDir);
@@ -1026,6 +1048,172 @@ namespace FMFaceHotReload
             if (_squadDialog != null && _squadDialog.parent != null)
                 _squadDialog.RemoveFromHierarchy();
             _squadDialog = null;
+        }
+
+        // True when a key is saved. Otherwise opens the key dialog, which runs
+        // `next` once a key has been checked and saved.
+        private bool KeyReady(Action next)
+        {
+            try
+            {
+                if (KeyStore.Load(KeyStore.DefaultPath) != null)
+                    return true;
+            }
+            catch (Exception error)
+            {
+                Log.LogWarning("Could not read the saved OpenAI key: " + error.Message);
+                ShowKeyDialog("FM Face couldn't read the saved key. Paste it again.", next);
+                return false;
+            }
+            ShowKeyDialog(null, next);
+            return false;
+        }
+
+        private void ShowKeyDialog(string problem, Action next)
+        {
+            CloseKeyDialog();
+            var root = CurrentRoot();
+            if (root == null)
+                return;
+            var dialog = new VisualElement { name = "fmface-key-dialog" };
+            dialog.style.position = Position.Absolute;
+            dialog.style.right = 24;
+            dialog.style.top = 80;
+            dialog.style.width = 420;
+            dialog.style.paddingTop = 16;
+            dialog.style.paddingBottom = 16;
+            dialog.style.paddingLeft = 16;
+            dialog.style.paddingRight = 16;
+            dialog.style.backgroundColor = new Color(0.13f, 0.10f, 0.18f, 0.97f);
+            Func<string, int, Label> text = (value, size) =>
+            {
+                var label = new Label(value) { pickingMode = PickingMode.Ignore };
+                label.style.color = Color.white;
+                label.style.whiteSpace = WhiteSpace.Normal;
+                label.style.fontSize = size;
+                label.style.marginBottom = 8;
+                dialog.Add(label);
+                return label;
+            };
+            text("FM Face: your OpenAI API key", 18);
+            text(problem ?? "FM Face makes faces with your own OpenAI API key. Each face is one billed request " +
+                 "on your OpenAI account, usually a few cents or less.", 14);
+            var open = new Button((Il2CppSystem.Action)(System.Action)(() => Application.OpenURL("https://platform.openai.com/api-keys")))
+            { text = "Get a key at platform.openai.com/api-keys", focusable = false };
+            open.style.height = 30;
+            open.style.marginBottom = 10;
+            dialog.Add(open);
+            var field = new TextField { isPasswordField = true, maskChar = '•' };
+            field.style.height = 30;
+            dialog.Add(field);
+            _keyStatus = text("Paste the key (it starts with sk-), then choose Save.", 13);
+            _keyStatus.style.marginTop = 6;
+            var buttons = new VisualElement();
+            buttons.style.flexDirection = FlexDirection.Row;
+            buttons.style.justifyContent = Justify.FlexEnd;
+            var cancel = new Button((Il2CppSystem.Action)(System.Action)(() => CloseKeyDialog())) { text = "Cancel", focusable = false };
+            var save = new Button((Il2CppSystem.Action)(System.Action)(() => SaveKey(field.value)))
+            { text = "Save key", focusable = false };
+            save.style.color = Color.white;
+            save.style.backgroundColor = new Color(0.38f, 0.10f, 0.60f, 1f);
+            foreach (var button in new[] { cancel, save })
+            {
+                button.style.height = 32;
+                button.style.marginLeft = 8;
+                buttons.Add(button);
+            }
+            dialog.Add(buttons);
+            text("The key is kept on this computer only, encrypted for your Windows user, in " +
+                 Path.GetDirectoryName(KeyStore.DefaultPath) + ". Delete that folder to forget it.", 12);
+            root.Add(dialog);
+            _keyDialog = dialog;
+            _afterKeySaved = next;
+            field.Focus();
+        }
+
+        private void SaveKey(string value)
+        {
+            if (_keyCheck != null)
+                return;
+            string key;
+            try
+            {
+                key = KeyStore.Clean(value);
+            }
+            catch (ArgumentException error)
+            {
+                _keyStatus.text = error.Message;
+                return;
+            }
+            ImageSettings settings;
+            try
+            {
+                settings = new ImageSettings { BaseUrl = (_apiBaseUrl.Value ?? "").Trim() };
+            }
+            catch (Exception error)
+            {
+                _keyStatus.text = error.Message;
+                return;
+            }
+            _keyStatus.text = "Checking the key with OpenAI (this is free)…";
+            _keyChecking = key;
+            _keyCheck = FaceGenerator.CheckKey(settings, key);
+        }
+
+        private void PollKeyCheck()
+        {
+            var check = _keyCheck;
+            if (check == null || !check.IsCompleted)
+                return;
+            _keyCheck = null;
+            string key = _keyChecking;
+            _keyChecking = null;
+            string problem;
+            try
+            {
+                problem = check.GetAwaiter().GetResult();
+            }
+            catch (Exception error)
+            {
+                problem = "Could not check the key: " + error.Message;
+            }
+            if (_keyDialog == null || _keyDialog.parent == null)
+                return;
+            if (problem != null)
+            {
+                _keyStatus.text = problem;
+                return;
+            }
+            try
+            {
+                KeyStore.Save(KeyStore.DefaultPath, key);
+            }
+            catch (Exception error)
+            {
+                _keyStatus.text = "Could not save the key: " + error.Message;
+                Log.LogError("Could not save the OpenAI key: " + error);
+                return;
+            }
+            Log.LogInfo("OpenAI key checked and saved to " + KeyStore.DefaultPath);
+            var next = _afterKeySaved;
+            CloseKeyDialog();
+            try
+            {
+                next?.Invoke();
+            }
+            catch (Exception error)
+            {
+                Log.LogError("Could not continue after saving the key: " + error);
+            }
+        }
+
+        private void CloseKeyDialog()
+        {
+            if (_keyDialog != null && _keyDialog.parent != null)
+                _keyDialog.RemoveFromHierarchy();
+            _keyDialog = null;
+            _keyStatus = null;
+            _afterKeySaved = null;
         }
 
         private Label ShowSquadDialog(string text, string buttonText, Action buttonAction)
@@ -1458,6 +1646,7 @@ namespace FMFaceHotReload
             public bool Success;
             public string Error;
             public string GraphicsDir;
+            public bool KeyRejected;
         }
 
         private static async Task<GenerationResult> RequestPortrait(long playerId, ProfileSnapshot profile,
@@ -1469,6 +1658,10 @@ namespace FMFaceHotReload
                 await FaceGenerator.MakePortrait(settings, folder, playerId.ToString(System.Globalization.CultureInfo.InvariantCulture),
                                                  profile, mode == "update", shownPng).ConfigureAwait(false);
                 return new GenerationResult { Success = true, GraphicsDir = folder };
+            }
+            catch (ApiKeyRejectedException error)
+            {
+                return new GenerationResult { Error = error.Message, KeyRejected = true };
             }
             catch (Exception error)
             {

@@ -16,23 +16,28 @@ dotnet build hotreload/FMFaceHotReload.csproj -c Release -p:GameDir="/path/to/Fo
 
 Copy `hotreload/bin/Release/net6.0/FMFaceHotReload.dll` into `Football Manager 26/BepInEx/plugins/FMFaceHotReload/`, set FM ActionLink's `playerProfile.buttons` to `[]`, and restart FM26 once.
 
+## OpenAI key
+
+The first command without a saved key opens FM Face's key dialog.
+- **Getting a key:** a button opens OpenAI's API keys page, and a masked field takes the pasted key.
+- **Checking it:** **Save key** checks the key with a free `GET /v1/models` request. Only then is it saved, and the chosen command continues.
+- **Where it's kept:** `%APPDATA%\FM Face\openai-key`, outside the game folder so it isn't zipped up with a BepInEx folder shared for support. It's encrypted with DPAPI (`CryptProtectData`) for the current Windows user; under Proton that's Wine's DPAPI inside the game's prefix.
+- **Rejected keys:** an HTTP 401 from the image API opens the dialog again.
+- **Forgetting the key:** delete the file.
+
 ## Settings
 
-The first start creates `BepInEx/config/fmface.hotreload.cfg`. Set your OpenAI key there:
+The first start creates `BepInEx/config/fmface.hotreload.cfg`, which is reread before each request:
 
 ```ini
 [OpenAI]
-ApiKey = sk-...
 Model = gpt-image-2.5-sunburst
 Quality = medium
 ApiBaseUrl = https://api.openai.com/v1
 ```
 
-- **When changes apply:** the file is reread before each request, so you can edit it while FM26 runs.
-- **Missing key:** the portrait shows the error and no request is made. The squad command says so before scanning.
 - **Quality:** `low`, `medium`, `high`, `xhigh`, `max` or `auto`.
 - **`ApiBaseUrl`:** for testing against a stand-in server only.
-- **Keep the file private:** anyone with the key can spend your OpenAI credit.
 
 ## Where faces are saved
 

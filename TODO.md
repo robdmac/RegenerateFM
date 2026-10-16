@@ -55,8 +55,8 @@
   published anywhere.
 - **Remote repo:** pushed to github.com/robdmac/FMFace.
 - **FM26 without the Python server:** done in code (2026-10-16). Plugin 0.9.0
-  calls OpenAI itself (`hotreload/FaceGenerator.cs`), with its key in
-  `BepInEx/config/fmface.hotreload.cfg`; the prompts, saved files and requests
+  calls OpenAI itself (`hotreload/FaceGenerator.cs`). It asks for the key in
+  the game and keeps it DPAPI-encrypted in `%APPDATA%\FM Face`; the prompts, saved files and requests
   match `fmface.py` in tests. Still to do: a live FM26 check, then one billed
   face.
 - **Packaged FM24 companion:** done (2026-10-16). `fm24/build_exe.py` builds

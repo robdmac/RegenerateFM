@@ -16,7 +16,7 @@ You need an OpenAI **API** account. A ChatGPT subscription (Plus, Pro and so on)
 3. Verify your organisation if asked. OpenAI may require **Settings > Organization > General > Verify Organization** before its image models work. Without it, the first face fails with an error saying your organisation must be verified. Verification can take a few minutes to apply after it's done.
 4. Create the key. Open [API keys](https://platform.openai.com/api-keys) and choose **Create new secret key**. Copy it now: OpenAI shows it only once. It starts with `sk-`.
 
-Treat the key like a password. Anyone who has it can spend your credit. FM Face keeps it only in a settings file on your computer and sends it only to OpenAI.
+Treat the key like a password. Anyone who has it can spend your credit. FM Face keeps it only on your computer and sends it only to OpenAI.
 
 **What it costs:** each generated or updated face is one image request, typically a few cents or less at the default `medium` quality. `low` quality is cheaper. Check the [Usage](https://platform.openai.com/usage) page after your first few faces to see your real cost. Previews (`--preview-only` for FM24) and imports of existing PNGs make no request and cost nothing.
 
@@ -34,7 +34,11 @@ The plugin calls OpenAI itself from inside FM26, so nothing else needs to run wh
    If the dry run looks right, run it again with `--apply`. It refuses to overwrite existing files.
 2. **Linux only:** set FM26's Steam launch option to `WINEDLLOVERRIDES="winhttp=n,b" %command%`.
 3. **Build and install the plugin** with the .NET 6 SDK, as described in [hotreload/README.md](hotreload/README.md).
-4. **Add your key.** Start FM26 once, which creates `Football Manager 26/BepInEx/config/fmface.hotreload.cfg`. Open that file and paste your key after `ApiKey =`. The file is reread before every request, so you can do this while FM26 is running.
+4. **Add your key in the game.** The first time you choose **Generate new face** (or a squad's **Generate faces…**), FM Face asks for your key.
+   - It has a button that opens OpenAI's API keys page.
+   - Paste the key and choose **Save key**. FM Face checks it with OpenAI using a free request, then carries on with what you chose.
+   - **Where it's kept:** outside the game folder, in `%APPDATA%\FM Face`, encrypted for your Windows user. Under Proton that is inside the game's Wine prefix.
+   - **Changing it:** if OpenAI later rejects the key, the dialog opens again. To forget the key, delete that folder.
 
 ### Use it in FM26
 
@@ -61,11 +65,10 @@ In FM24, the portrait popup and the profile's **Overview** tab menu have **Gener
 
 ## Settings
 
-**FM26** reads `BepInEx/config/fmface.hotreload.cfg`, section `[OpenAI]`:
+**FM26** asks for the key in the game (see above). The other settings are in `Football Manager 26/BepInEx/config/fmface.hotreload.cfg`, section `[OpenAI]`, which FM26 creates on its first start with the plugin. It is reread before every request.
 
 | Setting | Meaning |
 |---|---|
-| `ApiKey` | Your OpenAI API key (required). |
 | `Model` | The image model. The default is `gpt-image-2.5-sunburst`. |
 | `Quality` | `low`, `medium` (default), `high`, `xhigh`, `max` or `auto`. Higher quality costs more per face. |
 | `ApiBaseUrl` | Leave as `https://api.openai.com/v1`; for testing only. |

@@ -67,6 +67,16 @@ def _image_api(image):
             self.end_headers()
             self.wfile.write(data)
 
+        def do_GET(self):
+            server.requests.append((self.path, self.headers.get("Authorization"), None, b""))
+            status = 200 if self.headers.get("Authorization") == "Bearer sk-good-key-0123456789abcdef" else 401
+            data = json.dumps({"data": []} if status == 200 else {"error": {"message": "Incorrect API key"}}).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
         def log_message(self, *args):
             pass
 
@@ -238,7 +248,7 @@ class GeneratorParityTests(unittest.TestCase):
                 self.assertEqual(saved.size, (256, 256))
         self.assertEqual(results[:2], [{}, {}])
         self.assertEqual(results[2], {"error": "OpenAI image API returned HTTP 401: Incorrect API key provided: [REDACTED]."})
-        self.assertIn("ApiKey", results[3]["error"])
+        self.assertEqual(results[3], {"error": "No OpenAI API key is saved yet."})
         self.assertIn("Quality", results[4]["error"])
         self.assertEqual(len(requests), 3)
         path, auth, content_type, body = requests[0]
@@ -252,6 +262,31 @@ class GeneratorParityTests(unittest.TestCase):
         self.assertIn(b'name="image[]"', body.replace(b"name=image[]", b'name="image[]"'))
         self.assertIn(reference_png, body)
 
+
+    def test_key_is_checked_for_free_and_kept_outside_the_game_folder(self):
+        good = "sk-good-key-0123456789abcdef"
+        with tempfile.TemporaryDirectory() as tmp:
+            path = str(Path(tmp) / "FM Face" / "openai-key")
+            results = self.run_cases([
+                {"action": "loadkey", "path": path},
+                {"action": "checkkey", "baseUrl": self.base, "apiKey": good},
+                {"action": "checkkey", "baseUrl": self.base, "apiKey": "sk-wrong-key-0123456789abcdef"},
+                {"action": "savekey", "path": path, "apiKey": f"  {good}\n"},
+                {"action": "loadkey", "path": path},
+                {"action": "savekey", "path": path, "apiKey": "my key"},
+                {"action": "savekey", "path": path, "apiKey": ""},
+                {"action": "loadkey", "path": path},
+            ])
+            # Off Windows (these tests) the file is marked unencrypted; FM26 uses DPAPI.
+            self.assertTrue(Path(path).read_bytes().startswith(b"FMFK0\n"))
+        self.assertEqual(results[0], {"apiKey": None})
+        self.assertEqual(results[1], {"problem": None})
+        self.assertEqual(results[2], {"problem": "OpenAI didn't accept this key. Check that you copied all of it."})
+        self.assertEqual(results[3:5], [{}, {"apiKey": good}])
+        self.assertIn("starts with sk-", results[5]["error"])
+        self.assertEqual(results[6], {"error": "Paste your OpenAI API key first."})
+        self.assertEqual(results[7], {"apiKey": good})
+        self.assertEqual([request[0] for request in self.requests], ["/v1/models", "/v1/models"])
 
     def test_in_game_requests_update_the_saved_face_and_keep_it_on_failure(self):
         staff = {"type": "staff", "name": "Alex Morgan", "age": 45, "nationality": "Wales",

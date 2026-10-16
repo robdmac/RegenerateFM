@@ -31,6 +31,13 @@ namespace FMFaceHotReload
                         result["path"] = FaceGenerator.SavePortrait(dir, id, File.ReadAllBytes(Optional(item, "input")));
                     else if (action == "current")
                         result["found"] = FaceGenerator.CurrentPortrait(dir, id) != null;
+                    else if (action == "savekey")
+                        KeyStore.Save(Optional(item, "path"), Optional(item, "apiKey"));
+                    else if (action == "loadkey")
+                        result["apiKey"] = KeyStore.Load(Optional(item, "path"));
+                    else if (action == "checkkey")
+                        result["problem"] = await FaceGenerator.CheckKey(new ImageSettings { BaseUrl = Optional(item, "baseUrl") },
+                                                                         Optional(item, "apiKey"));
                     else if (action == "portrait")
                     {
                         var settings = new ImageSettings { ApiKey = Optional(item, "apiKey"), BaseUrl = Optional(item, "baseUrl") };

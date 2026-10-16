@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -358,11 +359,36 @@ namespace FMFaceHotReload
         public static void CheckSettings(ImageSettings settings)
         {
             if (string.IsNullOrWhiteSpace(settings.ApiKey))
-                throw new ArgumentException("Add your OpenAI API key as ApiKey in BepInEx/config/fmface.hotreload.cfg, then try again.");
+                throw new MissingApiKeyException();
             if (Array.IndexOf(Qualities, settings.Quality) < 0)
                 throw new ArgumentException("Quality in fmface.hotreload.cfg must be low, medium, high, xhigh, max, or auto.");
             if (string.IsNullOrWhiteSpace(settings.Model))
                 throw new ArgumentException("Model in fmface.hotreload.cfg is empty.");
+        }
+
+        // Asks OpenAI whether the key works, with a free request that lists
+        // models. Returns null when it does, else a message for the player.
+        public static async Task<string> CheckKey(ImageSettings settings, string key, CancellationToken cancel = default)
+        {
+            using (var request = new HttpRequestMessage(HttpMethod.Get, settings.BaseUrl.TrimEnd('/') + "/models"))
+            {
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
+                try
+                {
+                    using (var response = await Client.SendAsync(request, cancel).ConfigureAwait(false))
+                    {
+                        if (response.IsSuccessStatusCode)
+                            return null;
+                        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                            return "OpenAI didn't accept this key. Check that you copied all of it.";
+                        return "OpenAI couldn't check the key (HTTP " + (int)response.StatusCode + "). Try again.";
+                    }
+                }
+                catch (Exception error) when (error is HttpRequestException || error is TaskCanceledException)
+                {
+                    return "Could not reach OpenAI to check the key: " + error.Message.Replace(key, "[REDACTED]");
+                }
+            }
         }
 
         private static List<KeyValuePair<string, string>> Fields(ImageSettings settings, string prompt)
@@ -432,8 +458,10 @@ namespace FMFaceHotReload
                         catch (Exception) { }
                         if (detail.Length == 0)
                             detail = response.ReasonPhrase ?? "";
-                        throw new InvalidOperationException("OpenAI image API returned HTTP " + (int)response.StatusCode + ": " +
-                                                            detail.Replace(key, "[REDACTED]"));
+                        string message = "OpenAI image API returned HTTP " + (int)response.StatusCode + ": " + detail.Replace(key, "[REDACTED]");
+                        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                            throw new ApiKeyRejectedException(message);
+                        throw new InvalidOperationException(message);
                     }
                     string image;
                     try
@@ -625,6 +653,138 @@ namespace FMFaceHotReload
             {
                 if (File.Exists(temporary))
                     File.Delete(temporary);
+            }
+        }
+    }
+
+    internal sealed class MissingApiKeyException : ArgumentException
+    {
+        public MissingApiKeyException() : base("No OpenAI API key is saved yet.") { }
+    }
+
+    internal sealed class ApiKeyRejectedException : InvalidOperationException
+    {
+        public ApiKeyRejectedException(string message) : base(message) { }
+    }
+
+    // The player's OpenAI key, kept outside the game folder (which people zip
+    // up when asking for mod support). On Windows, and under Proton, it is
+    // encrypted with DPAPI for the current Windows user.
+    internal static class KeyStore
+    {
+        private static readonly byte[] Protected = Encoding.ASCII.GetBytes("FMFK1\n");
+        private static readonly byte[] Plain = Encoding.ASCII.GetBytes("FMFK0\n");
+        private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("FM Face OpenAI API key");
+        private static readonly Regex KeyPattern = new Regex(@"^sk-[A-Za-z0-9_\-]{16,300}$", RegexOptions.Compiled);
+
+        public static string DefaultPath =>
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "FM Face", "openai-key");
+
+        // The pasted key without surrounding spaces, or an exception whose
+        // message tells the player what is wrong.
+        public static string Clean(string key)
+        {
+            key = (key ?? "").Trim();
+            if (key.Length == 0)
+                throw new ArgumentException("Paste your OpenAI API key first.");
+            if (!KeyPattern.IsMatch(key))
+                throw new ArgumentException("That doesn't look like an OpenAI API key. It starts with sk- and has no spaces.");
+            return key;
+        }
+
+        public static string Load(string path)
+        {
+            if (!File.Exists(path))
+                return null;
+            var data = File.ReadAllBytes(path);
+            byte[] payload;
+            if (StartsWith(data, Protected))
+                payload = Unprotect(data.Skip(Protected.Length).ToArray());
+            else if (StartsWith(data, Plain))
+                payload = data.Skip(Plain.Length).ToArray();
+            else
+                throw new InvalidDataException("The saved OpenAI key file is not in FM Face's format: " + path);
+            string key = Encoding.UTF8.GetString(payload).Trim();
+            return key.Length > 0 ? key : null;
+        }
+
+        public static void Save(string path, string key)
+        {
+            var payload = Encoding.UTF8.GetBytes(Clean(key));
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            var data = OperatingSystem.IsWindows() ? Protected.Concat(Protect(payload)).ToArray() : Plain.Concat(payload).ToArray();
+            string temporary = path + ".tmp";
+            try
+            {
+                File.WriteAllBytes(temporary, data);
+                File.Move(temporary, path, overwrite: true);
+            }
+            finally
+            {
+                if (File.Exists(temporary))
+                    File.Delete(temporary);
+            }
+        }
+
+        private static bool StartsWith(byte[] data, byte[] prefix)
+        {
+            return data.Length >= prefix.Length && data.Take(prefix.Length).SequenceEqual(prefix);
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct DataBlob
+        {
+            public int Size;
+            public IntPtr Data;
+        }
+
+        [DllImport("crypt32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        private static extern bool CryptProtectData(ref DataBlob input, string description, ref DataBlob entropy,
+                                                    IntPtr reserved, IntPtr prompt, int flags, ref DataBlob output);
+
+        [DllImport("crypt32.dll", SetLastError = true)]
+        private static extern bool CryptUnprotectData(ref DataBlob input, IntPtr description, ref DataBlob entropy,
+                                                      IntPtr reserved, IntPtr prompt, int flags, ref DataBlob output);
+
+        [DllImport("kernel32.dll")]
+        private static extern IntPtr LocalFree(IntPtr memory);
+
+        private const int UiForbidden = 0x1;
+
+        private static byte[] Protect(byte[] data) => Transform(data, protect: true);
+
+        private static byte[] Unprotect(byte[] data)
+        {
+            if (!OperatingSystem.IsWindows())
+                throw new InvalidDataException("The saved OpenAI key is encrypted for Windows and can't be read here.");
+            return Transform(data, protect: false);
+        }
+
+        private static byte[] Transform(byte[] data, bool protect)
+        {
+            var input = GCHandle.Alloc(data, GCHandleType.Pinned);
+            var entropy = GCHandle.Alloc(Entropy, GCHandleType.Pinned);
+            var output = new DataBlob();
+            try
+            {
+                var inputBlob = new DataBlob { Size = data.Length, Data = input.AddrOfPinnedObject() };
+                var entropyBlob = new DataBlob { Size = Entropy.Length, Data = entropy.AddrOfPinnedObject() };
+                bool ok = protect
+                    ? CryptProtectData(ref inputBlob, "FM Face OpenAI API key", ref entropyBlob, IntPtr.Zero, IntPtr.Zero, UiForbidden, ref output)
+                    : CryptUnprotectData(ref inputBlob, IntPtr.Zero, ref entropyBlob, IntPtr.Zero, IntPtr.Zero, UiForbidden, ref output);
+                if (!ok)
+                    throw new InvalidDataException((protect ? "Could not encrypt" : "Could not decrypt") +
+                                                   " the OpenAI key (Windows error " + Marshal.GetLastWin32Error() + ").");
+                var result = new byte[output.Size];
+                Marshal.Copy(output.Data, result, 0, output.Size);
+                return result;
+            }
+            finally
+            {
+                input.Free();
+                entropy.Free();
+                if (output.Data != IntPtr.Zero)
+                    LocalFree(output.Data);
             }
         }
     }
