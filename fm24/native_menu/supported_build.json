@@ -33,7 +33,7 @@
     "valueFourccRva": "0x197d3d0"
   },
   "profileMenu": {
-    "overviewTabVtableRva": "0x5679168"
+    "tabButtonVtableRva": "0x5679168"
   },
   "dialog": {
     "showQueryRva": "0x10bfcc0",

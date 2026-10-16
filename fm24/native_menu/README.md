@@ -94,9 +94,34 @@ Competition**. Its item-adding method calls the original and then appends the
 FM Face item through the same game functions, and its command handler queues
 `FMFS` and passes every other command to the original.
 
+The same item is added to a team's tab menu: a tab of FM24's tab-button class
+(`profileMenu.tabButtonVtableRva` = `0x5679168`, the class of the profile's
+Overview tab too) whose rows include the team's Squad view (`TeSq`) and no
+`FMFS` row yet. These are the reserve and youth team tabs of the Development
+Center (Inter Miami II, IMCF Academy) and another club's Players tab. When any
+popup opens (`meop`, see "Profile menus"), the DLL appends an `FMFS` row to
+each such tab under the same parent with FM24's `itemNew`; FM24 sends the
+chosen row to the tab button and on to the screen handler, which queues the
+squad command as for the Squad screen. Opening such a tab's menu also shows
+the team's Overview, so the command reads the Overview's squad list there
+(below). The rows' `tick` property is the ✓ of the view shown, and a tab keeps
+the ID of the row last chosen from it at +0x500, but neither is needed.
+
 The squad command then works from game memory (`fm24/native_squad.py`); it
 opens no profiles and reads no screenshots:
 
+- **List:** the Squad table's player-name cells are `Pnms`. A team Overview's
+  squad list uses the same cell class named `PnmP`, two levels inside a row
+  widget whose parent is the list; the list keeps its row count, visible rows
+  and row model at the Squad table's offsets. A `Pnms` table is used when
+  there is one, so another list on the screen can't make the first team's
+  command ambiguous; otherwise the one `PnmP` list.
+- **Brief records:** players FM24 lists as Scouting Required, without an age
+  or ability, have person records whose ID matches but whose marker bytes
+  12–15 aren't `00 xx 58 10/12/18` (`00 02 00 10` on Inter Miami II, `08 02 40
+  30` on its academy). Such records have no birth date, name pointer or
+  attributes at the usual offsets, so those rows are left out and counted in
+  the confirmation; a list of only such players is refused.
 - **Roster:** the Squad table attached to the live UI tree. Drawn rows have a
   player-name cell holding the person and display name. The table draws only
   visible rows, so the rest come from its row model: table+0x6e8 points to an
@@ -242,7 +267,7 @@ the rows. The DLL then:
 
 - **Overview tab menu:** a person profile's **Overview** tab is a `Pprf`
   button of FM24's tab-menu class (a `popup_button` subclass; its vtable,
-  `profileMenu.overviewTabVtableRva` = `0x5679168`, is checked). If its rows
+  `profileMenu.tabButtonVtableRva` = `0x5679168`, is checked). If its rows
   include FM24's person actions (`nick` Set Nickname, `SUBS` Follow or `USUB`
   Unfollow), the DLL appends two rows with FM24's own `itemNew`, once per tab
   widget: `FMFG` **Generate new face** and `FMFU` **Update face**, each with

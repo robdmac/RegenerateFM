@@ -225,7 +225,9 @@ def _scan_ui(pid: int) -> tuple[dict[str, list[str]], set[int]]:
 
 
 def _rating(raw: int) -> int:
-    value = (raw + 2) // 5
+    # Stored 1-100; shown 1-20. Raw 1 and 2 are shown as 1 (seen on young
+    # reserve players).
+    value = max(1, (raw + 2) // 5)
     if not 1 <= raw <= 100 or not 1 <= value <= 20:
         raise MemoryUnavailable("Invalid FM24 attribute value.")
     return value
@@ -386,6 +388,21 @@ def squad_club(pid: int, records: list[int]) -> str:
     if count * 2 <= len(records):
         raise MemoryUnavailable("Could not identify the FM24 Squad club.")
     return club
+
+
+def shown_team(pid: int, records: list[int]) -> str:
+    """The team most Squad rows play for (a reserve team's name on its own
+    Squad view), or "" if no team has most of them."""
+    teams = collections.Counter()
+    for record in records:
+        try:
+            teams[_playing_club(pid, record, _club(pid, record))] += 1
+        except (MemoryUnavailable, OSError, ValueError, UnicodeDecodeError, struct.error):
+            continue
+    if not teams:
+        return ""
+    team, count = teams.most_common(1)[0]
+    return team if count * 2 > len(records) else ""
 
 
 def squad_player_profile(pid: int, record: int, name: str, club: str, today: dt.date) -> dict:

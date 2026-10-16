@@ -39,6 +39,14 @@
 - **FM24 reserve teams:** done (2026-10-16). FM's added reserve and youth
   teams have club IDs above 2,000,000,000, which the club check refused;
   Federico Higuaín (staff) and Cole Jensen (player) at Inter Miami II now read.
+- **FM24 reserve and youth squad lists:** done (2026-10-16). Generate
+  missing squad faces is in each team tab menu of the Development Center and
+  reads the team Overview's squad list; Inter Miami II previewed 11 faces.
+  Players FM24 keeps only brief records for (Scouting Required, no age) are
+  left out with a count; supporting them would need their record layout,
+  which lacks the birth date and attributes a prompt uses.
+- **FM24 menu face check:** done (2026-10-16). The check costs 1-3 ms; without
+  a companion the DLL stops waiting after one 30 ms timeout.
 - **FM26 Actions menu timing:** done (2026-10-16). The items are added as soon
   as the profile header exists and the ID is read on click.
 - **Release build:** done (2026-10-16). Plugin version 0.8.0 was rebuilt into

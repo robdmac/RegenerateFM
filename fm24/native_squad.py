@@ -27,6 +27,12 @@ from process_memory import MemoryScan, fm24_image_base, read_process_bytes
 MANAGER_GLOBAL_RVA = 0x63635B8
 NAME_CELL_VTABLE_RVA = 0x56807C8
 NAME_CELL_ID = int.from_bytes(b"Pnms", "big")
+# A team's Overview squad list (a reserve or youth team in the Development
+# Center) uses the same cell class named PnmP, two levels inside a row widget
+# whose parent is the list; the list keeps rows, visible rows and its row
+# model at the same offsets as the Squad table.
+LIST_CELL_ID = int.from_bytes(b"PnmP", "big")
+CELL_IDS = (NAME_CELL_ID, LIST_CELL_ID)
 ROW_PERSON = 0x728
 ROW_NAME = 0x1C8            # cell -> {u32 length, UTF-8} display name ("Ian Fray")
 TABLE_ROWS = 0x3A0          # table widget: total rows, drawn or not
@@ -66,10 +72,11 @@ class SquadState:
     visible: tuple[int, int] = (0, 0)  # first and last visible row, 1-based
     table: int = 0                      # the table widget, for the row model
     unreadable: tuple[str, ...] = ()    # undrawn players whose names FM24 hasn't loaded
+    brief: tuple[str, ...] = ()         # players FM24 keeps only a brief record for
 
     @property
     def complete(self) -> bool:
-        return len(self.rows) + len(self.unreadable) == self.total
+        return len(self.rows) + len(self.unreadable) + len(self.brief) == self.total
 
     @property
     def missing(self) -> tuple[SquadRow, ...]:
@@ -116,14 +123,27 @@ def _attached(pid: int, widget: int, manager: int) -> bool:
     return False
 
 
+class BriefRecord(MemoryUnavailable):
+    """A row's person has only FM24's brief record (no age or attributes)."""
+
+    def __init__(self, person_id: str):
+        super().__init__(f"FM24 keeps only a brief record for person {person_id}.")
+        self.person_id = person_id
+
+
 def _player_id(pid: int, person: int) -> str:
     record = person + 12
     raw = read_process_bytes(pid, record, 20)
     number = struct.unpack_from("<I", raw)[0]
-    # Marker byte 13 carries flags (0x02, 0x40 seen); 14 is always 0x58.
-    if (raw[:8] != struct.pack("<II", number, number) or raw[12] or raw[14] != 0x58 or
-            raw[15] not in (0x10, 0x12, 0x18) or not 1 <= number <= 2_147_483_647 or
-            person_kind(pid, record, raw[16]) != "player"):
+    if raw[:8] != struct.pack("<II", number, number) or not 1 <= number <= 2_147_483_647:
+        raise MemoryUnavailable("A Squad row does not show a validated FM24 player.")
+    # Marker byte 13 carries flags (0x02, 0x40 seen); 14 is always 0x58. Rows
+    # FM24 lists as "Scouting Required" with no age or ability (players of
+    # leagues it hasn't loaded) have other markers (00 02 00 10, 08 02 40 30)
+    # and none of the fields a prompt needs.
+    if raw[12] or raw[14] != 0x58 or raw[15] not in (0x10, 0x12, 0x18):
+        raise BriefRecord(str(number))
+    if person_kind(pid, record, raw[16]) != "player":
         raise MemoryUnavailable("A Squad row does not show a validated FM24 player.")
     return str(number)
 
@@ -166,8 +186,8 @@ def _scan(pid: int, manager: int, catalogue: bool = True) -> tuple[list[int], se
             start = offset - WIDGET_MANAGER
             if (base + start) % 8 == 0 and start >= 0 and start + WIDGET_ID + 4 <= len(data) and \
                     struct.unpack_from("<Q", data, start)[0] == cell_vtable and \
-                    struct.unpack_from("<I", data, start + WIDGET_ID)[0] == NAME_CELL_ID:
-                cells.append(base + start)
+                    struct.unpack_from("<I", data, start + WIDGET_ID)[0] in CELL_IDS:
+                cells.append((base + start, struct.unpack_from("<I", data, start + WIDGET_ID)[0]))
             offset += 8
         if not catalogue:
             continue
@@ -216,29 +236,43 @@ def read_squad(pid: int | None = None, attempts: int = 3, catalogue: bool = True
                 # FM24 can unmap memory during a scan; a later pass is complete.
                 if attempt + 1 == attempts:
                     raise
-        tables: dict[int, list[int]] = {}
-        for cell in set(cells):
+        # Table -> {its child holding a row: that row's name cell}, per cell kind.
+        tables: dict[int, dict[int, dict[int, int]]] = {NAME_CELL_ID: {}, LIST_CELL_ID: {}}
+        for cell, kind in set(cells):
             if _attached(pid, cell, manager):
-                tables.setdefault(_u64(pid, cell + WIDGET_PARENT), []).append(cell)
-        if len(tables) != 1:
-            raise MemoryUnavailable(f"Expected one open FM24 Squad table; found {len(tables)}.")
-        table, rows = next(iter(tables.items()))
+                row = cell if kind == NAME_CELL_ID else _u64(pid, _u64(pid, cell + WIDGET_PARENT) + WIDGET_PARENT)
+                tables[kind].setdefault(_u64(pid, row + WIDGET_PARENT), {})[row] = cell
+        # The Squad table when there is one, so a list elsewhere on the screen
+        # can't make the first team's Squad command ambiguous.
+        found = tables[NAME_CELL_ID] or tables[LIST_CELL_ID]
+        if not found:
+            raise MemoryUnavailable("No squad player list is open; open the team's Squad view and try again.")
+        if len(found) != 1:
+            raise MemoryUnavailable(f"Expected one open FM24 Squad table; found {len(found)}.")
+        table, rows = next(iter(found.items()))
         total = struct.unpack("<i", read_process_bytes(pid, table + TABLE_ROWS, 4))[0]
         visible = struct.unpack("<ii", read_process_bytes(pid, table + TABLE_VISIBLE, 8))
         if not len(rows) <= total <= 500 or not 1 <= visible[0] <= visible[1] <= total:
             raise MemoryUnavailable("Invalid FM24 Squad table row count.")
         order = {child: index for index, child in enumerate(_children(pid, table))}
-        seen, result = set(), []
-        for cell in sorted(rows, key=order.__getitem__):
+        seen, result, brief = set(), [], []
+        for cell in (rows[row] for row in sorted(rows, key=order.__getitem__)):
             person = _u64(pid, cell + ROW_PERSON)
-            person_id = _player_id(pid, person)
+            try:
+                person_id = _player_id(pid, person)
+            except BriefRecord as exc:
+                if exc.person_id not in brief:
+                    brief.append(exc.person_id)
+                continue
             if person_id not in seen:
                 seen.add(person_id)
                 result.append(SquadRow(person_id, person + 12, _text(pid, _u64(pid, cell + ROW_NAME))))
     except (OSError, ValueError, struct.error) as exc:
         raise MemoryUnavailable(f"Could not read the FM24 Squad table: {exc}") from exc
     if not result:
-        raise MemoryUnavailable("The open FM24 Squad table has no players.")
+        raise MemoryUnavailable(
+            "FM24 keeps only brief records for the players shown (no age or ability), so FM Face "
+            "can't describe them." if brief else "The open FM24 Squad table has no players.")
     today = dt.date.min
     if catalogue:
         # Person records carry the current game year at +0x36.
@@ -248,7 +282,7 @@ def read_squad(pid: int | None = None, attempts: int = 3, catalogue: bool = True
         year = str(years.pop())
         today = _today(collections.Counter({text: count for text, count in dates.items()
                                             if text.endswith(" " + year)}))
-    return SquadState(tuple(result), total, frozenset(indexed), today, visible, table)
+    return SquadState(tuple(result), total, frozenset(indexed), today, visible, table, brief=tuple(brief))
 
 
 def _row_ids(pid: int, table: int) -> list[int]:
@@ -367,13 +401,16 @@ def read_squad_rows(pid: int | None = None) -> SquadState:
             raise MemoryUnavailable("The FM24 Squad row model does not match the table.")
         base = _handle_table(pid, [row.record - 12 for row in state.rows])
         drawn = {row.person_id: row for row in state.rows}
-        records = []
+        records, brief = [], []
         for row_id in ids:
             handle = row_id & 0xFFFFFF
             person = _u64(pid, base + 8 * handle)
             if _u32(pid, person + PERSON_HANDLE) != handle:
                 raise MemoryUnavailable("An FM24 Squad row does not resolve to its person.")
-            records.append((_player_id(pid, person), person + 12))
+            try:
+                records.append((_player_id(pid, person), person + 12))
+            except BriefRecord as exc:
+                brief.append(exc.person_id)
     except (OSError, ValueError, struct.error) as exc:
         raise MemoryUnavailable(f"Could not read the FM24 Squad rows: {exc}") from exc
     if not drawn.keys() <= {person_id for person_id, _ in records}:
@@ -383,4 +420,5 @@ def read_squad_rows(pid: int | None = None) -> SquadState:
     rows = tuple(drawn.get(person_id) or SquadRow(person_id, record, names[person_id])
                  for person_id, record in records if person_id in drawn or person_id in names)
     unreadable = tuple(person_id for person_id, _ in records if person_id not in drawn and person_id not in names)
-    return SquadState(rows, state.total, state.indexed, state.today, state.visible, state.table, unreadable)
+    return SquadState(rows, state.total, state.indexed, state.today, state.visible, state.table, unreadable,
+                      tuple(brief))

@@ -2,7 +2,7 @@
 
 FM Face for FM24 works inside the game through the [native DLL](native_menu/README.md), which is pinned to the tested FM24 24.4.2 executable on Steam/Proton.
 - Click a player or staff portrait on their Overview to get FM24's own popup with **Generate new face** and **Update face**. The same two items are at the end of the profile's **Overview** tab menu.
-- The Squad screen's **Overview** menu ends with **Generate missing squad faces…**.
+- The Squad screen's **Overview** menu ends with **Generate missing squad faces…**. A reserve or youth team's tab menu in the Development Center (and another club's Players menu) ends with it too.
 
 The companion reads everything from FM24's memory: the open profile, the biography FM24 is showing, and every Squad row. It makes the image request, writes a versioned portrait and reloads the skin inside the game. Progress, the squad confirmation, results and errors appear in FM24's own dialogs. There is no X11 code, no screenshots or OCR, and no browser.
 
@@ -66,8 +66,9 @@ Leave the companion running while you play; the menus work only while it runs.
   - FM24's bundled squad photo, read from `data/game/graphics.fmf` with its mask as transparency
 
   For a person with no face, **Update face** is greyed out in both menus (the companion answers the DLL's check as the menu opens). If the companion doesn't answer within 30 ms the item stays enabled, and the companion refuses before making any request. OpenAI refuses to edit real photos of very famous people (Lionel Messi was refused); lesser-known players' photos and generated faces work.
-- **Generate missing squad faces…:** on the Squad screen, choose it from the **Overview** menu.
-  - It reads every row from memory, including rows FM24 hasn't drawn, and asks in an FM24 dialog before any request.
+- **Generate missing squad faces…:** on the Squad screen, choose it from the **Overview** menu. For a reserve or youth team, open **Development Center**, then choose it from that team's tab menu (for example **Inter Miami II**); opening the menu shows the team's Overview, whose squad list it reads.
+  - It reads every row from memory, including rows FM24 hasn't drawn, and asks in an FM24 dialog before any request. The dialog names the team most of the players play for.
+  - Players FM24 lists as **Scouting Required** with no age or ability (players of leagues it hasn't fully loaded, such as Inter Miami II's 11 of 23 and all of the IMCF Academy on the test save) are left out and counted in the dialog: FM24 keeps only a brief record for them, without the age, nationality or attributes a prompt needs.
   - It then generates and reloads one face at a time. Choose **Stop after this face** to end after the current one.
 
 If FM24 can't show one of its dialogs, the message goes to the companion terminal instead, and an unanswerable squad confirmation counts as Cancel.

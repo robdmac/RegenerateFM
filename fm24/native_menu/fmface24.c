@@ -918,6 +918,35 @@ static void add_menu_row(unsigned char *root, unsigned int id, const char *label
         (*(release_function *)*(void **)item)(item, 1);
 }
 
+/* A team's tab menu (FM24's tab-button class) whose rows include its Squad
+   view (TeSq): a reserve or youth team's tab in the Development Center, or
+   another club's Players tab. FM Face appends "Generate missing squad
+   faces…" (FMFS) unless the menu has it already, as the first team's Squad
+   menu does through its provider. Like the provider's, the command works on
+   the Squad table shown; the companion refuses without one. */
+static void add_squad_rows(unsigned char **children, int count)
+{
+    unsigned char *root, *rows[MAX_POPUP_ROWS];
+    for (int i = 0; i < count; ++i) {
+        void *vtable;
+        unsigned int skin_id;
+        if (!read_game(children[i], &vtable, sizeof(vtable)) || vtable != game_base + PROFILE_MENU_TAB_BUTTON_VTABLE_RVA ||
+            !read_game(children[i] + WIDGET_ID, &skin_id, sizeof(skin_id)))
+            continue;
+        int rows_count = popup_rows(children[i], skin_id, &root, rows);
+        BOOL squad = FALSE, present = FALSE;
+        for (int j = 0; j < rows_count; ++j) {
+            unsigned int id = item_fourcc(rows[j], SKIN_ID('i','d',' ',' '));
+            squad |= id == SKIN_ID('T','e','S','q');
+            present |= id == SQUAD_EVENT;
+        }
+        if (squad && !present && rows_count < MAX_POPUP_ROWS) {
+            add_menu_row(root, SQUAD_EVENT, "Generate missing squad faces\xe2\x80\xa6");
+            log_line("FMFACE24_TEAM_MENU_ADDED");
+        }
+    }
+}
+
 /* UI thread only, for every meop event: the source is the opened popup's
    parent container. */
 static void popup_opened(void *manager, void *event)
@@ -927,12 +956,13 @@ static void popup_opened(void *manager, void *event)
     int count = 0;
     if (!event || !read_pointer((unsigned char *)event + EVENT_SOURCE, &parent)) return;
     int children = widget_children(parent, search_children, MAX_CHILDREN);
+    add_squad_rows(search_children, children);
     for (int i = 0; i < children; ++i) {
         unsigned char *child = search_children[i];
         void *vtable;
         if (!widget_id(child, manager, &skin_id)) continue;
         if (skin_id == SKIN_ID('P','p','r','f') &&
-            (!read_game(child, &vtable, sizeof(vtable)) || vtable != game_base + PROFILE_MENU_OVERVIEW_TAB_VTABLE_RVA))
+            (!read_game(child, &vtable, sizeof(vtable)) || vtable != game_base + PROFILE_MENU_TAB_BUTTON_VTABLE_RVA))
             continue;
         if (skin_id != SKIN_ID('f','m','n','P') && skin_id != SKIN_ID('f','m','n','S') && skin_id != SKIN_ID('P','p','r','f'))
             continue;

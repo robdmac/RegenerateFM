@@ -276,7 +276,7 @@ class NativeDllSourceTests(unittest.TestCase):
                 generated.add(prefix + "".join("_" + c if c.isupper() else c.upper() for c in key))
         import re
         used = set(re.findall(r"\b((?:RELOAD|SQUAD_MENU|DIALOG|PROFILE_MENU)_[A-Z_]+_(?:RVA|OFFSET))\b", self.source))
-        self.assertIn("PROFILE_MENU_OVERVIEW_TAB_VTABLE_RVA", used)
+        self.assertIn("PROFILE_MENU_TAB_BUTTON_VTABLE_RVA", used)
         self.assertLessEqual(used, generated)
         build = (Path(install.__file__).with_name("build.py")).read_text()
         self.assertIn('("profileMenu", "PROFILE_MENU_")', build)

@@ -251,7 +251,8 @@ class NativeBatchTests(unittest.TestCase):
         self.notices = []
         for name, value in (("read_squad_rows", lambda *a, **k: self.full),
                             ("squad_club", lambda *a: "Club"),
-                            ("confirm_batch", lambda missing, total, preview_only=False, native=None, skipped=0: True),
+                            ("shown_team", lambda *a: "Club II"),
+                            ("confirm_batch", lambda missing, total, preview_only=False, native=None, skipped=0, brief=0, team="": True),
                             ("NativeProgress", Progress),
                             ("notify", lambda port, token, text, fallback: self.notices.append(text))):
             patcher = patch.object(squad_batch, name, value)
@@ -329,3 +330,38 @@ class ConfirmationTests(unittest.TestCase):
         with patch.object(squad_batch, "show_dialog", return_value="no") as dialog:
             squad_batch.confirm_batch(2, 5, native=(8770, "t"), skipped=1)
         self.assertIn("1 player was left out because FM24 hasn't loaded their names", dialog.call_args.args[4])
+
+    def test_names_the_team_and_players_with_brief_records(self):
+        with patch.object(squad_batch, "show_dialog", return_value="no") as dialog:
+            squad_batch.confirm_batch(2, 23, native=(8770, "t"), brief=11, team="Inter Miami II")
+        text = dialog.call_args.args[4]
+        self.assertIn("2 of the 12 Inter Miami II players read have no portrait", text)
+        self.assertIn("11 players FM24 lists without an age or ability (Scouting Required) were left out", text)
+        notices = []
+        with patch.object(squad_batch, "notify", lambda port, token, text, fallback: notices.append(text)):
+            self.assertFalse(squad_batch.confirm_batch(0, 23, native=(8770, "t"), brief=11, team="Inter Miami II"))
+        self.assertIn("All 12 Inter Miami II players read already have portraits.", notices[0])
+
+
+class RatingTests(unittest.TestCase):
+    def test_lowest_raw_ratings_show_as_one(self):
+        self.assertEqual([native_profile._rating(raw) for raw in (1, 2, 3, 8, 100)], [1, 1, 1, 2, 20])
+        for raw in (0, 101):
+            with self.assertRaises(MemoryUnavailable):
+                native_profile._rating(raw)
+
+
+class BriefRecordTests(unittest.TestCase):
+    def test_brief_records_are_told_apart_from_unknown_ones(self):
+        def record(marker):
+            return struct.pack("<II", 2002070373, 2002070373) + bytes(4) + bytes(marker) + bytes(4)
+        for marker in ((0, 2, 0, 0x10), (8, 2, 0x40, 0x30)):  # seen on Inter Miami II and its academy
+            with patch.object(native_squad, "read_process_bytes", return_value=record(marker)):
+                with self.assertRaises(native_squad.BriefRecord) as raised:
+                    native_squad._player_id(1, 0x1000)
+            self.assertEqual(raised.exception.person_id, "2002070373")
+        bad = struct.pack("<II", 5, 6) + bytes(12)  # not a person record at all
+        with patch.object(native_squad, "read_process_bytes", return_value=bad):
+            with self.assertRaises(MemoryUnavailable) as raised:
+                native_squad._player_id(1, 0x1000)
+        self.assertNotIsInstance(raised.exception, native_squad.BriefRecord)

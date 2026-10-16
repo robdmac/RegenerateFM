@@ -12,7 +12,7 @@ import time
 
 from live_memory import MemoryUnavailable, find_game_pid
 from native_dialog import DialogUnavailable, NativeProgress, notify, show_dialog
-from native_profile import squad_club, squad_player_profile
+from native_profile import shown_team, squad_club, squad_player_profile
 from native_squad import read_squad_rows
 
 
@@ -21,25 +21,35 @@ def _terminal(text: str) -> None:
 
 
 def confirm_batch(missing: int, total: int, *, preview_only: bool = False,
-                  native: tuple[int, str] | None = None, skipped: int = 0) -> bool:
+                  native: tuple[int, str] | None = None, skipped: int = 0, brief: int = 0,
+                  team: str = "") -> bool:
     """Ask in FM24's own dialog before any request; ``native`` is the DLL's
     port and token. Without an answer from FM24, nothing is generated.
-    ``skipped`` players could not be read (FM24 has not loaded their names)."""
+    ``skipped`` players could not be read (FM24 has not loaded their names);
+    ``brief`` players have only FM24's brief record (no age or ability).
+    ``team`` names the team most players shown play for."""
     note = (f" {skipped} {'player was' if skipped == 1 else 'players were'} left out because FM24 "
             "hasn't loaded their names; scroll the list to them and run it again to include them."
             if skipped else "")
+    if brief:
+        note += (f" {brief} {'player' if brief == 1 else 'players'} FM24 lists without an age or "
+                 f"ability (Scouting Required) {'was' if brief == 1 else 'were'} left out; FM24 keeps "
+                 "too little about them to describe a face.")
+    players = f"{team} players" if team else "squad players"
     if not missing:
         notify(*(native or (None, "")),
-               f"All {total - skipped} squad players read already have portraits.{note}"
-               if skipped else f"All {total} squad players already have portraits.", _terminal)
+               f"All {total - skipped - brief} {players} read already have portraits.{note}"
+               if skipped or brief else f"All {total} {players} already have portraits.", _terminal)
         return False
+    counted = (f"{missing} of {total} {players} have no portrait." if not skipped and not brief
+               else f"{missing} of the {total - skipped - brief} {players} read have no portrait.")
     action = "Preview faces" if preview_only else "Generate faces"
     bill = "No API requests will be made in preview mode." if preview_only else \
         "Each face makes one billed API request."
     if native:
         try:
             return show_dialog(*native, "confirm", f"{action}?",
-                               f"{missing} of {total} squad players have no portrait. "
+                               f"{counted} "
                                f"{action} for the {missing} missing players? {bill}{note}",
                                timeout=600) == "yes"
         except TimeoutError:
@@ -80,7 +90,8 @@ def run_native_squad_batch(handler, generate, describe=str, *, pid: int | None =
         missing = state.missing
         print(f"FM24 squad scan complete: {len(missing)} missing of {state.total} players.", flush=True)
         if not confirm_batch(len(missing), state.total, preview_only=handler.preview_only, native=native,
-                             skipped=len(state.unreadable)):
+                             skipped=len(state.unreadable), brief=len(state.brief),
+                             team=shown_team(pid, [row.record for row in state.rows])):
             return
         club = squad_club(pid, [row.record for row in state.rows])
         # Every prompt is validated before the first billed request.
