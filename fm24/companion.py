@@ -33,6 +33,10 @@ from native_reload import request_native_reload
 from native_screen import read_open_screen
 
 
+MISSING_KEY = ("FM Face has no OpenAI key. Close and restart the companion to enter it, "
+               "or add OPENAI_API_KEY to .env.")
+
+
 class NativePortraitProgress:
     """Progress text on FM Face's portrait popup inside FM24 (native DLL).
 
@@ -160,7 +164,7 @@ def generate_for_profile(handler, player_id: str, profile: dict) -> dict:
         check_graphics_config(handler.graphics_dir)
         env = load_env()
         if not env.get("OPENAI_API_KEY", "").strip():
-            raise ValueError("OPENAI_API_KEY is missing from .env.")
+            raise ValueError(MISSING_KEY)
         png = generate_png(env, prompt)
         _, previous = save_versioned_portrait(handler.graphics_dir, player_id, png)
         try:
@@ -306,7 +310,7 @@ again.onclick=()=>{{sessionStorage.removeItem('fmface-fm24-ran');location.reload
             check_graphics_config(self.graphics_dir)
             env = load_env()
             if not env.get("OPENAI_API_KEY", "").strip():
-                raise ValueError("OPENAI_API_KEY is missing from .env.")
+                raise ValueError(MISSING_KEY)
             png = edit_png(env, prompt, reference) if reference else generate_png(env, prompt)
             _, previous = save_versioned_portrait(self.graphics_dir, player_id, png)
             if progress:
@@ -372,6 +376,8 @@ def main() -> None:
         graphics_dir.mkdir(exist_ok=True)
     if not graphics_dir.is_dir() or graphics_dir.name != "fmface" or graphics_dir.parent.name != "graphics" or graphics_dir.parent.parent.name != "Football Manager 2024":
         parser.error("--graphics-dir must be the existing Football Manager 2024/graphics/fmface directory")
+    if not args.preview_only:
+        ask_for_key()
     Handler.token = token
     Handler.graphics_dir = graphics_dir
     Handler.preview_only = args.preview_only
@@ -394,6 +400,50 @@ def main() -> None:
     print(f"FM24 companion listening on 127.0.0.1:{args.port} "
           f"({'preview' if args.preview_only else 'generation'} mode)", flush=True)
     server.serve_forever()
+
+
+def ask_for_key() -> None:
+    """With no key in .env or FM Face's key file, ask for one in this window.
+
+    The key is checked with OpenAI (free) and saved encrypted in
+    %APPDATA%\\FM Face, which the FM26 plugin also reads.
+    """
+    import getpass
+    import keystore
+    store = keystore.default_path()
+    if store is None or load_env().get("OPENAI_API_KEY", "").strip() or not sys.stdin or not sys.stdin.isatty():
+        return
+    print("FM Face makes faces with your own OpenAI API key. Each face is one billed request on your "
+          "OpenAI account, usually a few cents or less.\n"
+          f"Create a key at {keystore.KEYS_PAGE}, then paste it here (right-click or Ctrl+V) or type it. "
+          "It isn't shown as you type. Press Enter on an empty line to skip.", flush=True)
+    while True:
+        try:
+            entered = getpass.getpass("OpenAI API key: ")
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return
+        if not entered.strip():
+            print("No key saved. Faces can't be made until you restart the companion and enter one.", flush=True)
+            return
+        try:
+            key = keystore.clean(entered)
+        except ValueError as exc:
+            print(exc, flush=True)
+            continue
+        print("Checking the key with OpenAI (this is free)...", flush=True)
+        problem = keystore.check(key)
+        if problem:
+            print(problem, flush=True)
+            continue
+        try:
+            keystore.save(store, key)
+        except (OSError, ValueError) as exc:
+            print(f"Could not save the key: {exc}", flush=True)
+            return
+        print(f"Key saved, encrypted for your Windows user, in {store.parent}. "
+              "Delete that folder to forget it.", flush=True)
+        return
 
 
 def _main_packaged() -> None:

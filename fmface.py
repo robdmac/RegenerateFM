@@ -24,6 +24,7 @@ import xml.etree.ElementTree as ET
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+import keystore
 from appearance import appearance_instruction, appearance_traits
 
 # A packaged FM24 companion (fm24/build_exe.py) keeps .env beside its executable.
@@ -81,6 +82,14 @@ def load_env(path: Path = ROOT / ".env") -> dict[str, str]:
             key = key.strip()
             if not values.get(key):
                 values[key] = value.strip().strip('"').strip("'")
+    # On Windows the FM24 companion saves the key it asks for in FM Face's key
+    # file, which the FM26 plugin shares.
+    store = keystore.default_path()
+    if store and not values.get("OPENAI_API_KEY", "").strip():
+        try:
+            values["OPENAI_API_KEY"] = keystore.load(store) or ""
+        except (OSError, ValueError):
+            pass
     return values
 
 

@@ -9,8 +9,9 @@ fm24/requirements-exe.txt; on Linux, a Windows Python under Wine works:
 
 The result is a folder rather than a single file: one-file packages unpack
 themselves to a temporary folder on every start, which is slower and is more
-often flagged by antivirus software. Put .env (with OPENAI_API_KEY) and the
-.fm24-auth token from build_skin.py beside fmface-fm24.exe.
+often flagged by antivirus software. Put the .fm24-auth token from
+build_skin.py beside fmface-fm24.exe; it asks for the OpenAI key on its first
+start (or reads OPENAI_API_KEY from a .env beside it).
 """
 
 from __future__ import annotations

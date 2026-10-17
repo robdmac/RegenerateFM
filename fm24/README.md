@@ -46,7 +46,7 @@ If anything can't be verified, the request is refused before any image is reques
    ```
 
    The builder creates a private local token and refuses to overwrite an existing skin. Keep `.fm24-auth` private.
-5. Copy `.env.example` to `.env` and set `OPENAI_API_KEY` there. Keep the file private (`chmod 600 .env`). Each generated or updated face is one billed image API request. If you don't have a key yet, follow [Get an OpenAI API key](../README.md#1-get-an-openai-api-key). The FM24 companion uses the graphics path passed on its command line; `FM_GRAPHICS_DIR` in `.env` is only for the web app and `import`.
+5. Copy `.env.example` to `.env` and set `OPENAI_API_KEY` there. (On Windows you can skip this: the companion asks for the key when it starts, as described under [Packaged companion for Windows](#packaged-companion-for-windows).) Keep the file private (`chmod 600 .env`). Each generated or updated face is one billed image API request. If you don't have a key yet, follow [Get an OpenAI API key](../README.md#1-get-an-openai-api-key). The FM24 companion uses the graphics path passed on its command line; `FM_GRAPHICS_DIR` in `.env` is only for the web app and `import`.
 6. Install the [native DLL](native_menu/README.md) with FM24 closed and add its Steam launch option. In FM24 Preferences, select **FM Face** and enable screen IDs in the title. Then run:
 
    ```sh
@@ -60,8 +60,9 @@ If anything can't be verified, the request is refused before any image is reques
 `fmface-fm24.exe` is the same companion packaged with Python, Pillow and zstandard, so players don't need to install Python to run it.
 
 **Using it:**
-1. Put `.env` (with `OPENAI_API_KEY`) and `.fm24-auth` beside `fmface-fm24.exe`.
+1. Put `.fm24-auth` beside `fmface-fm24.exe`.
 2. Start FM24, then double-click the exe.
+3. The first time, it asks for your OpenAI key in its window. Paste it (right-click or Ctrl+V) or type it; it isn't shown. It checks the key with a free OpenAI request and saves it encrypted for your Windows user in `%APPDATA%\FM Face\openai-key`, the same file the FM26 plugin uses. Delete that folder to forget the key. A `.env` beside the exe with `OPENAI_API_KEY` takes priority, as before.
 
 **Defaults:** with no arguments it reads `.fm24-auth` from its own folder. It finds `Documents\Sports Interactive\Football Manager 2024\graphics\fmface` itself, and creates it if FM24's user-data folder exists. The same options as above (`--graphics-dir`, `--preview-only` and so on) still work. If it stops with an error, the window stays open until you press Enter.
 

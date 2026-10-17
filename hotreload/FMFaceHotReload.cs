@@ -14,6 +14,7 @@ using HarmonyLib;
 using Il2CppInterop.Runtime.Injection;
 using SI.Bindable;
 using SI.Core;
+using SI.Input;
 using SI.UI;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -62,6 +63,8 @@ namespace FMFaceHotReload
         private Harmony _harmony;
         private FaceMenuContributor _menuContributor;
         private VisualElement _keyDialog;
+        private TextField _keyField;
+        private bool _keyTyping;
         private Task<string> _keyCheck;
         private string _keyChecking;
         private Label _keyStatus;
@@ -505,6 +508,7 @@ namespace FMFaceHotReload
                 plugin.CheckRefreshTimeout();
                 plugin.PollGeneration();
                 plugin.PollKeyCheck();
+                plugin.PollKeyTyping();
                 if (Time.unscaledTime < _nextScan)
                     return;
                 _nextScan = Time.unscaledTime + 0.5f;
@@ -1106,7 +1110,7 @@ namespace FMFaceHotReload
             var field = new TextField { isPasswordField = true, maskChar = '•' };
             field.style.height = 30;
             dialog.Add(field);
-            _keyStatus = text("Paste the key (it starts with sk-), then choose Save.", 13);
+            _keyStatus = text("Paste or type the key (it starts with sk-), then choose Save.", 13);
             _keyStatus.style.marginTop = 6;
             var buttons = new VisualElement();
             buttons.style.flexDirection = FlexDirection.Row;
@@ -1127,6 +1131,7 @@ namespace FMFaceHotReload
                  Path.GetDirectoryName(KeyStore.DefaultPath) + ". Delete that folder to forget it.", 12);
             root.Add(dialog);
             _keyDialog = dialog;
+            _keyField = field;
             _afterKeySaved = next;
             field.Focus();
         }
@@ -1212,8 +1217,36 @@ namespace FMFaceHotReload
             if (_keyDialog != null && _keyDialog.parent != null)
                 _keyDialog.RemoveFromHierarchy();
             _keyDialog = null;
+            _keyField = null;
             _keyStatus = null;
             _afterKeySaved = null;
+            PollKeyTyping();
+        }
+
+        // FM26 reads its keyboard shortcuts directly, so letters typed into the
+        // key field would also drive the game. Its own text boxes switch on
+        // "exclusive input" while in use; do the same while the dialog is open.
+        private void PollKeyTyping()
+        {
+            bool open = _keyField != null && _keyField.panel != null;
+            if (open == _keyTyping)
+                return;
+            try
+            {
+                var input = ManualSingleton<InputManager>.Instance;
+                if (input == null)
+                    return;
+                if (open)
+                    input.OnExclusiveInputBegin();
+                else
+                    input.OnExclusiveInputEnd();
+                _keyTyping = open;
+            }
+            catch (Exception error)
+            {
+                Log.LogWarning("Could not switch FM26's keyboard shortcuts for the key field: " + error.Message);
+                _keyTyping = open;
+            }
         }
 
         private Label ShowSquadDialog(string text, string buttonText, Action buttonAction)

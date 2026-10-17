@@ -36,7 +36,7 @@ The plugin calls OpenAI itself from inside FM26, so nothing else needs to run wh
 3. **Build and install the plugin** with the .NET 6 SDK, as described in [hotreload/README.md](hotreload/README.md).
 4. **Add your key in the game.** The first time you choose **Generate new face** (or a squad's **Generate faces…**), FM Face asks for your key.
    - It has a button that opens OpenAI's API keys page.
-   - Paste the key and choose **Save key**. FM Face checks it with OpenAI using a free request, then carries on with what you chose.
+   - Paste or type the key and choose **Save key**. FM Face checks it with OpenAI using a free request, then carries on with what you chose.
    - **Where it's kept:** outside the game folder, in `%APPDATA%\FM Face`, encrypted for your Windows user. Under Proton that is inside the game's Wine prefix.
    - **Changing it:** if OpenAI later rejects the key, the dialog opens again. To forget the key, delete that folder.
 
@@ -56,7 +56,7 @@ FM24 needs some one-time setup:
 - a native DLL installed beside the game.
 
 It also needs a companion program that runs while you play. It reads the open profile from FM24's memory and makes the image requests. You can run it two ways:
-- **Windows:** `fmface-fm24.exe`, from a release ZIP or built with `fm24/build_exe.py`. It needs no Python install. Put a `.env` file beside it (copy `.env.example` and paste your key after `OPENAI_API_KEY=`) together with the `.fm24-auth` file from the skin setup, then double-click it while FM24 is running. It finds FM24's graphics folder in your Documents by itself.
+- **Windows:** `fmface-fm24.exe`, from a release ZIP or built with `fm24/build_exe.py`. It needs no Python install. Put the `.fm24-auth` file from the skin setup beside it, then double-click it while FM24 is running. The first time, it asks for your OpenAI key in its window, checks it for free and saves it encrypted in `%APPDATA%\FM Face`, the same file the FM26 plugin uses, so one key serves both games. It finds FM24's graphics folder in your Documents by itself.
 - **Linux, or from source:** with Python, as described in the FM24 guide.
 
 The full steps are in [fm24/README.md](fm24/README.md).
@@ -73,7 +73,7 @@ In FM24, the portrait popup and the profile's **Overview** tab menu have **Gener
 | `Quality` | `low`, `medium` (default), `high`, `xhigh`, `max` or `auto`. Higher quality costs more per face. |
 | `ApiBaseUrl` | Leave as `https://api.openai.com/v1`; for testing only. |
 
-**FM24 and the web app** read `.env`, beside `fmface.py` or `fmface-fm24.exe`. It is reread for every request, so changes apply without a restart. Never share or commit `.env`; on Linux and macOS, `chmod 600 .env` keeps it private.
+**FM24 and the web app** read `.env`, beside `fmface.py` or `fmface-fm24.exe`. On Windows, when `.env` has no `OPENAI_API_KEY`, they use the key saved in `%APPDATA%\FM Face`. It is reread for every request, so changes apply without a restart. Never share or commit `.env`; on Linux and macOS, `chmod 600 .env` keeps it private.
 
 | Setting | Meaning |
 |---|---|
