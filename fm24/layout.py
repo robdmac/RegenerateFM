@@ -20,6 +20,7 @@ WINDOWS = {
     "record_name": 0x3C,           # pointer to {u32 length, UTF-8} full name
     "record_flags": (0,),          # byte 12 of the record
     "record_kinds": (0x58,),       # byte 14 of the record
+    "name_records_aligned": True,  # first/surname records start on 4-byte boundaries
     "position_ratings": -0x7C,     # 15 bytes, 1-20
     "attributes": -0x6D,           # 54 bytes, 1-100
     "height": -0x136,              # u16 cm
@@ -28,6 +29,8 @@ WINDOWS = {
     "contract": 0xBC,              # pointer to the contract
     "pointer": 4,                  # record and object pointers read (Wine keeps them below 4 GB)
     "person_vtables": None,        # the kind comes from the record type and position ratings
+    "object_browser_vtable": 0x56BAE48,  # CLIENT_OBJECT_BROWSER, from fm.exe's RTTI
+    "browser_reference": None,     # not yet confirmed on fm.exe (probe_object_browser.py)
 }
 
 MACOS = {
@@ -38,6 +41,7 @@ MACOS = {
     "record_name": -0x134,
     "record_flags": tuple(range(8)),  # 0 for most people; 1, 2, 4, 5 and 6 seen
     "record_kinds": (0x58, 0x50),     # 0x50 seen on staff and reserve records (types 0 and 1)
+    "name_records_aligned": False,    # first/surname records can start anywhere
     "position_ratings": -0x1B4,
     "attributes": -0x1A5,
     "height": -0x26E,
@@ -51,6 +55,10 @@ MACOS = {
     # and are refused. The bytes where a player's ratings are hold other data
     # for staff, so they can't tell staff apart as they do on Windows.
     "person_vtables": {0x51E6FD0: "player", 0x51E1150: "staff"},
+    # The open screen's CLIENT_OBJECT_BROWSER and its reference to the object
+    # shown: type << 24 | index, 0x01000000 | handle for a person.
+    "object_browser_vtable": 0x4F77650,
+    "browser_reference": 0x878,
 }
 
 # A copy, so tests with records from one build can select its layout on any

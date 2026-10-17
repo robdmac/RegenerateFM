@@ -28,7 +28,7 @@ def main() -> None:
         constants.append(f"#define {name} {supported[key]}u")
     # The same groups as supported_build.json, as offsets from the image header.
     for group, prefix in (("skinReload", "RELOAD_"), ("squadMenu", "SQUAD_MENU_"), ("dialog", "DIALOG_"),
-                          ("profileMenu", "PROFILE_MENU_")):
+                          ("profileMenu", "PROFILE_MENU_"), ("objectBrowser", "BROWSER_")):
         for key, value in supported[group].items():
             name = prefix + "".join("_" + c if c.isupper() else c.upper() for c in key)
             constants.append(f"#define {name} {value}u")

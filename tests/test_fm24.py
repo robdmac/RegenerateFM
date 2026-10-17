@@ -321,8 +321,18 @@ class NativeProfileReadTests(unittest.TestCase):
         screen = OpenScreen("7458500", "A biography.", "Attacking Midfielder - Inter Miami")
         (person_id, result), first, again = self.read([screen, screen], identity_only=True)
         self.assertEqual((person_id, result), ("7458500", self.PROFILE))
-        self.assertEqual(first.call_args.kwargs, {"identity_only": True})
+        # The profile read takes the person and title from the screen, not "(ID:n)" titles.
+        self.assertEqual(first.call_args.kwargs, {"identity_only": True, "screen": screen})
         self.assertEqual(again.call_args.kwargs, {"identity_only": True})
+
+
+class PersonReferenceTests(unittest.TestCase):
+    def test_only_person_references_have_a_handle(self):
+        import person_handles
+        self.assertEqual(person_handles.person_handle(0x01000C0E), 0xC0E)
+        for reference in (0x18000CB8, 0x01000000, 0x017FFFFF, 0):
+            with self.assertRaises(ValueError):
+                person_handles.person_handle(reference)
 
 
 class GraphicsTests(unittest.TestCase):

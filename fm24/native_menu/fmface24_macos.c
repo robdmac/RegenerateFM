@@ -43,7 +43,7 @@ static pthread_mutex_t pending_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t pending_ready = PTHREAD_COND_INITIALIZER;
 static int sequence;
 /* One pending click, written by the UI thread and taken by the worker. */
-static struct { unsigned int event, item; long long click_ms; long person; long read_ms; } pending;
+static struct { unsigned int event, item; long long click_ms; long long person; long read_ms; } pending;
 static unsigned short bridge_port;
 /* Names this game run in click packets (the start time in milliseconds). */
 static long long bridge_instance;
@@ -203,11 +203,50 @@ static long popup_person_id(void *manager, unsigned char *popup)
     return value <= 0x7fffffffu ? (long)value : 0;
 }
 
-static long clicked_person_id(void *manager, void *event)
+/* Without "Show screen IDs in Title Bar" the header shows no ID. The screen's
+   CLIENT_OBJECT_BROWSER, an ancestor of every widget on it, holds a reference
+   to the object it shows: type << 24 | index, 0x01000000 | the handle for a
+   person. The companion turns the handle into the person (every person record
+   carries it), so the library doesn't call into the game to resolve it. */
+static unsigned int browser_reference(void *manager, unsigned char *widget)
+{
+    unsigned int skin_id, reference;
+    for (int depth = 0; depth < 64 && widget && widget_id(widget, manager, &skin_id); ++depth) {
+        void *vtable;
+        if (read_game(widget, &vtable, sizeof(vtable)) && vtable == game_base + BROWSER_VTABLE)
+            return read_game(widget + BROWSER_REFERENCE_OFFSET, &reference, sizeof(reference)) &&
+                   reference >> 24 == 1 && (reference & 0x7fffff) != 0x7fffff ? reference : 0;
+        if (!read_pointer(widget + WIDGET_PARENT, &widget)) return 0;
+    }
+    return 0;
+}
+
+/* Who the popup's screen shows: the person ID from the header's "(ID:n)",
+   else minus the browser's person reference, else 0 (refused). */
+static long long popup_target(void *manager, unsigned char *popup)
+{
+    long person = popup_person_id(manager, popup);
+    if (person) return person;
+    unsigned int skin_id;
+    if (!widget_id(popup, manager, &skin_id) ||
+        (skin_id != SKIN_ID('f','m','n','P') && skin_id != SKIN_ID('f','m','n','S') &&
+         skin_id != SKIN_ID('P','p','r','f')))
+        return 0;
+    return -(long long)browser_reference(manager, popup);
+}
+
+/* The bridge's person field: the ID, or "r<reference>" for the companion to resolve. */
+static void format_target(char *out, size_t size, long long target)
+{
+    if (target < 0) snprintf(out, size, "r%llu", (unsigned long long)-target);
+    else snprintf(out, size, "%lld", target);
+}
+
+static long long clicked_person_id(void *manager, void *event)
 {
     unsigned char *source;
     if (!event || !read_pointer((unsigned char *)event + EVENT_SOURCE, &source)) return 0;
-    return popup_person_id(manager, source);
+    return popup_target(manager, source);
 }
 
 /* The row that was chosen: FMFG (Generate new face) or FMFU (Update face).
@@ -547,7 +586,7 @@ static BOOL dialog_tick(void *manager, unsigned int id)
     return FALSE;
 }
 
-static void queue_click(unsigned int id, unsigned int item, long long click_ms, long person, long read_ms)
+static void queue_click(unsigned int id, unsigned int item, long long click_ms, long long person, long read_ms)
 {
     pthread_mutex_lock(&pending_lock);
     pending.event = id;
@@ -577,7 +616,7 @@ static int native_event(void *object, unsigned int id, void *event)
     long long click_ms = unix_ms();
     unsigned long long started = tick_ms();
     BOOL profile = id == PROFILE_EVENT || id == UPDATE_ITEM;
-    long person = profile ? clicked_person_id(object, event) : 0;
+    long long person = profile ? clicked_person_id(object, event) : 0;
     unsigned int item = profile ? selected_item(event) : 0;
     queue_click(profile ? PROFILE_EVENT : id, item, click_ms, person, (long)(tick_ms() - started));
     return 1;
@@ -702,15 +741,17 @@ static int face_serial;
 static BOOL face_quiet;
 
 /* UI thread only. 1 if the companion says the person has a face, 0 if not,
-   -1 without an answer. "FMFACE24F 1 <serial> <person> <token>" goes to the
+   -1 without an answer. "FMFACE24F 1 <serial> <person> <token>" (the person as format_target writes it) goes to the
    bridge port; the reply is "FMFACE24F <serial> <yes|no>". */
-static int query_face(long person)
+static int query_face(long long person)
 {
     if (face_socket < 0 && (face_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0) return -1;
     struct sockaddr_in destination = bridge_destination(), source;
     int serial = ++face_serial;
     char packet[256], yes[48], no[48];
-    int count = snprintf(packet, sizeof(packet), "FMFACE24F 1 %d %ld %s", serial, person, bridge_token);
+    char who[24];
+    format_target(who, sizeof(who), person);
+    int count = snprintf(packet, sizeof(packet), "FMFACE24F 1 %d %s %s", serial, who, bridge_token);
     snprintf(yes, sizeof(yes), "FMFACE24F %d yes", serial);
     snprintf(no, sizeof(no), "FMFACE24F %d no", serial);
     if (sendto(face_socket, packet, (size_t)count, 0, (struct sockaddr *)&destination, sizeof(destination)) != count)
@@ -850,15 +891,17 @@ static void popup_opened(void *manager, void *event)
     if (!update) return;
     struct timespec t0, t1, t2;
     clock_gettime(CLOCK_MONOTONIC, &t0);
-    long person = popup_person_id(manager, popup);
+    long long person = popup_target(manager, popup);
     clock_gettime(CLOCK_MONOTONIC, &t1);
     int face = person ? query_face(person) : -1;
     clock_gettime(CLOCK_MONOTONIC, &t2);
     set_flag(update + ITEM_PROPERTIES, SKIN_ID('d','i','s','a'), face == 0);
     char line[160];
 #define US(a, b) (((b).tv_sec - (a).tv_sec) * 1000000LL + ((b).tv_nsec - (a).tv_nsec) / 1000)
-    snprintf(line, sizeof(line), "FMFACE24_%s person=%ld face=%s id_us=%lld query_us=%lld",
-             popup_id == SKIN_ID('P','p','r','f') ? "OVERVIEW_MENU" : "POPUP", person,
+    char who[24];
+    format_target(who, sizeof(who), person);
+    snprintf(line, sizeof(line), "FMFACE24_%s person=%s face=%s id_us=%lld query_us=%lld",
+             popup_id == SKIN_ID('P','p','r','f') ? "OVERVIEW_MENU" : "POPUP", who,
              face == 1 ? "yes" : face == 0 ? "no" : "unknown", (long long)US(t0, t1), (long long)US(t1, t2));
     log_line(line);
 }
@@ -911,12 +954,15 @@ static void *bridge_worker(void *unused)
         while (!pending.event) pthread_cond_wait(&pending_ready, &pending_lock);
         unsigned int id = pending.event, item = pending.item;
         long long click_ms = pending.click_ms;
-        long person = pending.person, read_ms = pending.read_ms;
+        long long person = pending.person;
+        long read_ms = pending.read_ms;
+        char who[24];
+        format_target(who, sizeof(who), person);
         pending.event = 0;
         pthread_mutex_unlock(&pending_lock);
         if (id == PROFILE_EVENT) {
             char line[96];
-            snprintf(line, sizeof(line), "FMFACE24_PROFILE_CLICK person=%ld read_ms=%ld item=%s", person, read_ms,
+            snprintf(line, sizeof(line), "FMFACE24_PROFILE_CLICK person=%s read_ms=%ld item=%s", who, read_ms,
                      item == UPDATE_ITEM ? "update" : item == PROFILE_EVENT ? "generate" : "unknown");
             log_line(line);
             if (!item) {
@@ -935,10 +981,10 @@ static void *bridge_worker(void *unused)
         }
         int serial = __atomic_add_fetch(&sequence, 1, __ATOMIC_SEQ_CST);
         char packet[256];
-        int count = snprintf(packet, sizeof(packet), "FMFACE24 5 %llu %d %s %lld %ld %s",
+        int count = snprintf(packet, sizeof(packet), "FMFACE24 5 %llu %d %s %lld %s %s",
                              (unsigned long long)bridge_instance, serial,
                              id == SQUAD_EVENT ? "squad" : item == UPDATE_ITEM ? "update" : "profile",
-                             click_ms, person, bridge_token);
+                             click_ms, who, bridge_token);
         int result = exchange(socket_fd, packet, count, serial);
         if (result == REPLY_ACCEPTED) { log_line("FMFACE24_CLICK_ACCEPTED"); continue; }
         if (result == REPLY_BUSY) {

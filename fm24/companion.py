@@ -26,11 +26,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from fmface import ROOT, check_graphics_config, edit_png, generate_png, load_env, profile_prompt, update_prompt
 from existing_portrait import find_existing_portrait, game_dir_from_process, has_existing_portrait
 from graphics import save_versioned_portrait
+from layout import LAYOUT
 from live_memory import MemoryUnavailable, find_game_pid
 from native_profile import read_open_profile, reread_profile
 from native_dialog import DialogUnavailable, set_progress
 from native_reload import request_native_reload
 from native_screen import read_open_screen
+from person_handles import build_in_background, person_for_reference
 
 
 MISSING_KEY = ("FM Face has no OpenAI key. Close and restart the companion to enter it, "
@@ -97,8 +99,8 @@ def read_native_profile(*, identity_only: bool = False):
     """
     try:
         pid = find_game_pid()
-        person_id, profile = read_open_profile(pid, identity_only=identity_only)
         screen = read_open_screen(pid)
+        person_id, profile = read_open_profile(pid, identity_only=identity_only, screen=screen)
         if screen.person_id != person_id:
             raise ValueError(f"The open FM24 screen shows {screen.person_id}, not person {person_id}; "
                              "no image request was made.")
@@ -130,6 +132,15 @@ def existing_portrait(handler, person_id: str, name: str) -> tuple[bytes, str]:
         raise ValueError(f"{name} has no face to update yet. Choose Generate new face instead; "
                          "no image request was made.")
     return found
+
+
+def resolve_reference(reference: int, *, wait: bool) -> str:
+    """The person ID for the object browser reference the macOS library sends
+    when the header shows no ID (person_handles)."""
+    try:
+        return person_for_reference(find_game_pid(), reference, wait=wait)
+    except MemoryUnavailable as exc:
+        raise ValueError(f"{exc}; no image request was made.") from exc
 
 
 def face_exists(handler, person_id: str) -> bool:
@@ -404,12 +415,19 @@ def main() -> None:
     from native_listener import start_native_listener
     try:
         start_native_listener(args.port, args.native_port, token, Handler, generate=generate_for_profile,
-                              has_face=lambda person_id: face_exists(Handler, person_id))
+                              has_face=lambda person_id: face_exists(Handler, person_id),
+                              resolve=resolve_reference)
     except RuntimeError as exc:
         parser.exit(1, f"{exc}\n")
     # Index the portraits now, so the first popup's face check is quick (the
     # game archive only if FM24 is already running).
     threading.Thread(target=lambda: _quietly(face_exists, Handler, "1"), daemon=True).start()
+    # People by handle, for profiles whose header shows no ID (macOS).
+    if LAYOUT["browser_reference"] is not None:
+        try:
+            build_in_background(find_game_pid())
+        except (MemoryUnavailable, OSError, ValueError):
+            pass  # FM24 isn't running yet; the first lookup indexes it.
     print(f"FM24 companion listening on 127.0.0.1:{args.port} "
           f"({'preview' if args.preview_only else 'generation'} mode)", flush=True)
     server.serve_forever()

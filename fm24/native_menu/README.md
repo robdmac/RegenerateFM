@@ -441,8 +441,28 @@ vtable: `db::ACTUAL_PLAYER` or `db::ACTUAL_NON_PLAYER`. Player-coaches
 are refused. The Squad table, its row model and the person handle table are
 read at the same offsets as in fm.exe.
 
+**Without screen IDs.** The screen's `CLIENT_OBJECT_BROWSER` (an ancestor of
+every widget on it) holds a reference to the object it shows at +0x878:
+`type << 24 | index`, `0x01000000 | handle` for a person. When the header
+shows no "(ID:n)", the library walks up from the clicked popup or tab to the
+browser and sends `r<reference>` in the person field of the click and the
+face check. It doesn't call FM24's resolver, which can load and register
+objects. The companion maps handles to people with one memory pass
+(`person_handles.py`; every record carries its handle 4 bytes before it) and
+checks the mapping again before each use; `native_screen.py` uses the same
+reference for the open profile. Staff names then come from first/surname
+records, which on the Mac can start at any byte. In fm.exe the browser's
+class is known (vtable RVA `0x56bae48`) but not where it keeps the
+reference: its members match the Mac build's up to +0x568 and are 8 bytes
+lower after that, and the code that reads it is in the protected part.
+`fm24/probe_object_browser.py` finds it on a running game; until then the
+Windows build needs screen IDs.
+
 Checked on 2026-10-17 on an Apple M2 (macOS 26) with a copy of a real save,
 in preview mode: a player (Sly) and a staff member (Terry McPhillips) read
 in full and matched their screens, the 25-row Squad table and its 8 players
 without a face, the squad count dialog and No, the greyed Update face, and
-an in-game skin reload. No billed face has been made on macOS yet.
+an in-game skin reload. On 2026-10-18, with screen IDs turned off: player and
+staff previews from the portrait popup and the Overview tab menu, and Update
+face greyed for a person without a face. No billed face has been made on macOS
+yet.

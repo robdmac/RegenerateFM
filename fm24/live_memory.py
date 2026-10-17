@@ -40,12 +40,12 @@ class PersonIdentity:
         return difference - 1, difference
 
 
-def _record_addresses(pid: int, person_id: int):
+def _record_addresses(pid: int, person_id: int, aligned: bool = True):
     needle = struct.pack("<II", person_id, person_id)
     for base, data in MemoryScan(pid, len(needle) - 1):
         offset = 0
         while (offset := data.find(needle, offset)) >= 0:
-            if (base + offset) % 4 == 0:
+            if not aligned or (base + offset) % 4 == 0:
                 yield base + offset
             offset += 1
 

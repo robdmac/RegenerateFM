@@ -99,11 +99,11 @@ def _record_with_alternate_name(pid: int, person_id: str) -> tuple[int, PersonId
     number = int(person_id)
     record_addresses = []
     names = set()
-    for address in _record_addresses(pid, number):
+    for address in _record_addresses(pid, number, aligned=LAYOUT["name_records_aligned"]):
         try:
             raw = read_process_bytes(pid, address, 128)
             # Type 5 is a player too.
-            if (raw[:8] == struct.pack("<II", number, number) and record_marker(raw) and
+            if (address % 4 == 0 and raw[:8] == struct.pack("<II", number, number) and record_marker(raw) and
                     raw[16] in RECORD_TYPES and raw[17:20] == b"\0\0\0"):
                 if _pointer(pid, address + LAYOUT["record_name"]) == 0:
                     year, birth = record_dates(pid, address, raw)
@@ -301,16 +301,21 @@ def _position(pid: int, record: int) -> str:
     return POSITIONS[ratings.index(best)]
 
 
-def read_open_profile(pid: int | None = None, *, identity_only: bool = False) -> tuple[str, dict]:
+def read_open_profile(pid: int | None = None, *, identity_only: bool = False,
+                      screen=None) -> tuple[str, dict]:
     """Read native FM24 prompt fields for the uniquely selected profile.
 
     Biography rich text is decoded separately after the selected person has
     been verified from the canonical record. ``identity_only`` stops after the
     verified name, age and club, which is all "Update face" needs; another
-    club's player can have attributes that are not fully known.
+    club's player can have attributes that are not fully known. ``screen``
+    (native_screen.OpenScreen) names the person and title shown, so the UI
+    texts aren't searched for "(ID:n)" titles, which need screen IDs.
     """
     pid = pid or find_game_pid()
     titles, ages = _scan_ui(pid)
+    if screen is not None:
+        titles = {screen.person_id: [screen.title]}
     people = []
     for person_id, names in titles.items():
         try:

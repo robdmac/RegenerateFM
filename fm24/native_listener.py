@@ -12,7 +12,9 @@ from native_dialog import notify as native_notify
 from squad_batch import run_native_squad_batch
 
 # The DLL reports the person ID shown in the clicked screen's header, read from
-# FM24's memory inside the menu callback, and the click time. A command older
+# FM24's memory inside the menu callback, and the click time. Without screen
+# IDs the macOS library reports "r<reference>" instead: the screen's object
+# browser reference, which ``resolve`` turns into the person's ID. A command older
 # than this is refused as defence in depth; the person binding is what prevents
 # a delayed command from targeting a newly opened profile.
 MAX_CLICK_AGE = .75
@@ -23,8 +25,12 @@ def _print_error(message: str) -> None:
     print(f"FM Face: {message}", flush=True)
 
 
+def _person_field(value: str) -> bool:
+    return value.isdecimal() or (value[:1] == "r" and value[1:].isdecimal())
+
+
 def start_native_listener(port, bridge_port, token, handler, *,
-                          notify=None, clock=time.time, generate=None, has_face=None):
+                          notify=None, clock=time.time, generate=None, has_face=None, resolve=None):
     if notify is None:
         # FM24's own OK dialog through the DLL, else the companion terminal.
         def notify(message):
@@ -57,6 +63,10 @@ def start_native_listener(port, bridge_port, token, handler, *,
             if not bound_id:
                 raise ValueError("FM24 did not report which person's menu was chosen; "
                                  "no image request was made.")
+            if bound_id.startswith("r"):
+                if resolve is None:
+                    raise ValueError("Enable screen IDs in FM24's preferences; no image request was made.")
+                bound_id = resolve(int(bound_id[1:]), wait=True)
             result = request_generation(port, token, handler, expected_id=bound_id,
                                         mode="update" if action == "update" else "generate")
             print(describe_result(result), flush=True)
@@ -76,9 +86,13 @@ def start_native_listener(port, bridge_port, token, handler, *,
         on "no" and leaves it enabled without an answer."""
         magic, version, serial, person, key = fields
         if (peer[0] != "127.0.0.1" or version != "1" or not serial.isdecimal() or
-                not person.isdecimal() or not hmac.compare_digest(key, token) or has_face is None):
+                not _person_field(person) or not hmac.compare_digest(key, token) or has_face is None):
             return
         try:
+            if person.startswith("r"):
+                if resolve is None:
+                    return
+                person = resolve(int(person[1:]), wait=False)
             answer = "yes" if has_face(person) else "no"
         except (OSError, ValueError, RuntimeError) as exc:
             print(f"FM24 face check failed (Update face stays enabled): {exc}", flush=True)
@@ -93,7 +107,7 @@ def start_native_listener(port, bridge_port, token, handler, *,
         magic, version, pid, serial, action, clicked, person, key = fields
         if (peer[0] != "127.0.0.1" or magic != "FMFACE24" or version != "5" or
                 not pid.isdecimal() or not serial.isdecimal() or not clicked.isdecimal() or
-                not person.isdecimal() or
+                not _person_field(person) or
                 action not in ("profile", "update", "squad") or not hmac.compare_digest(key, token)):
             return
         sequence = int(serial)

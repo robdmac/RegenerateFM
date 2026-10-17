@@ -121,3 +121,9 @@
   Development Center tabs, and `setup_fm24.py --remove`. Player-coaches
   (db::ACTUAL_PLAYER_AND_NON_PLAYER) are refused. There is no packaged Mac
   companion; it runs from source with Pillow and zstandard.
+- **FM24 without screen IDs:** done on macOS (2026-10-18). The person comes
+  from the screen's object browser (+0x878 on the Mac) by handle. For fm.exe
+  (Windows and Proton) the browser's offset is unconfirmed: run
+  `python3 fm24/probe_object_browser.py` on Linux with a profile open and
+  screen IDs on, then set `browser_reference` in `fm24/layout.py` and
+  extend `fmface24.c` the same way.

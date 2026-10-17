@@ -173,9 +173,13 @@ def setup(game: Path, user_data: Path, auth_file: Path) -> None:
     (user_data / "graphics" / "fmface").mkdir(parents=True, exist_ok=True)
     native_install.main(["--game-dir", str(game), "--skin-dir", str(skin_dir),
                          "--auth-file", str(auth_file), "--dll", str(bundled_dll())])
-    print("\nIn FM24, open Preferences > Interface and:\n"
-          "  1. choose the \"FM Face\" skin;\n"
-          "  2. tick \"Show screen IDs in Title Bar to assist skinning\".\n", flush=True)
+    if native_install.MACOS:
+        # The macOS build reads the person from the screen's object browser.
+        print("\nIn FM24, open Preferences > Interface and choose the \"FM Face\" skin.\n", flush=True)
+    else:
+        print("\nIn FM24, open Preferences > Interface and:\n"
+              "  1. choose the \"FM Face\" skin;\n"
+              "  2. tick \"Show screen IDs in Title Bar to assist skinning\".\n", flush=True)
 
 
 def resolve_dirs(game_dir: Path | None, user_data_dir: Path | None) -> tuple[Path, Path]:

@@ -3,8 +3,9 @@
 The UI manager's root widget (manager+0x58) is the open screen. Its tree is
 walked through each widget's children vector, keeping only widgets of this
 manager. The header ('head') holds the subtitle ('subs') whose text ends in
-"(ID:n)" when screen IDs are enabled; the biography panel's 'biot' widget
-holds the rich-text biography FM24 is displaying. Read-only; layouts are those
+"(ID:n)" when screen IDs are enabled; without them, the person comes from the
+screen's object browser (person_handles). The biography panel's 'biot'
+widget holds the rich-text biography FM24 is displaying. Read-only; layouts are those
 of the pinned 24.4.2 build, and anything unexpected raises MemoryUnavailable.
 """
 
@@ -14,7 +15,9 @@ import re
 import struct
 from dataclasses import dataclass
 
+from layout import LAYOUT
 from live_memory import MemoryUnavailable, find_game_pid
+from person_handles import person_for_reference, screen_reference
 from native_profile import _RICH_LINK
 from native_squad import WIDGET_ID, WIDGET_MANAGER, _children, _u32, _u64, ui_manager
 from process_memory import read_process_bytes
@@ -101,7 +104,11 @@ def read_open_screen(pid: int | None = None) -> OpenScreen:
             raise MemoryUnavailable("Could not find the FM24 profile subtitle.")
         subtitle = _string(pid, subtitles[0], SUBTITLE_TEXT, 256).decode("utf-8")
         match = _ID.search(subtitle)
-        if not match:
+        if match:
+            person_id, title = match.group(1), subtitle[:match.start()].strip()
+        elif LAYOUT["browser_reference"] is not None:
+            person_id, title = person_for_reference(pid, screen_reference(pid, manager, widgets)), subtitle.strip()
+        else:
             raise MemoryUnavailable("The FM24 profile header shows no ID; enable screen IDs.")
         biographies = widgets.get(_skin_id(b"biot"), [])
         if len(biographies) > 1:
@@ -110,4 +117,4 @@ def read_open_screen(pid: int | None = None) -> OpenScreen:
                      if biographies else "")
     except (OSError, ValueError, struct.error) as exc:
         raise MemoryUnavailable(f"Could not read the open FM24 screen: {exc}") from exc
-    return OpenScreen(match.group(1), biography, subtitle[:match.start()].strip())
+    return OpenScreen(person_id, biography, title)

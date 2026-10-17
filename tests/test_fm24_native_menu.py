@@ -243,6 +243,41 @@ class NativeBridgeTests(unittest.TestCase):
             bridge.send(1, action="squad")
             self.assertEqual(bridge.reply(), b"FMFACE24 ACK 1 accepted")
 
+    def test_references_resolve_to_the_person_without_screen_ids(self):
+        # The macOS library sends "r<reference>" when the header shows no ID.
+        resolved = []
+
+        def resolve(reference, *, wait):
+            resolved.append((reference, wait))
+            return "123"
+        bridge = Bridge(self, has_face=lambda person: person == "123", resolve=resolve)
+        bridge.client.sendto(f"FMFACE24F 1 1 r16780302 {KEY}".encode(), bridge.address)
+        self.assertEqual(bridge.reply(), b"FMFACE24F 1 yes")
+        self.assertEqual(resolved, [(16780302, False)])  # a menu never waits for the index
+        done = threading.Event()
+        with patch.object(native_listener, "request_generation",
+                          side_effect=lambda *a, **k: (done.set(), {"ok": True, "preview": True})[1]) as request:
+            bridge.send(1, person="r16780302")
+            self.assertEqual(bridge.reply(), b"FMFACE24 ACK 1 accepted")
+            self.assertTrue(done.wait(2))
+        self.assertEqual(request.call_args.kwargs["expected_id"], "123")
+        self.assertEqual(resolved[-1], (16780302, True))
+        # Without a resolver (or with a malformed field) nothing is requested.
+        notices = []
+        plain = Bridge(self, notify=notices.append)
+        with patch.object(native_listener, "request_generation") as request:
+            plain.send(1, person="r16780302")
+            self.assertEqual(plain.reply(), b"FMFACE24 ACK 1 accepted")
+            for _ in range(20):
+                if notices:
+                    break
+                time.sleep(.05)
+            request.assert_not_called()
+        self.assertIn("screen IDs", notices[0])
+        plain.send(2, person="rx")
+        with self.assertRaises(socket.timeout):
+            plain.reply()
+
     def test_failed_face_check_sends_no_answer(self):
         # The DLL then leaves "Update face" enabled; the update is refused later.
         bridge = Bridge(self, has_face=lambda person: (_ for _ in ()).throw(OSError("unreadable")))

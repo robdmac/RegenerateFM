@@ -44,7 +44,7 @@ FM24 for Mac is its own program, so FM Face uses a Mac library instead of the DL
 2. Build the library: `python3 fm24/native_menu/build_macos.py`.
 3. Close FM24 and run `python3 fm24/setup_fm24.py`. It finds FM24 in `~/Library/Application Support/Steam`, builds the skin in `~/Library/Application Support/Sports Interactive/Football Manager 2024/skins/fmface`, and puts `libfmface24.dylib`, `run_fmface24.sh` and `fmface24.ini` beside `fm.app`.
 4. Set FM24's Steam launch option to the line it prints: `"<the game folder>/run_fmface24.sh" %command%`.
-5. Start the companion, `python3 fm24/companion.py`. It asks for your OpenAI key the first time and keeps it in `~/Library/Application Support/FM Face`, readable only by you. Then choose the skin and screen IDs in FM24 as below.
+5. Start the companion, `python3 fm24/companion.py`. It asks for your OpenAI key the first time and keeps it in `~/Library/Application Support/FM Face`, readable only by you. Then choose the FM Face skin in FM24's **Preferences > Interface**. On the Mac, **Show screen IDs in Title Bar** isn't needed: the library reports the person from the screen's object browser, and the companion finds them by their handle (it indexes FM24's people in about 10 seconds when it starts).
 
 `fm.app` is never changed. `python3 fm24/setup_fm24.py --remove` removes the library and launcher and restores the panels; then clear the launch option. On an Intel Mac, `run_fmface24.sh` starts FM24 without FM Face. The memory layouts are in [layout.py](layout.py) and described in [native_menu/README.md](native_menu/README.md#macos).
 
