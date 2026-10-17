@@ -57,9 +57,29 @@
 - **FM26 without the Python server:** done in code (2026-10-16). Plugin 0.9.0
   calls OpenAI itself (`hotreload/FaceGenerator.cs`). It asks for the key in
   the game and keeps it DPAPI-encrypted in `%APPDATA%\FM Face`; the prompts, saved files and requests
-  match `fmface.py` in tests. Still to do: a live FM26 check, then one billed
-  face.
+  match `fmface.py` in tests. Checked live on 2026-10-17: a billed face
+  (Taylor Arnett) saved and reloaded, and a typed key no longer triggers
+  FM26's keyboard shortcuts.
 - **Packaged FM24 companion:** done (2026-10-16). `fm24/build_exe.py` builds
   `dist/fmface-fm24/fmface-fm24.exe` (PyInstaller, one folder). Under Wine in
   FM24's prefix it read the squad, showed FM24's dialog and answered face
-  checks. Skin building and DLL install still need Python once.
+  checks. Skin building and DLL install still need Python once. Since
+  2026-10-17 it asks for the key in its window (shared, encrypted key file
+  with FM26) and rechecks a saved key at start; checked live against FM24.
+
+## Next (2026-10-17)
+
+- **FM24 setup without Python:** ship the prebuilt skin builder and DLL
+  installer inside the exe (or the release ZIP), so Windows players need no
+  Python or MinGW.
+- **FM26 plugin install:** ship the built DLL in the release so players don't
+  need the .NET SDK; `install_fm26.py` still needs Python.
+- **FM24 popup progress text:** after the first use in a session the DLL logs
+  `FMFACE24_PROGRESS_NOT_SET` and the popup shows no progress. Cosmetic.
+- **FM26 reserve and youth squads:** the Generate faces… item depends on the
+  Squad screen's player table; check it on the Under 21s and Under 18s tabs.
+- **FM26 biography:** needs a visit to the Career tab first; FM24 reads it
+  from the Overview.
+- **Real Windows test** of both games, and the stale `dist/fmface-0.8.0.zip`
+  replaced by a 0.9.0 release.
+- **Credits system:** deferred.
