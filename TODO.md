@@ -89,3 +89,23 @@
 - **Real Windows test** of both games. `dist/fmface-0.9.0.zip` is built
   but not published.
 - **Credits system:** deferred.
+
+## macOS (2026-10-17)
+
+- **FM26 on macOS:** loads (2026-10-17). BepInEx be.789 under Rosetta 2 with
+  funchook and a patched Il2CppInterop, started by `run_fmface.sh`; the
+  plugin loaded in 12 cold starts, including a quarantined install from the
+  release ZIP. Details in `hotreload/macos/README.md`. The Actions, portrait
+  and squad commands open the key dialog. Still to check: a saved key and a
+  billed face in game; starting through Steam's launch option; whether one
+  plugin DLL serves be.760 (Windows) and be.789 (macOS).
+- **FM26 person ID from the data binding:** done (2026-10-17). The plugin
+  reads `objectID` (`Person.UniqueId`) from the profile header's binding, so
+  "Show screen IDs in Title Bar" isn't needed; `(ID:n)` text is the fallback.
+  Check it on Linux and on a staff profile.
+- **FM26 squad command closes with the dropdown:** FM26 closes the Squad
+  dropdown once the pointer leaves it, and the plugin removes **Generate
+  faces…** at its next 0.5 s scan, so a slow click misses it (seen on macOS;
+  same code on every platform).
+- **FM24 on macOS:** not started. FM24 for Mac is a native clang build, so the
+  DLL hook, memory layouts and memory reader would all have to be redone.

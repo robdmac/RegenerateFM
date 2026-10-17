@@ -669,7 +669,8 @@ namespace FMFaceHotReload
 
     // The player's OpenAI key, kept outside the game folder (which people zip
     // up when asking for mod support). On Windows, and under Proton, it is
-    // encrypted with DPAPI for the current Windows user.
+    // encrypted with DPAPI for the current Windows user. On macOS it is in
+    // Application Support, readable only by the user.
     internal static class KeyStore
     {
         private static readonly byte[] Protected = Encoding.ASCII.GetBytes("FMFK1\n");
@@ -677,8 +678,13 @@ namespace FMFaceHotReload
         private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("FM Face OpenAI API key");
         private static readonly Regex KeyPattern = new Regex(@"^sk-[A-Za-z0-9_\-]{16,300}$", RegexOptions.Compiled);
 
+        // .NET 6 maps ApplicationData to ~/.config on macOS, not where Mac programs keep their data.
+        public static string ApplicationSupport =>
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Library", "Application Support");
+
         public static string DefaultPath =>
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "FM Face", "openai-key");
+            Path.Combine(OperatingSystem.IsMacOS() ? ApplicationSupport : Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                         "FM Face", "openai-key");
 
         // The pasted key without surrounding spaces, or an exception whose
         // message tells the player what is wrong.
@@ -716,6 +722,13 @@ namespace FMFaceHotReload
             string temporary = path + ".tmp";
             try
             {
+                if (!OperatingSystem.IsWindows())
+                {
+                    // Owner-only before the key is written, like keystore.py's 0600.
+                    using (File.Create(temporary)) { }
+                    if (chmod(temporary, OwnerReadWrite) != 0)
+                        throw new IOException("Could not make the key file private (error " + Marshal.GetLastWin32Error() + ").");
+                }
                 File.WriteAllBytes(temporary, data);
                 File.Move(temporary, path, overwrite: true);
             }
@@ -748,6 +761,11 @@ namespace FMFaceHotReload
 
         [DllImport("kernel32.dll")]
         private static extern IntPtr LocalFree(IntPtr memory);
+
+        [DllImport("libc", SetLastError = true)]
+        private static extern int chmod(string path, uint mode);
+
+        private const uint OwnerReadWrite = 0x180; // 0600
 
         private const int UiForbidden = 0x1;
 

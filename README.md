@@ -26,14 +26,16 @@ The plugin calls OpenAI itself from inside FM26, so nothing else needs to run wh
 
 1. **Copy the files.** Close FM26. Find its game folder (in Steam: right-click Football Manager 26 > **Manage > Browse local files**). Copy everything inside the release ZIP's `FM26` folder into it. That adds [BepInEx 6.0.0-be.760](https://builds.bepinex.dev/projects/bepinex_be/), the mod loader, and the FM Face plugin. If you already use BepInEx for other mods, copy only `BepInEx/plugins/FMFaceHotReload`.
 2. **Linux only:** set FM26's Steam launch option to `WINEDLLOVERRIDES="winhttp=n,b" %command%`.
+
+   **macOS:** copy the release ZIP's `FM26-macOS` folder's contents instead, into the folder that holds `fm.app` (in Steam: **Manage > Browse local files**). Then set FM26's launch option to the path of `run_fmface.sh` in that folder, in quotes, followed by `%command%`, for example `"/Users/you/Library/Application Support/Steam/steamapps/common/Football Manager 26/run_fmface.sh" %command%`. FM26 then runs under Rosetta 2 (BepInEx's macOS runtime is Intel-only); install Rosetta with `softwareupdate --install-rosetta` if macOS hasn't asked already. `fm.app` itself is never changed. See [hotreload/macos/README.md](hotreload/macos/README.md).
 3. **Start FM26.** The first start takes a few minutes longer while BepInEx prepares itself.
 4. **Add your key in the game.** The first time you choose **Generate new face** (or a squad's **Generate faces…**), FM Face asks for your key.
    - It has a button that opens OpenAI's API keys page.
    - Paste or type the key and choose **Save key**. FM Face checks it with OpenAI using a free request, then carries on with what you chose.
-   - **Where it's kept:** outside the game folder, in `%APPDATA%\FM Face`, encrypted for your Windows user. Under Proton that is inside the game's Wine prefix.
+   - **Where it's kept:** outside the game folder, in `%APPDATA%\FM Face`, encrypted for your Windows user. Under Proton that is inside the game's Wine prefix. On macOS it is `~/Library/Application Support/FM Face`, readable only by you.
    - **Changing it:** if OpenAI later rejects the key, the dialog opens again. To forget the key, delete that folder.
 
-**Removing it:** delete `BepInEx`, `dotnet`, `winhttp.dll`, `doorstop_config.ini` and `.doorstop_version` from the game folder (or only `BepInEx/plugins/FMFaceHotReload` if other mods use BepInEx). To build the plugin yourself, see [hotreload/README.md](hotreload/README.md).
+**Removing it:** delete `BepInEx`, `dotnet`, `winhttp.dll`, `doorstop_config.ini` and `.doorstop_version` from the game folder (or only `BepInEx/plugins/FMFaceHotReload` if other mods use BepInEx). On macOS, delete `BepInEx`, `dotnet`, `Data`, `libdoorstop.dylib`, `.doorstop_version` and `run_fmface.sh`, and clear the launch option. To build the plugin yourself, see [hotreload/README.md](hotreload/README.md).
 
 ### Use it in FM26
 
@@ -42,7 +44,7 @@ The plugin calls OpenAI itself from inside FM26, so nothing else needs to run wh
 - **Squad:** open **Squad > Overview**, open the top **Squad** dropdown and choose **Generate faces…**. FM Face counts the players with no portrait and asks before making any request. It then does one face at a time. **Stop after current face** ends the batch after the face in progress. Players who already have a portrait are never replaced.
 - **Biographies:** for a profile with a biography, visit its **Career** tab once before generating, then return to **Overview**. The biography's headline paragraph is then included.
 
-Faces are saved in FM26's user-data folder, `Documents/Sports Interactive/Football Manager 26/graphics/fmface`. Errors appear in the portrait's tooltip and in `BepInEx/LogOutput.log`. The plugin turns its buttons off if FM26 updates to an untested build.
+Faces are saved in FM26's user-data folder, `Documents/Sports Interactive/Football Manager 26/graphics/fmface` (on macOS, `~/Library/Application Support/Sports Interactive/Football Manager 26/graphics/fmface`). Errors appear in the portrait's tooltip and in `BepInEx/LogOutput.log`. The plugin turns its buttons off if FM26 updates to an untested build.
 
 ## 3. Set up FM24 (experimental)
 
@@ -110,7 +112,7 @@ Everything has been tested on Linux with Steam/Proton. Status elsewhere:
 
 | Part | Windows | macOS |
 |---|---|---|
-| FM26 plugin | Its native target: the build check pins the Windows game binaries that Proton also runs. Untested on Windows itself. | Not supported. The build check pins the Windows binaries, and BepInEx IL2CPP on macOS needs a community Il2CppInterop patch for plugins that register their own types, as this one does. |
+| FM26 plugin | Its native target: the build check pins the Windows game binaries that Proton also runs. Untested on Windows itself. | Experimental, through the `FM26-macOS` folder: BepInEx be.789 under Rosetta 2, with a rebuilt hooking library and a patched Il2CppInterop ([hotreload/macos/README.md](hotreload/macos/README.md)). On FM26 26.3.2 for Mac the plugin loads, a career runs, and the Actions, portrait and squad commands open the key dialog; a billed face is not yet checked. |
 | FM24 DLL | The same Windows DLL; Windows loads it from the game folder without a launch option. Untested on Windows itself. | Not possible: FM24 for macOS is a native Mac program, not `fm.exe`. |
 | FM24 companion | Has a Windows memory reader (`ReadProcessMemory`, `VirtualQueryEx`). Run under Wine in the game's Proton prefix, both Windows Python and the packaged `fmface-fm24.exe` read the live game: a full profile, the shown biography, squad rows and portrait checks. Native Windows is untested. | Refuses to start. |
 | Web app and import (`fmface.py`) | Standard-library Python plus Pillow, so it should run; untested. `install_service.py` is Linux-only (systemd). | Should run; untested. |

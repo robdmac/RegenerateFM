@@ -43,7 +43,8 @@ ApiBaseUrl = https://api.openai.com/v1
 
 ## Where faces are saved
 
-Faces are saved as `<person ID>.png` in FM26's user-data folder, `Documents/Sports Interactive/Football Manager 26/graphics/fmface`.
+Faces are saved as `<person ID>.png` in FM26's user-data folder, `Documents/Sports Interactive/Football Manager 26/graphics/fmface` (on macOS, `~/Library/Application Support/Sports Interactive/Football Manager 26/graphics/fmface`).
+- **Person ID:** read from the profile header's data binding, where FM26 maps `objectID` to `Person.UniqueId`, so no skin change or preference is needed. A header that shows `(ID:n)` text is used if that binding isn't found.
 - **Mapping:** `config.xml` maps each face to the person's ordinary and generated-player IDs.
 - **Appearance traits:** these are kept under `.fmface-appearances/`, so a regenerated face keeps the same traits.
 

@@ -1,0 +1,181 @@
+diff --git a/src/funchook.c b/src/funchook.c
+index d84b18b..5de1c51 100644
+--- a/src/funchook.c
++++ b/src/funchook.c
+@@ -85,6 +85,24 @@ static void flush_instruction_cache(void *addr, size_t size)
+ #endif
+ }
+ 
++/* Patches the start of a function. A patch that fits in one aligned 8-byte
++ * word is written with a single atomic store, so a thread running the function
++ * (or Rosetta translating it) never sees a half-written jump. */
++static void write_code(void *dst, const void *src, size_t len)
++{
++#if defined(__x86_64__) && defined(FUNCHOOK_ATOMIC_PATCH)
++    uintptr_t addr = (uintptr_t)dst;
++    uintptr_t word = addr & ~(uintptr_t)7;
++    if (addr + len <= word + 8) {
++        uint64_t value = __atomic_load_n((uint64_t *)word, __ATOMIC_RELAXED);
++        memcpy((uint8_t *)&value + (addr - word), src, len);
++        __atomic_store_n((uint64_t *)word, value, __ATOMIC_SEQ_CST);
++        return;
++    }
++#endif
++    memcpy(dst, src, len);
++}
++
+ funchook_t *funchook_create(void)
+ {
+     funchook_t *funchook = NULL;
+@@ -347,7 +365,7 @@ static int funchook_install_internal(funchook_t *funchook, int flags)
+             if (rv != 0) {
+                 return rv;
+             }
+-            memcpy(entry->target_func, entry->new_code, JUMP32_BYTE_SIZE);
++            write_code(entry->target_func, entry->new_code, JUMP32_BYTE_SIZE);
+             rv = funchook_unprotect_end(funchook, &mstate);
+             if (rv != 0) {
+                 return rv;
+@@ -378,7 +396,7 @@ static int funchook_uninstall_internal(funchook_t *funchook, int flags)
+             if (rv != 0) {
+                 return rv;
+             }
+-            memcpy(entry->target_func, entry->old_code, JUMP32_BYTE_SIZE);
++            write_code(entry->target_func, entry->old_code, JUMP32_BYTE_SIZE);
+             rv = funchook_unprotect_end(funchook, &mstate);
+             if (rv != 0) {
+                 return rv;
+@@ -401,10 +419,18 @@ static int funchook_destroy_internal(funchook_t *funchook)
+     if (funchook->installed) {
+         return FUNCHOOK_ERROR_ALREADY_INSTALLED;
+     }
++#ifndef FUNCHOOK_KEEP_PAGES_ON_DESTROY
+     for (page = funchook->page_list; page != NULL; page = page_next) {
+         page_next = page->next;
+         funchook_page_free(funchook, page);
+     }
++#else
++    /* Another thread can still be running a trampoline when a hook is removed
++     * (BepInEx removes its il2cpp_runtime_invoke hook from inside that hook),
++     * so the trampoline pages stay mapped. */
++    (void)page;
++    (void)page_next;
++#endif
+     if (funchook->fp != NULL) {
+         fclose(funchook->fp);
+     }
+diff --git a/src/funchook_unix.c b/src/funchook_unix.c
+index 1f3f577..672783b 100644
+--- a/src/funchook_unix.c
++++ b/src/funchook_unix.c
+@@ -37,6 +37,7 @@
+ #include <errno.h>
+ #include <sys/mman.h>
+ #include <dlfcn.h>
++#include <pthread.h>
+ #ifdef __linux
+ #include <elf.h>
+ #include <link.h>
+@@ -189,7 +190,7 @@ static void memory_map_close(memory_map_t *mm)
+ #error unsupported OS
+ #endif
+ 
+-static int get_free_address(funchook_t *funchook, void *func_addr, void *addrs[2])
++static int get_free_address(funchook_t *funchook, void *func_addr, void *addrs[2], size_t size)
+ {
+     memory_map_t mm;
+     size_t prev_end = 0;
+@@ -204,9 +205,9 @@ static int get_free_address(funchook_t *funchook, void *func_addr, void *addrs[2
+     while (memory_map_next(&mm, &start, &end) == 0) {
+         funchook_log(funchook, "  process map: "ADDR_FMT"-"ADDR_FMT", prev_end=%"PRIxPTR",addr={%"PRIxPTR",%"PRIxPTR"},psz=%"PRIxPTR"\n",
+                      start, end, prev_end, (size_t)addrs[0], (size_t)addrs[1], page_size);
+-        if (prev_end + page_size <= start) {
++        if (prev_end + size <= start) {
+             if (start < (size_t)func_addr) {
+-                size_t addr = start - page_size;
++                size_t addr = start - size;
+                 if ((size_t)func_addr - addr < INT32_MAX) {
+                     /* unused memory region before func_addr. */
+                     addrs[0] = (void*)addr;
+@@ -243,6 +244,51 @@ static int get_free_address(funchook_t *funchook, void *func_addr, void *addrs[2
+ 
+ #define SAFE_JUMP_DISTANCE(X, Y)  ((size_t)(X) - (size_t)(Y)) < (INT32_MAX - page_size)
+ 
++#if defined(FUNCHOOK_RESERVE_PAGES)
++/* BepInEx makes one funchook per hook, and each takes a trampoline page within
++ * 2GB of its target. Under Rosetta 2 the address space near the game's code is
++ * used up while the game starts, so later hooks found no page. The first page
++ * allocation reserves FUNCHOOK_RESERVE_PAGES pages near its target, and later
++ * pages come from that block while it is in range. */
++static pthread_mutex_t reserve_lock = PTHREAD_MUTEX_INITIALIZER;
++static uint8_t *reserve_next;
++static uint8_t *reserve_end;
++
++static int reserve_in_range(const uint8_t *func, const uint8_t *page)
++{
++    return SAFE_JUMP_DISTANCE(func, page) || SAFE_JUMP_DISTANCE(page, func);
++}
++
++static void reserve_pages(funchook_t *funchook, uint8_t *func)
++{
++    size_t size = page_size * FUNCHOOK_RESERVE_PAGES;
++    void *addrs[2];
++    int i;
++
++    if (get_free_address(funchook, func, addrs, size) != 0) {
++        return;
++    }
++    for (i = 1; i >= 0; i--) {
++        uint8_t *block;
++
++        if (addrs[i] == NULL) {
++            continue;
++        }
++        block = mmap(addrs[i], size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
++        if (block == MAP_FAILED) {
++            continue;
++        }
++        if (reserve_in_range(func, block) && reserve_in_range(func, block + size - page_size)) {
++            funchook_log(funchook, "  reserve %d pages at %p\n", FUNCHOOK_RESERVE_PAGES, block);
++            reserve_next = block;
++            reserve_end = block + size;
++            return;
++        }
++        munmap(block, size);
++    }
++}
++#endif
++
+ #endif /* defined(CPU_64BIT) */
+ 
+ int funchook_page_alloc(funchook_t *funchook, funchook_page_t **page_out, uint8_t *func, ip_displacement_t *disp)
+@@ -250,13 +296,28 @@ int funchook_page_alloc(funchook_t *funchook, funchook_page_t **page_out, uint8_
+ #if defined(CPU_64BIT)
+     int loop_cnt;
+ 
++#if defined(FUNCHOOK_RESERVE_PAGES)
++    pthread_mutex_lock(&reserve_lock);
++    if (reserve_next == NULL) {
++        reserve_pages(funchook, func);
++    }
++    if (reserve_next != NULL && reserve_next < reserve_end && reserve_in_range(func, reserve_next)) {
++        *page_out = (funchook_page_t *)reserve_next;
++        reserve_next += page_size;
++        pthread_mutex_unlock(&reserve_lock);
++        funchook_log(funchook, "  allocate reserved page %p (size=%"PRIuPTR")\n", *page_out, page_size);
++        return 0;
++    }
++    pthread_mutex_unlock(&reserve_lock);
++#endif
++
+     /* Loop three times just to avoid rare cases such as
+      * unused memory region is used between 'get_free_address()'
+      * and 'mmap()'.
+      */
+     for (loop_cnt = 0; loop_cnt < 3; loop_cnt++) {
+         void *addrs[2];
+-        int rv = get_free_address(funchook, func, addrs);
++        int rv = get_free_address(funchook, func, addrs, page_size);
+         int i;
+ 
+         if (rv != 0) {

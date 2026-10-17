@@ -1,9 +1,10 @@
 """The player's OpenAI key, kept outside the game and FM Face folders.
 
 On Windows it is encrypted with DPAPI for the current Windows user, in
-%APPDATA%\\FM Face\\openai-key. The FM26 plugin (hotreload/FaceGenerator.cs,
-KeyStore) reads and writes the same file in the same format, so on one
-Windows user both games share one key.
+%APPDATA%\\FM Face\\openai-key. On macOS it is in ~/Library/Application
+Support/FM Face/openai-key, readable only by the user. The FM26 plugin
+(hotreload/FaceGenerator.cs, KeyStore) reads and writes the same file in the
+same format, so the plugin and fmface.py share one key.
 """
 
 from __future__ import annotations
@@ -25,7 +26,9 @@ REJECTED = "OpenAI didn't accept this key. Check that you copied all of it."
 
 
 def default_path() -> Path | None:
-    """The key file on Windows, or None elsewhere (Linux keeps the key in .env)."""
+    """The key file on Windows and macOS, or None on Linux (which keeps the key in .env)."""
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "FM Face" / "openai-key"
     if sys.platform != "win32":
         return None
     appdata = os.environ.get("APPDATA")

@@ -135,6 +135,14 @@ namespace FMFaceHotReload
         {
             try
             {
+                if (OperatingSystem.IsMacOS())
+                {
+                    string contents = Path.Combine(Paths.GameRootPath, "fm.app", "Contents");
+                    return HasHash(Path.Combine(contents, "Frameworks", "GameAssembly.dylib"),
+                               "7886b66692c18504de32ad3973fe4c9afc3edfe12a6941b44e83627cb9563e26")
+                        && HasHash(Path.Combine(contents, "PlugIns", "game_plugin.bundle", "Contents", "MacOS", "game_plugin"),
+                               "de6b048ab1a95fd4ae683a7d751a33645183a9a570fa1c2fba32fd308ca87979");
+                }
                 return HasHash(Path.Combine(Paths.GameRootPath, "GameAssembly.dll"),
                            "7ce3eb474dc6093df633f979e869e55b2ec7953fde2e732392a694d379ff7a0c")
                     && HasHash(Path.Combine(Paths.GameRootPath, "fm_Data", "Plugins", "x86_64", "game_plugin.dll"),
@@ -291,8 +299,8 @@ namespace FMFaceHotReload
             var header = FindNamed(root, "ReportHeader");
             if (header == null || header.worldBound.width < 800)
                 throw new InvalidOperationException("Open a player Overview before generating a face.");
-            if (!HeaderId(TextValues(header), out long visibleId))
-                throw new InvalidOperationException("This player profile does not show its ID. Enable player IDs in the skin, then try again.");
+            if (!HeaderId(header, out long visibleId))
+                throw new InvalidOperationException("Could not read this player's ID from the profile. Reopen it and try again.");
             if (visibleId != playerId)
                 throw new InvalidOperationException("Player profile changed; reopen it and try again.");
             picture = FindNamed(header, "PersonPicture");
@@ -386,7 +394,7 @@ namespace FMFaceHotReload
                 throw new InvalidOperationException("Open a staff Overview before generating a face.");
             picture = FindNamed(header, "PersonPicture");
             var texts = TextValues(header);
-            if (!HeaderId(texts, out long visibleId) || visibleId != personId)
+            if (!HeaderId(header, out long visibleId) || visibleId != personId)
                 throw new InvalidOperationException("Staff profile changed; reopen it and try again.");
             var profile = new ProfileSnapshot { Type = "staff" };
             var banner = FindNamed(header, "report-player-banner-max") ?? header;
@@ -452,7 +460,52 @@ namespace FMFaceHotReload
             return false;
         }
 
-        private static bool HeaderId(List<string> values, out long id)
+        // The person a profile header shows. Its binding remapper maps "objectID"
+        // to Person.UniqueId, the ID FM26 shows with "Show screen IDs in Title Bar",
+        // so that preference isn't needed. Skins that print "(ID:n)" still work.
+        private static bool HeaderId(VisualElement header, out long id)
+        {
+            return BoundObjectId(header, out id) || TextId(TextValues(header), out id);
+        }
+
+        private static bool BoundObjectId(VisualElement header, out long id)
+        {
+            id = 0;
+            var remapper = ObjectIdRemapper(header);
+            var view = remapper?.TryCast<IBindableElement>()?.GetView();
+            if (view == null || !GameSubsystems.TryGet<Bindings>(out var bindings) || bindings == null)
+                return false;
+            var key = view.Key;
+            if (!bindings.TryGetNode(ref key, out var node) || node == null)
+                return false;
+            for (var child = node.FirstChild; child != null; child = child.NextSibling)
+                if (child.Name == "objectID")
+                {
+                    var value = child.Value;
+                    return value != null && !value.IsNull && long.TryParse(value.AsString(), out id) && id > 0;
+                }
+            return false;
+        }
+
+        private static BindingRemapper ObjectIdRemapper(VisualElement element)
+        {
+            if (element == null)
+                return null;
+            var remapper = element.TryCast<BindingRemapper>();
+            if (remapper?.Mappings != null)
+                foreach (var mapping in remapper.Mappings)
+                    if (mapping.from == "objectID" && (mapping.to ?? "").EndsWith(".UniqueId", StringComparison.OrdinalIgnoreCase))
+                        return remapper;
+            for (int i = 0; i < element.hierarchy.childCount; i++)
+            {
+                var found = ObjectIdRemapper(element.hierarchy.ElementAt(i));
+                if (found != null)
+                    return found;
+            }
+            return null;
+        }
+
+        private static bool TextId(List<string> values, out long id)
         {
             foreach (var value in values)
             {
@@ -927,7 +980,7 @@ namespace FMFaceHotReload
         private void CaptureBatchPlayer(SquadBatch batch)
         {
             var header = FindNamed(CurrentRoot(), "ReportHeader");
-            if (header == null || !HeaderId(TextValues(header), out long personId) || !IsPlayerOverview(CurrentRoot()))
+            if (header == null || !HeaderId(header, out long personId) || !IsPlayerOverview(CurrentRoot()))
                 return;
             var target = batch.Queue[batch.Index];
             ProfileSnapshot profile;
@@ -1125,7 +1178,8 @@ namespace FMFaceHotReload
                 buttons.Add(button);
             }
             dialog.Add(buttons);
-            text("The key is kept on this computer only, encrypted for your Windows user, in " +
+            text("The key is kept on this computer only, " +
+                 (OperatingSystem.IsWindows() ? "encrypted for your Windows user" : "readable only by your user account") + ", in " +
                  Path.GetDirectoryName(KeyStore.DefaultPath) + ". Delete that folder to forget it.", 12);
             root.Add(dialog);
             _keyDialog = dialog;
@@ -1281,7 +1335,7 @@ namespace FMFaceHotReload
             var root = CurrentRoot();
             var header = FindNamed(root, "ReportHeader");
             if (header == null || header.worldBound.width < 800 ||
-                !HeaderId(TextValues(header), out long personId))
+                !HeaderId(header, out long personId))
             {
                 ClosePortraitMenu();
                 return;
@@ -1318,7 +1372,7 @@ namespace FMFaceHotReload
             var header = FindNamed(root, "ReportHeader");
             var picture = FindNamed(header, "PersonPicture");
             if (root == null || header == null || picture == null ||
-                !HeaderId(TextValues(header), out long personId))
+                !HeaderId(header, out long personId))
                 return;
             if (_portraitMenu != null && _portraitMenu.parent != null && _portraitMenuPersonId == personId)
             {
@@ -1372,7 +1426,7 @@ namespace FMFaceHotReload
                 ClosePortraitMenu();
                 var currentRoot = CurrentRoot();
                 var currentHeader = FindNamed(currentRoot, "ReportHeader");
-                if (currentHeader == null || !HeaderId(TextValues(currentHeader), out long currentId) ||
+                if (currentHeader == null || !HeaderId(currentHeader, out long currentId) ||
                     currentId != personId)
                 {
                     Log.LogWarning("Portrait menu profile changed before selection; no image request was made");
@@ -1411,7 +1465,7 @@ namespace FMFaceHotReload
             var header = FindNamed(root, "ReportHeader");
             if (header == null || header.worldBound.width < 800 || FindNamed(header, "PersonPicture") == null)
                 return;
-            if (!HeaderId(TextValues(header), out long personId))
+            if (!HeaderId(header, out long personId))
                 return;
             var biography = CaptureBiographyHeadline(root);
             if (!string.IsNullOrWhiteSpace(biography))
@@ -1551,9 +1605,9 @@ namespace FMFaceHotReload
         {
             var root = CurrentRoot();
             var header = FindNamed(root, "ReportHeader");
-            if (header == null || !HeaderId(TextValues(header), out long personId))
+            if (header == null || !HeaderId(header, out long personId))
             {
-                Log.LogWarning("The profile's ID is not shown yet; no image request was made");
+                Log.LogWarning("The profile's ID could not be read yet; no image request was made");
                 ShowBusyNotice("The profile is still loading. Choose it again.");
                 return;
             }
@@ -1700,10 +1754,13 @@ namespace FMFaceHotReload
             }
         }
 
+        // FM26's user-data folder is in Documents on Windows and in Application Support on macOS.
         private static string GraphicsFolder()
         {
-            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                "Sports Interactive", "Football Manager 26", "graphics", "fmface");
+            string userData = OperatingSystem.IsMacOS()
+                ? KeyStore.ApplicationSupport
+                : Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+            return Path.Combine(userData, "Sports Interactive", "Football Manager 26", "graphics", "fmface");
         }
 
         private bool Refresh()
@@ -1804,7 +1861,7 @@ namespace FMFaceHotReload
                     var root = CurrentRoot();
                     var header = FindNamed(root, "ReportHeader");
                     // The ID is read again on click: just after a profile opens the
-                    // header can be drawn before its ID text arrives.
+                    // header can be drawn before its data is bound.
                     if (header == null || !IsActionTarget(context.Target, header))
                         return;
                     var contributor = Instance._menuContributor.TryCast<IMenuContributor>();
@@ -1855,7 +1912,7 @@ namespace FMFaceHotReload
                 var header = FindNamed(root, "ReportHeader");
                 if (header == null || !IsActionTarget(context.Target, header))
                     return;
-                long? personId = HeaderId(TextValues(header), out long shownId) ? shownId : (long?)null;
+                long? personId = HeaderId(header, out long shownId) ? shownId : (long?)null;
                 context.Description.AddItem(parent, "Generate face",
                     (Il2CppSystem.Action)(System.Action)(() => Instance.GenerateOpenProfile(personId, false)));
                 var update = context.Description.AddItem(parent, "Update face",
