@@ -63,10 +63,13 @@ class CompanionKeyPromptTests(unittest.TestCase):
         import companion
         self.companion = companion
 
-    def prompt(self, store, answers, problems=()):
+    def prompt(self, store, answers, problems=(), env_key="", saved_key=""):
         tty = mock.Mock(isatty=mock.Mock(return_value=True))
+        def load_env(use_key_file=True):
+            key = env_key or (saved_key if use_key_file else "")
+            return {"OPENAI_API_KEY": key} if key else {}
         with mock.patch.object(keystore, "default_path", return_value=store), \
-                mock.patch.object(self.companion, "load_env", return_value={}), \
+                mock.patch.object(self.companion, "load_env", side_effect=load_env), \
                 mock.patch.object(sys, "stdin", tty), \
                 mock.patch("getpass.getpass", side_effect=answers) as asked, \
                 mock.patch.object(keystore, "check", side_effect=list(problems) + [None]) as checked, \
@@ -87,6 +90,23 @@ class CompanionKeyPromptTests(unittest.TestCase):
             store = Path(tmp) / "openai-key"
             self.assertEqual(self.prompt(store, [""]), (1, 0))
             self.assertFalse(store.exists())
+
+    def test_a_saved_key_is_rechecked_and_replaced_only_when_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Path(tmp) / "openai-key"
+            self.assertEqual(self.prompt(store, [], saved_key=KEY), (0, 1))
+            self.assertEqual(self.prompt(store, [], problems=["Could not reach OpenAI: offline"], saved_key=KEY),
+                             (0, 1))
+            asked, checked = self.prompt(store, [KEY], problems=[keystore.REJECTED], saved_key="sk-old_" + "d" * 30)
+            self.assertEqual((asked, checked), (1, 2))
+            self.assertEqual(keystore.load(store), KEY)
+
+    def test_a_key_from_env_is_left_alone(self):
+        self.assertEqual(self.prompt(Path("unused"), [], env_key=KEY), (0, 0))
+
+    def test_rejected_key_errors_say_how_to_replace_it(self):
+        self.assertIn("start it again", self.companion.error_text(RuntimeError("OpenAI image API returned HTTP 401: x")))
+        self.assertEqual(self.companion.error_text(RuntimeError("HTTP 500")), "HTTP 500")
 
     def test_no_prompt_without_a_key_file_location(self):
         self.assertEqual(self.prompt(None, []), (0, 0))

@@ -71,7 +71,7 @@ PORTRAIT_STYLE = (
 )
 
 
-def load_env(path: Path = ROOT / ".env") -> dict[str, str]:
+def load_env(path: Path = ROOT / ".env", use_key_file: bool = True) -> dict[str, str]:
     values = dict(os.environ)
     if path.exists():
         for line in path.read_text(encoding="utf-8").splitlines():
@@ -85,11 +85,11 @@ def load_env(path: Path = ROOT / ".env") -> dict[str, str]:
     # On Windows the FM24 companion saves the key it asks for in FM Face's key
     # file, which the FM26 plugin shares.
     store = keystore.default_path()
-    if store and not values.get("OPENAI_API_KEY", "").strip():
+    if use_key_file and store and not values.get("OPENAI_API_KEY", "").strip():
         try:
             values["OPENAI_API_KEY"] = keystore.load(store) or ""
-        except (OSError, ValueError):
-            pass
+        except (OSError, ValueError) as exc:
+            print(f"Could not read the saved OpenAI key: {exc}", file=sys.stderr, flush=True)
     return values
 
 

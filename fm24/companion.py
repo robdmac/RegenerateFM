@@ -37,6 +37,16 @@ MISSING_KEY = ("FM Face has no OpenAI key. Close and restart the companion to en
                "or add OPENAI_API_KEY to .env.")
 
 
+REJECTED_KEY = (" Close the companion and start it again to enter a new key (on Windows, a key in .env "
+                "takes priority over the saved one).")
+
+
+def error_text(exc: Exception) -> str:
+    """The error for FM24's dialog; a rejected key says how to replace it."""
+    text = str(exc)
+    return text + REJECTED_KEY if "HTTP 401" in text else text
+
+
 class NativePortraitProgress:
     """Progress text on FM Face's portrait popup inside FM24 (native DLL).
 
@@ -176,7 +186,7 @@ def generate_for_profile(handler, player_id: str, profile: dict) -> dict:
             old.unlink(missing_ok=True)
         return {"ok": True, "playerId": player_id, "refreshed": True}
     except (ValueError, OSError, RuntimeError, ParseError) as exc:
-        return {"ok": False, "error": str(exc)}
+        return {"ok": False, "error": error_text(exc)}
     finally:
         with handler.lock:
             handler.in_flight = False
@@ -329,7 +339,7 @@ again.onclick=()=>{{sessionStorage.removeItem('fmface-fm24-ran');location.reload
         except (ValueError, OSError, RuntimeError, ParseError) as exc:
             if progress:
                 progress.fail()
-            self._json(422, {"ok": False, "error": str(exc)})
+            self._json(422, {"ok": False, "error": error_text(exc)})
         finally:
             if progress and not progress.failed:
                 progress.close()
@@ -411,8 +421,17 @@ def ask_for_key() -> None:
     import getpass
     import keystore
     store = keystore.default_path()
-    if store is None or load_env().get("OPENAI_API_KEY", "").strip() or not sys.stdin or not sys.stdin.isatty():
+    if store is None or not sys.stdin or not sys.stdin.isatty():
         return
+    if load_env(use_key_file=False).get("OPENAI_API_KEY", "").strip():
+        return  # .env (or the environment) sets the key
+    saved = load_env().get("OPENAI_API_KEY", "").strip()
+    if saved:
+        # A saved key can be revoked later; checking it is free. Ask again only
+        # when OpenAI says no, not when it can't be reached.
+        if keystore.check(saved) != keystore.REJECTED:
+            return
+        print("OpenAI no longer accepts the saved key.", flush=True)
     print("FM Face makes faces with your own OpenAI API key. Each face is one billed request on your "
           "OpenAI account, usually a few cents or less.\n"
           f"Create a key at {keystore.KEYS_PAGE}, then paste it here (right-click or Ctrl+V) or type it. "

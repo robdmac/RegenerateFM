@@ -62,7 +62,7 @@ If anything can't be verified, the request is refused before any image is reques
 **Using it:**
 1. Put `.fm24-auth` beside `fmface-fm24.exe`.
 2. Start FM24, then double-click the exe.
-3. The first time, it asks for your OpenAI key in its window. Paste it (right-click or Ctrl+V) or type it; it isn't shown. It checks the key with a free OpenAI request and saves it encrypted for your Windows user in `%APPDATA%\FM Face\openai-key`, the same file the FM26 plugin uses. Delete that folder to forget the key. A `.env` beside the exe with `OPENAI_API_KEY` takes priority, as before.
+3. The first time, it asks for your OpenAI key in its window. Paste it (right-click or Ctrl+V) or type it; it isn't shown. It checks the key with a free OpenAI request and saves it encrypted for your Windows user in `%APPDATA%\FM Face\openai-key`, the same file the FM26 plugin uses. Delete that folder to forget the key. On later starts it checks the saved key the same free way and asks again only if OpenAI rejects it. A `.env` beside the exe with `OPENAI_API_KEY` takes priority, as before.
 
 **Defaults:** with no arguments it reads `.fm24-auth` from its own folder. It finds `Documents\Sports Interactive\Football Manager 2024\graphics\fmface` itself, and creates it if FM24's user-data folder exists. The same options as above (`--graphics-dir`, `--preview-only` and so on) still work. If it stops with an error, the window stays open until you press Enter.
 
