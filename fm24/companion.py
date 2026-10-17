@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """FM24 companion: read the open profile from game memory and generate its portrait.
 
-Requires the FM Face native DLL (fm24/native_menu); there is no X11 code.
+Requires FM Face's native library in FM24 (fm24/native_menu: the DLL on
+Windows and Proton, libfmface24.dylib on macOS); there is no X11 code.
 """
 
 from __future__ import annotations
@@ -18,9 +19,8 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 from xml.etree.ElementTree import ParseError
 
-if sys.platform != "win32" and not sys.platform.startswith("linux"):
-    sys.exit("FM Face's FM24 companion runs on Linux (Steam/Proton) and Windows. The macOS version "
-             "of FM24 is a separate program that the FM Face DLL and memory reader do not support.")
+if sys.platform not in ("win32", "darwin") and not sys.platform.startswith("linux"):
+    sys.exit("FM Face's FM24 companion runs on Linux (Steam/Proton), Windows and macOS.")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from fmface import ROOT, check_graphics_config, edit_png, generate_png, load_env, profile_prompt, update_prompt
@@ -348,7 +348,10 @@ again.onclick=()=>{{sessionStorage.removeItem('fmface-fm24-ran');location.reload
 
 
 def _default_graphics_dir() -> Path | None:
-    """FM24's user-data graphics/fmface folder on Windows (Documents may be redirected)."""
+    """FM24's user-data graphics/fmface folder on Windows (Documents may be redirected) and macOS."""
+    if sys.platform == "darwin":
+        return (Path.home() / "Library" / "Application Support" / "Sports Interactive" /
+                "Football Manager 2024" / "graphics" / "fmface")
     if sys.platform != "win32":
         return None
     import ctypes
@@ -415,8 +418,10 @@ def main() -> None:
 def ask_for_key() -> None:
     """With no key in .env or FM Face's key file, ask for one in this window.
 
-    The key is checked with OpenAI (free) and saved encrypted in
-    %APPDATA%\\FM Face, which the FM26 plugin also reads.
+    The key is checked with OpenAI (free) and saved in FM Face's key file,
+    which the FM26 plugin also reads: encrypted for the Windows user in
+    %APPDATA%\\FM Face, or readable only by this user in macOS's
+    ~/Library/Application Support/FM Face.
     """
     import getpass
     import keystore
@@ -460,7 +465,8 @@ def ask_for_key() -> None:
         except (OSError, ValueError) as exc:
             print(f"Could not save the key: {exc}", flush=True)
             return
-        print(f"Key saved, encrypted for your Windows user, in {store.parent}. "
+        stored = "readable only by you" if sys.platform == "darwin" else "encrypted for your Windows user"
+        print(f"Key saved, {stored}, in {store.parent}. "
               "Delete that folder to forget it.", flush=True)
         return
 

@@ -19,6 +19,8 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "fm24"))
+import layout  # noqa: E402  The fixtures are records from the Windows fm.exe.
+layout.LAYOUT.update(layout.WINDOWS)
 import companion
 import process_memory
 import live_memory
@@ -28,6 +30,7 @@ from fmface import PNG_SIGNATURE
 
 
 class MemoryProbeTests(unittest.TestCase):
+    @unittest.skipIf(sys.platform == "darwin", "macOS reads only FM24, through FM Face's library inside it")
     def test_read_only_process_memory_access(self):
         sample = ctypes.create_string_buffer(b"FM24 probe")
         address = ctypes.addressof(sample)

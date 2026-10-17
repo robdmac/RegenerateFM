@@ -60,6 +60,8 @@ It needs no Python. If FM24 isn't in a Steam library it can find, run `fmface-fm
 
 **Linux (Steam/Proton)** runs the companion with Python from this source: `python3 fm24/setup_fm24.py` does the same setup, then add FM24's launch option `WINEDLLOVERRIDES="winmm=n,b" %command%`. The full steps are in [fm24/README.md](fm24/README.md).
 
+**macOS (Apple Silicon, experimental)** also runs the companion with Python from this source. Build the Mac library with `python3 fm24/native_menu/build_macos.py` (it needs Xcode's command-line tools), then run `python3 fm24/setup_fm24.py` with FM24 closed. It installs `libfmface24.dylib` and `run_fmface24.sh` beside `fm.app` and prints FM24's Steam launch option, `"<that folder>/run_fmface24.sh" %command%`. `fm.app` itself is never changed. The companion asks for your key in its window and saves it in `~/Library/Application Support/FM Face`, the file the FM26 plugin uses too. See [fm24/README.md](fm24/README.md).
+
 In FM24, the portrait popup and the profile's **Overview** tab menu have **Generate new face** and **Update face**. The Squad screen's **Overview** menu has **Generate missing squad faces…**. Progress, confirmations and errors appear in FM24's own dialogs.
 
 ## Settings
@@ -113,7 +115,7 @@ Everything has been tested on Linux with Steam/Proton. Status elsewhere:
 | Part | Windows | macOS |
 |---|---|---|
 | FM26 plugin | Its native target: the build check pins the Windows game binaries that Proton also runs. Untested on Windows itself. | Experimental, through the `FM26-macOS` folder: BepInEx be.789 under Rosetta 2, with a rebuilt hooking library and a patched Il2CppInterop ([hotreload/macos/README.md](hotreload/macos/README.md)). On FM26 26.3.2 for Mac the plugin loads, a career runs, and the Actions, portrait and squad commands open the key dialog; a billed face is not yet checked. |
-| FM24 DLL | The same Windows DLL; Windows loads it from the game folder without a launch option. Untested on Windows itself. | Not possible: FM24 for macOS is a native Mac program, not `fm.exe`. |
+| FM24 DLL | The same Windows DLL; Windows loads it from the game folder without a launch option. Untested on Windows itself. | Experimental: a Mac library (`fm24/native_menu/fmface24_macos.c`) for FM24 24.4.2's Apple Silicon build, loaded by `run_fmface24.sh`. On the Mac it adds the same menus and dialogs, reloads the skin, and serves the companion's memory reads. Checked in game with preview faces; a billed face is not yet checked. |
 | FM24 companion | Has a Windows memory reader (`ReadProcessMemory`, `VirtualQueryEx`). Run under Wine in the game's Proton prefix, both Windows Python and the packaged `fmface-fm24.exe` read the live game: a full profile, the shown biography, squad rows and portrait checks. Native Windows is untested. | Refuses to start. |
 | Web app and import (`fmface.py`) | Standard-library Python plus Pillow, so it should run; untested. `install_service.py` is Linux-only (systemd). | Should run; untested. |
 

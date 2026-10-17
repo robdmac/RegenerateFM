@@ -12,6 +12,8 @@ import zstandard
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "fm24"))
+import layout  # noqa: E402  The fixtures are records from the Windows fm.exe.
+layout.LAYOUT.update(layout.WINDOWS)
 import existing_portrait
 import game_archive
 from fmface import PNG_SIGNATURE

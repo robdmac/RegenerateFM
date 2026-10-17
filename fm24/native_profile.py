@@ -12,8 +12,10 @@ import datetime as dt
 import re
 import struct
 
+from layout import LAYOUT
 from live_memory import (RECORD_TYPES, MemoryUnavailable, PersonIdentity, _record_addresses,
-                         find_game_pid, person_kind, read_person_record)
+                         find_game_pid, person_kind, read_person_record, record_dates,
+                         record_marker)
 from process_memory import MemoryScan, read_process_bytes
 
 
@@ -49,6 +51,13 @@ _RICH_LINK = re.compile(rb"\x01[A-Za-z0-9+/=]{12,500}\x02")
 
 def _u32(pid: int, address: int) -> int:
     return struct.unpack("<I", read_process_bytes(pid, address, 4))[0]
+
+
+def _pointer(pid: int, address: int) -> int:
+    """A pointer in a person, nation, club or contract object (layout "pointer" bytes)."""
+    if LAYOUT["pointer"] == 4:
+        return _u32(pid, address)
+    return struct.unpack("<Q", read_process_bytes(pid, address, 8))[0]
 
 
 def _alternate_name(raw: bytes) -> str | None:
@@ -93,15 +102,13 @@ def _record_with_alternate_name(pid: int, person_id: str) -> tuple[int, PersonId
     for address in _record_addresses(pid, number):
         try:
             raw = read_process_bytes(pid, address, 128)
-            # Marker byte 13 carries flags (0x02 and 0x40 seen); type 5 is a player too.
-            if (raw[:8] == struct.pack("<II", number, number) and not raw[12] and raw[14] == 0x58 and
-                    raw[15] in (0x10, 0x12, 0x18) and raw[16] in RECORD_TYPES and raw[17:20] == b"\0\0\0"):
-                if _u32(pid, address + 0x3c) == 0:
-                    year = struct.unpack_from("<H", raw, 0x36)[0]
-                    day, birth_year = struct.unpack_from("<HH", raw, 0x38)
-                    birth = dt.date(birth_year, 1, 1) + dt.timedelta(days=day - 1)
+            # Type 5 is a player too.
+            if (raw[:8] == struct.pack("<II", number, number) and record_marker(raw) and
+                    raw[16] in RECORD_TYPES and raw[17:20] == b"\0\0\0"):
+                if _pointer(pid, address + LAYOUT["record_name"]) == 0:
+                    year, birth = record_dates(pid, address, raw)
                     kind = person_kind(pid, address, raw[16])
-                    if 1900 <= birth_year <= year - 14 and birth.year == birth_year and kind:
+                    if 1900 <= birth.year <= year - 14 and kind:
                         record_addresses.append((address, year, birth, kind))
             if (name := _alternate_name(raw)) is not None:
                 names.add(name)
@@ -245,15 +252,16 @@ def _height(raw_cm: int) -> str:
 
 
 def _nation(pid: int, record: int) -> str:
-    nation = _u32(pid, record + 0x64)
+    nation = _pointer(pid, record + LAYOUT["nation"])
     if not 1 <= _u32(pid, nation + 8) <= 500:
         raise MemoryUnavailable("Invalid FM24 nation object.")
-    return _text(pid, _u32(pid, nation + 0x30), limit=40)
+    return _text(pid, _pointer(pid, nation + 0x30), limit=40)
 
 
-# A player's record holds the club they play for now at -0x154: the loan club
-# while on loan, otherwise the contract club. Staff records leave it empty.
-PLAYING_CLUB = -0x154
+# A player's record holds the club they play for now (layout "playing_club"):
+# the loan club while on loan, otherwise the contract club. Staff records
+# leave it empty.
+PLAYING_CLUB = LAYOUT["playing_club"]
 
 
 def _club_name(pid: int, club: int) -> str:
@@ -263,28 +271,28 @@ def _club_name(pid: int, club: int) -> str:
     club_id = _u32(pid, club + 12)
     if not 1 <= club_id < 0xffffffff or club_id != _u32(pid, club + 16):
         raise MemoryUnavailable("Invalid FM24 club object.")
-    details = _u32(pid, club + 0x30)
+    details = _pointer(pid, club + 0x30)
     if _u32(pid, details + 12) != club_id:
         raise MemoryUnavailable("FM24 club details do not match the club.")
-    return _text(pid, _u32(pid, details + 0xc8), limit=80)
+    return _text(pid, _pointer(pid, details + 0xc8), limit=80)
 
 
 def _club(pid: int, record: int) -> str:
     """The club holding the person's contract (the parent club during a loan)."""
-    contract = _u32(pid, record + 0xbc)
-    if _u32(pid, contract + 8) != record - 12:
+    contract = _pointer(pid, record + LAYOUT["contract"])
+    if _pointer(pid, contract + 8) != record - 12:
         raise MemoryUnavailable("FM24 contract points to another person.")
-    return _club_name(pid, _u32(pid, contract + 0x10))
+    return _club_name(pid, _pointer(pid, contract + 0x10))
 
 
 def _playing_club(pid: int, record: int, fallback: str) -> str:
     """The club a player plays for now, so a loaned player wears the loan club's kit."""
-    club = _u32(pid, record + PLAYING_CLUB)
+    club = _pointer(pid, record + PLAYING_CLUB)
     return _club_name(pid, club) if club else fallback
 
 
 def _position(pid: int, record: int) -> str:
-    ratings = read_process_bytes(pid, record - 0x7c, len(POSITIONS))
+    ratings = read_process_bytes(pid, record + LAYOUT["position_ratings"], len(POSITIONS))
     if any(not 1 <= value <= 20 for value in ratings):
         raise MemoryUnavailable("Invalid FM24 position ratings.")
     best = max(ratings)
@@ -354,8 +362,8 @@ def _profile(pid: int, record: int, identity: PersonIdentity, names: list[str], 
                 "jobTitle": jobs.pop(), "club": club}
     if identity_only:
         return {"type": "player", "name": identity.name, "age": age, "club": playing}
-    raw = read_process_bytes(pid, record - 0x6d, 54)
-    height_cm = struct.unpack("<H", read_process_bytes(pid, record - 0x136, 2))[0]
+    raw = read_process_bytes(pid, record + LAYOUT["attributes"], 54)
+    height_cm = struct.unpack("<H", read_process_bytes(pid, record + LAYOUT["height"], 2))[0]
     rated_position = _position(pid, record)
     roles = {title.rsplit(" - ", 1)[0].strip() for title in shown}
     if len(roles) != 1:
@@ -416,15 +424,15 @@ def squad_player_profile(pid: int, record: int, name: str, club: str, today: dt.
     number = struct.unpack_from("<I", raw)[0]
     if raw[:8] != struct.pack("<II", number, number) or person_kind(pid, record, raw[16]) != "player":
         raise MemoryUnavailable("Not a validated FM24 player record.")
-    day, birth_year = struct.unpack_from("<HH", raw, 0x38)
-    birth = dt.date(birth_year, 1, 1) + dt.timedelta(days=day - 1)
-    if birth.year != birth_year:
-        raise MemoryUnavailable("Invalid FM24 birth date.")
+    try:
+        _, birth = record_dates(pid, record, raw)
+    except ValueError as exc:
+        raise MemoryUnavailable("Invalid FM24 birth date.") from exc
     age = today.year - birth.year - ((today.month, today.day) < (birth.month, birth.day))
     if not 14 <= age <= 60:
         raise MemoryUnavailable("Invalid FM24 player age.")
-    ratings = read_process_bytes(pid, record - 0x6d, 54)
-    height_cm = struct.unpack("<H", read_process_bytes(pid, record - 0x136, 2))[0]
+    ratings = read_process_bytes(pid, record + LAYOUT["attributes"], 54)
+    height_cm = struct.unpack("<H", read_process_bytes(pid, record + LAYOUT["height"], 2))[0]
     position = _position(pid, record)
     profile = {"type": "player", "name": name, "age": age,
                "nationality": _nation(pid, record), "position": position,

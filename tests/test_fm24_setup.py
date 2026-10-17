@@ -13,6 +13,12 @@ TOKEN = "t" * 43
 
 class SetupTests(unittest.TestCase):
     def setUp(self):
+        # The fixtures are Linux Steam libraries with fm.exe and Proton prefixes, on any system.
+        setup_fm24.native_install.use_system(False)
+        self.addCleanup(setup_fm24.native_install.use_system, sys.platform == "darwin")
+        platform = mock.patch.object(setup_fm24.sys, "platform", "linux")
+        platform.start()
+        self.addCleanup(platform.stop)
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
 

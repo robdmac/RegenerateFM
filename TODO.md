@@ -107,5 +107,17 @@
   dropdown once the pointer leaves it, and the plugin removes **Generate
   faces…** at its next 0.5 s scan, so a slow click misses it (seen on macOS;
   same code on every platform).
-- **FM24 on macOS:** not started. FM24 for Mac is a native clang build, so the
-  DLL hook, memory layouts and memory reader would all have to be redone.
+- **FM24 on macOS:** works with preview faces (2026-10-17), on FM24 24.4.2's
+  arm64 build with a copy of a real save. `libfmface24.dylib`
+  (`fm24/native_menu/fmface24_macos.c`) adds the portrait popup, the
+  Overview tab rows and the Squad menu item, shows FM24's dialogs, reloads
+  the skin and serves the companion's memory reads; `setup_fm24.py`
+  installs it with `run_fmface24.sh`. Every Windows address was matched to
+  the Mac build (`supported_build_macos.json`); the companion's record
+  offsets are in `fm24/layout.py`. Checked: a player and a staff preview,
+  the squad count and its No, Update face greyed for a person without a
+  face, and the reload. Still to check: a billed face and a billed squad
+  batch, Update face on a person with a face, Steam's launch option, the
+  Development Center tabs, and `setup_fm24.py --remove`. Player-coaches
+  (db::ACTUAL_PLAYER_AND_NON_PLAYER) are refused. There is no packaged Mac
+  companion; it runs from source with Pillow and zstandard.

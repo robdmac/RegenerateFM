@@ -386,3 +386,63 @@ byte searches. The companion now avoids repeat passes:
   second one.
 - The Squad person table's address is remembered and checked against every
   drawn row before use.
+
+## macOS
+
+FM24 24.4.2 for Mac is a universal clang build with the hardened runtime. Its
+entitlements allow `DYLD_INSERT_LIBRARIES` and libraries of other teams, so
+`run_fmface24.sh` (FM24's Steam launch option) loads `libfmface24.dylib` into
+the arm64 game without touching `fm.app`. `build_macos.py` builds it from
+[fmface24_macos.c](fmface24_macos.c), the same logic as `fmface24.c` with
+pthreads and BSD sockets. The library checks the arm64 slice's LC_UUID and
+the original vtable pointers before hooking, and the installer checks the
+executable's SHA-256, both pinned in
+[supported_build_macos.json](supported_build_macos.json).
+
+**Addresses.** Each address in `supported_build.json` was matched to the Mac
+build. The vtable slots come from the RTTI both builds keep: the event handler
+is `GAME_SCREEN_CLIENT` slot 6 on the Mac (slot 5 in fm.exe; Itanium vtables
+have two destructors), the Squad provider `TEAM_EXPORT_ACTION_UI` slots 2 and
+3, the tab button `MENUBAR_POPUP_BUTTON`. The other functions were found
+through their callers: FM24's preferences-screen skin reload (`GChS` with
+`SkNM`, `dlog`, `dela`, `chev`) gives the reload functions, its "Quit game"
+query (`NOEX`, `noet`, `widt`, `heig`) the dialog functions, and the Squad
+provider's own item the item and value functions. On the Mac, dialog
+properties are a record with their own init, set and free functions; `acte`
+is an event code, as the game itself passes it. The item constructor returns
+the item through `x8`, and items are released through vtable slot 1. The
+skin-change stage counter is at manager + 0x2aa.
+
+**Widgets and menus.** Checked live: the widget part (+0x38), its manager,
+parent and skin ID, the children vector (+0x100), the event source (+0x20),
+the event's property vector and the popup root item (+0x4f8) are at the same
+offsets as in fm.exe.
+
+**Memory.** The companion can't read FM24's memory on macOS: the hardened
+runtime without get-task-allow makes `task_for_pid` fail, even as root. The
+library listens on loopback TCP at the bridge port + 2. After
+`FMFACE24M 1 <token>` it answers three requests: the image header and UUID,
+the read/write regions not backed by a file, and guarded reads
+(`mach_vm_read_overwrite` on its own task), up to 16 MB each. It writes
+nothing. `process_memory_macos.py` gives the companion the same functions as
+on Linux; a full pass over 2.1 GB takes about 2 s.
+
+**Person records.** The record that starts with the person's ID twice is the
+same, 12 bytes into the person object, but clang lays the person classes out
+differently from MSVC: the dates, name, attributes, positions, height,
+nation, clubs and contract are at other offsets ([layout.py](../layout.py)),
+and pointers are 8 bytes. The nation, club, club-details and contract objects
+keep fm.exe's internal offsets. Byte 12 of the marker is 0 for most people
+but 1, 2, 4, 5 or 6 for some, and byte 14 is 0x50 on some staff and reserve
+records. Where fm.exe keeps zeros for staff in the position-rating bytes, the
+Mac build has other data, so the person's kind comes from the object's
+vtable: `db::ACTUAL_PLAYER` or `db::ACTUAL_NON_PLAYER`. Player-coaches
+(`db::ACTUAL_PLAYER_AND_NON_PLAYER`) keep their player fields elsewhere and
+are refused. The Squad table, its row model and the person handle table are
+read at the same offsets as in fm.exe.
+
+Checked on 2026-10-17 on an Apple M2 (macOS 26) with a copy of a real save,
+in preview mode: a player (Sly) and a staff member (Terry McPhillips) read
+in full and matched their screens, the 25-row Squad table and its 8 players
+without a face, the squad count dialog and No, the greyed Update face, and
+an in-game skin reload. No billed face has been made on macOS yet.

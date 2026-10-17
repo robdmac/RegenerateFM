@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Install/remove the build-pinned experimental FM24 native menu integration."""
+"""Install/remove the build-pinned experimental FM24 native menu integration.
+
+On Windows and Proton it is winmm.dll beside fm.exe. On macOS it is
+libfmface24.dylib beside fm.app, which FM24 loads through run_fmface24.sh
+(its Steam launch option)."""
 
 from __future__ import annotations
 
@@ -17,7 +21,23 @@ from skin import modify_panel
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from process_memory import running_executables
 
-SUPPORTED_SHA256 = json.loads(Path(__file__).with_name("supported_build.json").read_text())["sha256"]
+HERE = Path(__file__).resolve().parent
+
+
+def use_system(macos: bool) -> None:
+    """Install for FM24 for macOS (the dylib and its launcher) or for fm.exe
+    (the DLL, on Windows and Proton). Chosen from this system at import."""
+    global MACOS, SUPPORTED_SHA256, EXECUTABLE, LIBRARY, DEFAULT_LIBRARY, LAUNCHER
+    MACOS = macos
+    SUPPORTED_SHA256 = json.loads((HERE / ("supported_build_macos.json" if macos else "supported_build.json"))
+                                  .read_text())["sha256"]
+    EXECUTABLE = "fm.app/Contents/MacOS/fm" if macos else "fm.exe"
+    LIBRARY = "libfmface24.dylib" if macos else "winmm.dll"
+    DEFAULT_LIBRARY = HERE / ("build-macos/libfmface24.dylib" if macos else "build/winmm.dll")
+    LAUNCHER = "run_fmface24.sh" if macos else None
+
+
+use_system(sys.platform == "darwin")
 PANEL_FILES = {"player": "panels/player/player overview panel.xml",
                "staff": "panels/non_player/non player profile.xml"}
 # Earlier versions added a Squad screen "Faces" button here. The squad command
@@ -46,11 +66,11 @@ class Transaction:
         else:
             self.changes.append(("file", path, None, 0))
 
-    def write(self, path: Path, data: bytes, *, private: bool = True) -> None:
+    def write(self, path: Path, data: bytes, *, private: bool = True, mode: int | None = None) -> None:
         if not path.parent.exists():
             self.mkdir(path.parent)
         self._record(path)
-        _atomic_write(path, data, 0o600 if private else 0o644)
+        _atomic_write(path, data, mode if mode is not None else 0o600 if private else 0o644)
 
     def remove(self, path: Path) -> None:
         if not path.exists():
@@ -120,10 +140,17 @@ def load_manifest(path: Path) -> dict | None:
 
 
 def game_running() -> bool:
+    suffix = "/" + EXECUTABLE.lower()
     for _, executable in running_executables():
-        if executable.replace("\\", "/").lower().endswith("/fm.exe"):
+        if executable.replace("\\", "/").lower().endswith(suffix):
             return True
     return False
+
+
+def _is_library(data: bytes) -> bool:
+    """An FM Face build of the native library for this system."""
+    magic = data[:4] in (b"\xcf\xfa\xed\xfe",) if MACOS else data[:2] == b"MZ"
+    return magic and b"FMFACE24_NATIVE_MENU_HOOK_INSTALLED" in data
 
 
 def _restore_panel(skin: Path, name: str, entry: dict, transaction: Transaction) -> None:
@@ -150,7 +177,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--skin-dir", required=True, type=Path)
     # Accepted for old scripts; the squad command no longer needs a panel.
     parser.add_argument("--squad-panel-source", type=Path, help=argparse.SUPPRESS)
-    parser.add_argument("--dll", type=Path, default=Path(__file__).parent / "build/winmm.dll")
+    parser.add_argument("--dll", type=Path, default=DEFAULT_LIBRARY,
+                        help=f"the FM Face library to install (default: {DEFAULT_LIBRARY})")
     parser.add_argument("--auth-file", type=Path)
     parser.add_argument("--port", type=int, default=8769)
     parser.add_argument("--remove", action="store_true")
@@ -159,7 +187,8 @@ def main(argv: list[str] | None = None) -> None:
     skin = args.skin_dir.expanduser().resolve()
     if game_running():
         parser.error("Close FM24 before installing or removing its native DLL.")
-    target = game / "winmm.dll"
+    target = game / LIBRARY
+    launcher = game / LAUNCHER if LAUNCHER else None
     config = game / "fmface24.ini"
     manifest = game / "fmface24-install.json"
     try:
@@ -167,7 +196,7 @@ def main(argv: list[str] | None = None) -> None:
     except (ValueError, KeyError, json.JSONDecodeError) as exc:
         parser.error(f"Could not read {manifest}: {exc}")
     if target.exists() and (not metadata or digest(target) != metadata["dllSha256"]):
-        parser.error("There is an unrecognized winmm.dll in this game folder; it will not be overwritten.")
+        parser.error(f"There is an unrecognized {LIBRARY} in this game folder; it will not be overwritten.")
     if metadata:
         for name, entry in metadata["panels"].items():
             panel = skin / name
@@ -181,20 +210,22 @@ def main(argv: list[str] | None = None) -> None:
         if args.remove:
             if not metadata:
                 parser.error("No native FM Face installation was found in this folder.")
-            _remove(skin, metadata, transaction, [target, config, manifest])
-            print("Removed native DLL/configuration and restored the original FM Face panels.")
+            _remove(skin, metadata, transaction, [target, config, manifest] + ([launcher] if launcher else []))
+            print("Removed the native library and configuration and restored the original FM Face panels.")
+            if launcher:
+                print("Also remove run_fmface24.sh from FM24's Steam launch options.")
             return
 
-        if digest(game / "fm.exe") != SUPPORTED_SHA256:
+        if digest(game / EXECUTABLE) != SUPPORTED_SHA256:
             parser.error("This FM24 executable is not the validated 24.4.2 build; no hook was installed.")
         if not args.auth_file:
             parser.error("--auth-file is required for installation")
         token = args.auth_file.read_text(encoding="ascii").strip()
-        if not re.fullmatch(r"[A-Za-z0-9_-]{40,128}", token) or not 1024 <= args.port <= 65535:
+        if not re.fullmatch(r"[A-Za-z0-9_-]{40,128}", token) or not 1024 <= args.port <= (65533 if MACOS else 65535):
             parser.error("Invalid private token or bridge port.")
         dll = args.dll.read_bytes()
-        if dll[:2] != b"MZ" or b"FMFACE24_NATIVE_MENU_HOOK_INSTALLED" not in dll:
-            parser.error("--dll is not an FM Face native menu build.")
+        if not _is_library(dll):
+            parser.error("--dll is not an FM Face native menu build for this system.")
 
         # Work out every panel's original text before writing anything.
         installed = metadata["panels"] if metadata else {}
@@ -225,6 +256,8 @@ def main(argv: list[str] | None = None) -> None:
             transaction.write(panel, text.encode("utf-8"))
             panels[name] = {"sha256": digest(panel), "created": False}
         transaction.write(target, dll, private=False)
+        if launcher:
+            transaction.write(launcher, (HERE / LAUNCHER).read_bytes(), mode=0o755)
         transaction.write(config, f"[fmface]\nenabled=1\nport={args.port}\ntoken={token}\n".encode("ascii"))
         transaction.write(manifest, (json.dumps({"version": 2, "dllSha256": digest(target),
                                                  "panels": panels}, indent=2) + "\n").encode())
@@ -242,7 +275,9 @@ def main(argv: list[str] | None = None) -> None:
           "\"Generate missing squad faces...\" item with an authenticated loopback bridge.")
     if LEGACY_SQUAD_PANEL in installed:
         print("Removed the earlier Squad screen Faces button; the command is now in the Squad menu.")
-    if sys.platform == "win32":
+    if MACOS:
+        print(f'Steam launch option for FM24: "{launcher}" %command%')
+    elif sys.platform == "win32":
         print("On Windows, FM24 loads the DLL from its folder; no launch option is needed.")
     else:
         print('Proton launch option: WINEDLLOVERRIDES="winmm=n,b" %command%')

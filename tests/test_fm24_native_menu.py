@@ -13,6 +13,8 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "fm24"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "fm24" / "native_menu"))
+import layout  # noqa: E402  The fixtures are records from the Windows fm.exe.
+layout.LAYOUT.update(layout.WINDOWS)
 import install
 import native_listener
 import skin
@@ -334,6 +336,9 @@ class NativeInstallerTests(unittest.TestCase):
             self.assertEqual(directory.stat().st_mode & 0o777, 0o700)
 
     def setUp(self):
+        # The fixtures are a Windows/Proton game folder (fm.exe and winmm.dll) on any system.
+        install.use_system(False)
+        self.addCleanup(install.use_system, sys.platform == "darwin")
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         root = Path(directory.name)

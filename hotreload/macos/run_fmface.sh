@@ -54,8 +54,9 @@ export BEPINEX_GAME_ASSEMBLY_PATH="${BASEDIR}/fm.app/Contents/Frameworks/GameAss
 export BEPINEX_PRELOADER_LOG="${BASEDIR}/BepInEx/preloader-error.log"
 
 # arch is protected by System Integrity Protection, so it drops DYLD_*
-# variables unless they are passed with -e.
+# variables unless they are passed with -e. Steam may already insert its
+# overlay library; keep it.
 exec /usr/bin/arch -x86_64 \
-    -e DYLD_INSERT_LIBRARIES="${BASEDIR}/libdoorstop.dylib" \
+    -e DYLD_INSERT_LIBRARIES="${BASEDIR}/libdoorstop.dylib${DYLD_INSERT_LIBRARIES:+:${DYLD_INSERT_LIBRARIES}}" \
     -e DYLD_LIBRARY_PATH="${BASEDIR}/fm.app/Contents/Frameworks" \
     "$GAME" "$@"

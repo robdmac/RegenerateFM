@@ -1,0 +1,48 @@
+{
+  "version": "24.4.2",
+  "arch": "arm64",
+  "sha256": "f0ba078c384f1095320ed4059a18fe4de4701cae5661a117417b2624d12b16e2",
+  "arm64Sha256": "fd67d8a28b550796335eacb84ba8a2dfe29b41e08b444e372e9ab957f30f60b2",
+  "arm64Uuid": "D710F6FA-6ACA-32BB-99FE-451CEE8DFA3D",
+  "note": "Offsets are from the arm64 image's Mach-O header (vmaddr - 0x100000000). Found by matching each Windows address in supported_build.json to the same class (RTTI) or the same calls in the Mac build.",
+  "eventHandler": "0x2057bc",
+  "eventVtableSlot": "0x4f514e0",
+  "skinReload": {
+    "managerGlobal": "0x525d3d0",
+    "topManager": "0x2d8e314",
+    "valueInit": "0x431f7d4",
+    "currentSkin": "0x2d8b5c4",
+    "eventInit": "0x2b6e5f8",
+    "eventSetCopy": "0x4317570",
+    "valueBool": "0x431faf8",
+    "eventSet": "0x4317874",
+    "valueFree": "0x431f804",
+    "postEvent": "0x2d893a0",
+    "eventFree": "0x4317348",
+    "stageOffset": "0x2aa"
+  },
+  "squadMenu": {
+    "addSlot": "0x4f1fba0",
+    "addOriginal": "0x51a48",
+    "eventSlot": "0x4f1fba8",
+    "eventOriginal": "0x51c04",
+    "isRecord": "0x4320d2c",
+    "itemNew": "0x2cd3e60",
+    "itemAppend": "0x3a28",
+    "stringInit": "0x42a34c0",
+    "stringFree": "0x42a2dd4",
+    "valueFourcc": "0x431fcc8"
+  },
+  "profileMenu": {
+    "tabButtonVtable": "0x508d110"
+  },
+  "dialog": {
+    "showQuery": "0x2c64dec",
+    "recordInit": "0x4316534",
+    "recordSet": "0x4316b50",
+    "recordFree": "0x43165f4",
+    "valueString": "0x431fe08",
+    "valueFloat": "0x431fd5c",
+    "applyProperties": "0x4275340"
+  }
+}
