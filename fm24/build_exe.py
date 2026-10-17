@@ -9,9 +9,10 @@ fm24/requirements-exe.txt; on Linux, a Windows Python under Wine works:
 
 The result is a folder rather than a single file: one-file packages unpack
 themselves to a temporary folder on every start, which is slower and is more
-often flagged by antivirus software. Put the .fm24-auth token from
-build_skin.py beside fmface-fm24.exe; it asks for the OpenAI key on its first
-start (or reads OPENAI_API_KEY from a .env beside it).
+often flagged by antivirus software. The exe includes the FM24 DLL built by
+fm24/native_menu/build.py: on its first start it finds FM24 through Steam,
+builds the FM Face skin from FM24's own panels, installs the DLL and asks for
+the OpenAI key (or reads OPENAI_API_KEY from a .env beside it).
 """
 
 from __future__ import annotations
@@ -29,13 +30,20 @@ def main() -> None:
         sys.exit("Run this with Windows Python (under Wine on Linux); it builds a Windows executable.")
     import PyInstaller.__main__
 
+    dll = ROOT / "fm24" / "native_menu" / "build" / "winmm.dll"
+    if not dll.is_file():
+        sys.exit(f"Build the FM24 DLL first (fm24/native_menu/build.py); {dll} is missing.")
+
     dist = ROOT / "dist"
     work = ROOT / "dist" / "pyinstaller-build"
     PyInstaller.__main__.run([
         str(ROOT / "fm24" / "companion.py"),
         "--name", NAME,
         "--onedir", "--console", "--noconfirm", "--clean",
-        "--paths", str(ROOT), "--paths", str(ROOT / "fm24"),
+        "--paths", str(ROOT), "--paths", str(ROOT / "fm24"), "--paths", str(ROOT / "fm24" / "native_menu"),
+        # The setup step installs this DLL into FM24's folder.
+        "--add-data", f"{dll};fm24-dll", "--hidden-import", "setup_fm24",
+        "--add-data", f"{ROOT / 'fm24' / 'native_menu' / 'supported_build.json'};.",
         "--distpath", str(dist), "--workpath", str(work), "--specpath", str(work),
         # Linux-only memory reader and modules the companion never uses.
         "--exclude-module", "process_memory_linux",

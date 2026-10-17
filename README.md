@@ -5,7 +5,7 @@ FM Face makes new portraits for Football Manager players and staff who don't hav
 - **Football Manager 26** (26.3.2) through a BepInEx plugin.
 - **Football Manager 2024** (24.4.2), experimental, through a small DLL and a companion program.
 
-The images come from OpenAI's image API, using your own API key. Each face costs one request on your OpenAI account. FM Face is independent of Sports Interactive, SEGA and FM ActionLink. It has been tested on Linux with Steam/Proton; Windows should work but is untested (see [Platform support](#platform-support)).
+The images come from OpenAI's image API, using your own API key. Each face costs one request on your OpenAI account. FM Face is independent of Sports Interactive, SEGA and the BepInEx project. It has been tested on Linux with Steam/Proton; Windows should work but is untested (see [Platform support](#platform-support)).
 
 ## 1. Get an OpenAI API key
 
@@ -22,23 +22,18 @@ Treat the key like a password. Anyone who has it can spend your credit. FM Face 
 
 ## 2. Set up FM26
 
-The plugin calls OpenAI itself from inside FM26, so nothing else needs to run while you play.
+The plugin calls OpenAI itself from inside FM26, so nothing else needs to run while you play. Setup is copying one folder; there's no installer.
 
-1. **Install BepInEx and FM ActionLink.** Download [BepInEx 6.0.0-be.760 Unity IL2CPP Windows x64](https://builds.bepinex.dev/projects/bepinex_be/) and [FM ActionLink 1.0.0](https://sortitoutsi.net/content/77820/fm-actionlink-free-plugin-for-modders-connect-fm-screens-to-external-tools). The installer (it needs **Python 3.9 or newer**) checks both ZIPs and does a dry run first:
-
-   ```sh
-   python3 install_fm26.py --game "/path/to/Football Manager 26" \
-     --loader-zip "/path/to/bepinex.zip" --actionlink-zip "/path/to/actionlink.zip"
-   ```
-
-   If the dry run looks right, run it again with `--apply`. It refuses to overwrite existing files.
+1. **Copy the files.** Close FM26. Find its game folder (in Steam: right-click Football Manager 26 > **Manage > Browse local files**). Copy everything inside the release ZIP's `FM26` folder into it. That adds [BepInEx 6.0.0-be.760](https://builds.bepinex.dev/projects/bepinex_be/), the mod loader, and the FM Face plugin. If you already use BepInEx for other mods, copy only `BepInEx/plugins/FMFaceHotReload`.
 2. **Linux only:** set FM26's Steam launch option to `WINEDLLOVERRIDES="winhttp=n,b" %command%`.
-3. **Build and install the plugin** with the .NET 6 SDK, as described in [hotreload/README.md](hotreload/README.md).
+3. **Start FM26.** The first start takes a few minutes longer while BepInEx prepares itself.
 4. **Add your key in the game.** The first time you choose **Generate new face** (or a squad's **Generate faces…**), FM Face asks for your key.
    - It has a button that opens OpenAI's API keys page.
    - Paste or type the key and choose **Save key**. FM Face checks it with OpenAI using a free request, then carries on with what you chose.
    - **Where it's kept:** outside the game folder, in `%APPDATA%\FM Face`, encrypted for your Windows user. Under Proton that is inside the game's Wine prefix.
    - **Changing it:** if OpenAI later rejects the key, the dialog opens again. To forget the key, delete that folder.
+
+**Removing it:** delete `BepInEx`, `dotnet`, `winhttp.dll`, `doorstop_config.ini` and `.doorstop_version` from the game folder (or only `BepInEx/plugins/FMFaceHotReload` if other mods use BepInEx). To build the plugin yourself, see [hotreload/README.md](hotreload/README.md).
 
 ### Use it in FM26
 
@@ -51,15 +46,17 @@ Faces are saved in FM26's user-data folder, `Documents/Sports Interactive/Footba
 
 ## 3. Set up FM24 (experimental)
 
-FM24 needs some one-time setup:
-- a small skin built from your own copy of FM24's panels;
-- a native DLL installed beside the game.
+FM24 needs a companion program that runs while you play. It reads the open profile from FM24's memory and makes the image requests. It also sets FM24 up the first time: a small FM Face skin built from FM24's own files, and a small DLL in the game folder that adds FM Face's menu items.
 
-It also needs a companion program that runs while you play. It reads the open profile from FM24's memory and makes the image requests. You can run it two ways:
-- **Windows:** `fmface-fm24.exe`, from a release ZIP or built with `fm24/build_exe.py`. It needs no Python install. Put the `.fm24-auth` file from the skin setup beside it, then double-click it while FM24 is running. The first time, it asks for your OpenAI key in its window, checks it for free and saves it encrypted in `%APPDATA%\FM Face`, the same file the FM26 plugin uses, so one key serves both games. It finds FM24's graphics folder in your Documents by itself.
-- **Linux, or from source:** with Python, as described in the FM24 guide.
+**Windows**
+1. Copy the release ZIP's `FM24` folder somewhere of your own, such as `Documents\FM Face for FM24`, not into the game folder.
+2. Close FM24 and double-click `fmface-fm24.exe`. The first time, it finds FM24 through Steam, sets it up and asks for your OpenAI key in its window (paste or type it; it is checked for free and saved encrypted in `%APPDATA%\FM Face`, the same file the FM26 plugin uses).
+3. Start FM24. In **Preferences > Interface**, choose the **FM Face** skin and tick **Show screen IDs in Title Bar to assist skinning**.
+4. Leave the companion's window open while you play. Next time, double-click it again before or after starting FM24.
 
-The full steps are in [fm24/README.md](fm24/README.md).
+It needs no Python. If FM24 isn't in a Steam library it can find, run `fmface-fm24.exe setup --game-dir "<path to Football Manager 2024>"` from a command prompt. `fmface-fm24.exe setup --remove` uninstalls the DLL.
+
+**Linux (Steam/Proton)** runs the companion with Python from this source: `python3 fm24/setup_fm24.py` does the same setup, then add FM24's launch option `WINEDLLOVERRIDES="winmm=n,b" %command%`. The full steps are in [fm24/README.md](fm24/README.md).
 
 In FM24, the portrait popup and the profile's **Overview** tab menu have **Generate new face** and **Update face**. The Squad screen's **Overview** menu has **Generate missing squad faces…**. Progress, confirmations and errors appear in FM24's own dialogs.
 
@@ -120,11 +117,11 @@ Everything has been tested on Linux with Steam/Proton. Status elsewhere:
 
 ## Release scope
 
-- **FM26:** tested on 26.3.2 with the vanilla skin, BepInEx 6.0.0-be.760 and FM ActionLink 1.0.0.
+- **FM26:** tested on 26.3.2 with the vanilla skin and BepInEx 6.0.0-be.760. FM ActionLink is no longer needed; the plugin also works beside it.
   - Its squad scanner matched all 49 players in the test save.
   - A three-face billed batch generated and reloaded every missing portrait; a fresh scan afterwards found none missing. That run used the earlier separate server; the plugin now makes the request itself.
   - Its game-binary checks disable the buttons on other FM26 builds.
 - **FM24:** tested on 24.4.2 with its vanilla-based skin through the native DLL: previews of every command, a billed single face and a billed squad batch with Stop.
 - **Not yet checked:** other skins, resolutions, languages and game builds.
 
-To make a release ZIP, run `python3 make_release.py` after building the plugin, and optionally `fm24/build_exe.py`. The ZIP contains only the public source, docs, license, tests, the plugin DLL and, if built, the FM24 companion. It leaves out `.env`, portraits, the translated third-party research guide and dependency binaries. FM Face's own code and documentation are licensed under [MIT](LICENSE).
+To make a release ZIP, build the plugin and the FM24 companion (`fm24/build_exe.py`, which includes the DLL from `fm24/native_menu/build.py`), then run `python3 make_release.py`. It downloads the pinned BepInEx build once and checks its SHA-256. The ZIP holds three folders: `FM26` (BepInEx and the plugin, to copy into the game folder), `FM24` (the companion) and `source`. It leaves out `.env`, tokens, portraits and the translated third-party research guide. FM Face's own code and documentation are licensed under [MIT](LICENSE); the bundled third-party software is listed in [licenses/THIRD_PARTY_NOTICES.md](licenses/THIRD_PARTY_NOTICES.md).

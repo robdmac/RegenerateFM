@@ -239,14 +239,14 @@ def main(argv: list[str] | None = None) -> None:
             print("The native FM Face change failed; all files were restored.", file=sys.stderr)
         raise
     print("Installed the FM24 native portrait menus and the Squad menu's "
-          "\"Generate missing squad faces…\" item with an authenticated loopback bridge.")
+          "\"Generate missing squad faces...\" item with an authenticated loopback bridge.")
     if LEGACY_SQUAD_PANEL in installed:
         print("Removed the earlier Squad screen Faces button; the command is now in the Squad menu.")
     if sys.platform == "win32":
         print("On Windows, FM24 loads the DLL from its folder; no launch option is needed.")
     else:
         print('Proton launch option: WINEDLLOVERRIDES="winmm=n,b" %command%')
-    print("Start the companion with --native-menu (use --preview-only for no-charge tests).")
+    print("Start the companion while you play (add --preview-only for no-charge tests).")
 
 
 if __name__ == "__main__":

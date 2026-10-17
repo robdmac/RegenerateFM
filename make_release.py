@@ -1,11 +1,22 @@
 #!/usr/bin/env python3
-"""Create an FM Face archive from explicitly selected public files."""
+"""Create the FM Face release ZIP.
+
+Layout of fmface-<version>.zip, in fmface-<version>/:
+  FM26/    copy its contents into the "Football Manager 26" folder: BepInEx
+           (downloaded once and checked against its pinned SHA-256) and the
+           FM Face plugin, so FM26 needs no installer, Python or .NET SDK
+  FM24/    fmface-fm24.exe (fm24/build_exe.py), which sets FM24 up itself
+  source/  the public source, docs and tests
+"""
 
 from __future__ import annotations
 
+import argparse
+import hashlib
 import re
+import urllib.request
 import zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parent
 PUBLIC_FILES = (
@@ -16,7 +27,6 @@ PUBLIC_FILES = (
     "fmface.py",
     "appearance.py",
     "keystore.py",
-    "install_fm26.py",
     "install_service.py",
     "make_release.py",
     "hotreload/FMFaceHotReload.cs",
@@ -26,6 +36,7 @@ PUBLIC_FILES = (
     "fm24/README.md",
     "fm24/requirements.txt",
     "fm24/build_skin.py",
+    "fm24/setup_fm24.py",
     "fm24/build_exe.py",
     "fm24/requirements-exe.txt",
     "fm24/companion.py",
@@ -55,6 +66,7 @@ PUBLIC_FILES = (
     "tests/test_appearance.py",
     "tests/test_keystore.py",
     "tests/test_fm24.py",
+    "tests/test_fm24_setup.py",
     "tests/test_fm24_existing_portrait.py",
     "tests/test_fm24_native_dialog.py",
     "tests/test_fm24_native_menu.py",
@@ -63,18 +75,62 @@ PUBLIC_FILES = (
     "tests/test_fm26_generator.py",
     "tests/fm26_generator/GeneratorCheck.csproj",
     "tests/fm26_generator/Program.cs",
-    "hotreload/bin/Release/net6.0/FMFaceHotReload.dll",
+    "licenses/THIRD_PARTY_NOTICES.md",
+    "licenses/BepInEx-LICENSE.txt",
+    "licenses/Il2CppInterop-LICENSE.txt",
 )
+PLUGIN_DLL = "hotreload/bin/Release/net6.0/FMFaceHotReload.dll"
+BEPINEX_URL = ("https://builds.bepinex.dev/projects/bepinex_be/760/"
+               "BepInEx-Unity.IL2CPP-win-x64-6.0.0-be.760%2Ba1afbfb.zip")
+BEPINEX_SHA256 = "9753b825578a3c3a31cc10067cd45a44a7bf56d3c34c4679e24d6adfd0fba8ea"
+# Copied to the release's top level, beside the FM26 and FM24 folders.
+TOP_LEVEL = ("README.md", "LICENSE", "licenses/THIRD_PARTY_NOTICES.md",
+             "licenses/BepInEx-LICENSE.txt", "licenses/Il2CppInterop-LICENSE.txt")
+
+
+def bepinex_zip(path: Path | None) -> Path:
+    """The pinned BepInEx build: a given file, or a download cached in dist/."""
+    target = path or ROOT / "dist" / "cache" / "BepInEx-Unity.IL2CPP-win-x64-6.0.0-be.760+a1afbfb.zip"
+    if not target.is_file():
+        if path:
+            raise SystemExit(f"{path} does not exist.")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        print(f"Downloading BepInEx from {BEPINEX_URL}")
+        with urllib.request.urlopen(BEPINEX_URL, timeout=120) as response:
+            data = response.read()
+        temporary = target.with_suffix(".part")
+        temporary.write_bytes(data)
+        temporary.replace(target)
+    if hashlib.sha256(target.read_bytes()).hexdigest() != BEPINEX_SHA256:
+        raise SystemExit(f"{target} is not the pinned BepInEx be.760 build (SHA-256 mismatch).")
+    return target
+
+
+def bepinex_files(archive: Path) -> dict[str, bytes]:
+    """BepInEx's files by path in the game folder (its changelog left out)."""
+    files = {}
+    with zipfile.ZipFile(archive) as source:
+        for info in source.infolist():
+            name = PurePosixPath(info.filename.replace("\\", "/"))
+            if info.is_dir() or name.is_absolute() or ".." in name.parts or str(name) == "changelog.txt":
+                continue
+            files[str(name)] = source.read(info)
+    if "winhttp.dll" not in files or "BepInEx/core/BepInEx.Unity.IL2CPP.dll" not in files:
+        raise SystemExit("The BepInEx archive is missing winhttp.dll or BepInEx.Unity.IL2CPP.dll.")
+    return files
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--bepinex-zip", type=Path, help="a local copy of the pinned BepInEx be.760 ZIP")
+    args = parser.parse_args()
     source = (ROOT / "hotreload/FMFaceHotReload.cs").read_text()
     match = re.search(r'BepInPlugin\("fmface\.hotreload", "FM Face", "([^"]+)"\)', source)
     if not match:
         raise SystemExit("Could not read the plugin version.")
     version = match.group(1)
     target = ROOT / "dist" / f"fmface-{version}.zip"
-    missing = [name for name in PUBLIC_FILES if not (ROOT / name).is_file()]
+    missing = [name for name in PUBLIC_FILES + (PLUGIN_DLL,) if not (ROOT / name).is_file()]
     if missing:
         raise SystemExit("Release files are missing: " + ", ".join(missing))
     # The packaged FM24 companion (fm24/build_exe.py), when it has been built.
@@ -84,14 +140,22 @@ def main() -> None:
         raise SystemExit("dist/fmface-fm24 has no fmface-fm24.exe; rebuild it with fm24/build_exe.py.")
     if any(path.name in (".env", ".fm24-auth") for path in packaged):
         raise SystemExit("dist/fmface-fm24 holds a private .env or .fm24-auth; remove it first.")
+    loader = bepinex_files(bepinex_zip(args.bepinex_zip))
+    top = f"fmface-{version}"
     target.parent.mkdir(exist_ok=True)
     with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        for name in PUBLIC_FILES:
-            archive.write(ROOT / name, f"fmface-{version}/{name}")
+        for name in TOP_LEVEL:
+            archive.write(ROOT / name, f"{top}/{Path(name).name}")
+        for name, data in loader.items():
+            archive.writestr(f"{top}/FM26/{name}", data)
+        archive.write(ROOT / PLUGIN_DLL, f"{top}/FM26/BepInEx/plugins/FMFaceHotReload/FMFaceHotReload.dll")
         for path in packaged:
-            archive.write(path, f"fmface-{version}/fmface-fm24/{path.relative_to(companion).as_posix()}")
-    note = f" and the {len(packaged)}-file FM24 companion" if packaged else " (FM24 companion not built)"
-    print(f"Created {target} with {len(PUBLIC_FILES)} public files{note}")
+            archive.write(path, f"{top}/FM24/{path.relative_to(companion).as_posix()}")
+        for name in PUBLIC_FILES:
+            archive.write(ROOT / name, f"{top}/source/{name}")
+    note = f"the {len(packaged)}-file FM24 companion" if packaged else "no FM24 companion (not built)"
+    print(f"Created {target}: FM26 folder ({len(loader)} BepInEx files and the plugin), {note}, "
+          f"and {len(PUBLIC_FILES)} source files")
 
 
 if __name__ == "__main__":

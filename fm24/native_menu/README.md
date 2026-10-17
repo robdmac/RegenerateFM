@@ -26,8 +26,9 @@ executables remain unhooked, and the FM24 companion requires this DLL.
 
 ## Build and install
 
-Start with the normal FM24 companion environment and FM Face skin from
-[../README.md](../README.md). Install a MinGW-w64 compiler and the build-only
+Release ZIPs include a built DLL (`FM24/_internal/fm24-dll/winmm.dll`), so
+this is only for building it yourself. Start with the normal FM24 companion
+environment from [../README.md](../README.md). Install a MinGW-w64 compiler and the build-only
 Python dependency:
 
 ```sh
@@ -42,7 +43,7 @@ forwarding stubs. It does not copy system or game code into the plugin. In the
 tested prefix, all 189 WINMM exports were forwarded. DLL resolution and hook
 initialization happen on the first exported API call, outside `DllMain`.
 
-Close FM24, then install:
+Close FM24, then install. `fm24/setup_fm24.py` (and the packaged companion) does this step for you; by hand:
 
 ```sh
 .venv-fm24/bin/python fm24/native_menu/install.py \

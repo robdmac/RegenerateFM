@@ -465,14 +465,37 @@ def ask_for_key() -> None:
         return
 
 
+def _setup_if_needed() -> None:
+    """A double-clicked companion sets FM24 up itself the first time (and after an update)."""
+    import setup_fm24
+    try:
+        game, user_data = setup_fm24.resolve_dirs(None, None)
+    except SystemExit as exc:
+        print(exc, flush=True)
+        return
+    if not setup_fm24.is_set_up(game, user_data / "skins" / "fmface", ROOT / ".fm24-auth"):
+        print("Setting up FM Face for FM24 (one time only).", flush=True)
+        setup_fm24.setup(game, user_data, ROOT / ".fm24-auth")
+
+
 def _main_packaged() -> None:
-    """A double-clicked companion.exe closes its window on exit; keep errors readable."""
+    """A double-clicked companion.exe closes its window on exit; keep errors readable.
+
+    `fmface-fm24.exe setup [--game-dir ...] [--remove]` runs only the setup.
+    """
     def pause():
         try:
             input("Press Enter to close.")
         except (EOFError, OSError):
             pass
     try:
+        if sys.argv[1:2] == ["setup"]:
+            import setup_fm24
+            setup_fm24.main(sys.argv[2:])
+            pause()
+            return
+        if len(sys.argv) == 1:
+            _setup_if_needed()
         main()
     except SystemExit as exc:
         if exc.code not in (None, 0):

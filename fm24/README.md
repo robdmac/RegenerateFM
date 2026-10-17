@@ -26,47 +26,29 @@ If anything can't be verified, the request is refused before any image is reques
 
 ## Setup
 
-1. Create a virtual environment and install the companion's dependencies:
+`setup_fm24.py` does the one-time setup, and the packaged companion runs it by itself:
+- **Finds FM24** in your Steam libraries (`libraryfolders.vdf`), and its **user-data** folder (`Documents/Sports Interactive/Football Manager 2024`; under Proton, inside the game's `compatdata/2252570` prefix). That's the folder with `skins` and `graphics`, not the game folder.
+- **Builds the FM Face skin** from the player and staff panels in FM24's own `data/game/panels.fmf`, read directly, so there's no Resource Archiver step. This repository does not include Sports Interactive's panels.
+- **Creates the private token** the DLL and companion share (`.fm24-auth` beside FM Face). If FM24 already has an FM Face token, for example after moving the companion to a new folder, it reuses that one.
+- **Installs the [native DLL](native_menu/README.md)** and adds the portrait popups to the skin's panels.
 
-   ```sh
-   python3 -m venv .venv-fm24
-   .venv-fm24/bin/pip install -r fm24/requirements.txt
-   ```
+Run it with FM24 closed. Running it again does nothing unless something changed, such as a new DLL in an FM Face update; `--remove` uninstalls the DLL and restores the panels. `--game-dir` and `--user-data-dir` override the search.
 
-2. Extract your own FM24 `panels.fmf` with the FM24 Resource Archiver. Locate `panels/player/player overview panel.xml` and `panels/non_player/non player profile.xml` in that extraction. This repository does not include Sports Interactive's panels.
-3. Find your FM24 **user-data** directory, which contains `skins` and `graphics`, and create its `graphics/fmface` directory. For Steam Proton this is normally inside the game's `compatdata/2252570/pfx/drive_c/users/steamuser/Documents/Sports Interactive/Football Manager 2024/`. It is not the game installation directory.
-4. Build the skin, supplying your extracted panel and user-data paths:
-
-   ```sh
-   python3 fm24/build_skin.py \
-     --panel-source '/path/to/extracted/panels/player/player overview panel.xml' \
-     --staff-panel-source '/path/to/extracted/panels/non_player/non player profile.xml' \
-     --skin-dir '/path/to/Football Manager 2024/skins/fmface' \
-     --auth-file .fm24-auth
-   ```
-
-   The builder creates a private local token and refuses to overwrite an existing skin. Keep `.fm24-auth` private.
-5. Copy `.env.example` to `.env` and set `OPENAI_API_KEY` there. (On Windows you can skip this: the companion asks for the key when it starts, as described under [Packaged companion for Windows](#packaged-companion-for-windows).) Keep the file private (`chmod 600 .env`). Each generated or updated face is one billed image API request. If you don't have a key yet, follow [Get an OpenAI API key](../README.md#1-get-an-openai-api-key). The FM24 companion uses the graphics path passed on its command line; `FM_GRAPHICS_DIR` in `.env` is only for the web app and `import`.
-6. Install the [native DLL](native_menu/README.md) with FM24 closed and add its Steam launch option. In FM24 Preferences, select **FM Face** and enable screen IDs in the title. Then run:
-
-   ```sh
-   .venv-fm24/bin/python fm24/companion.py \
-     --auth-file .fm24-auth \
-     --graphics-dir '/path/to/Football Manager 2024/graphics/fmface'
-   ```
+Afterwards, in FM24's **Preferences > Interface**, choose the **FM Face** skin and tick **Show screen IDs in Title Bar to assist skinning**.
 
 ## Packaged companion for Windows
 
-`fmface-fm24.exe` is the same companion packaged with Python, Pillow and zstandard, so players don't need to install Python to run it.
+`fmface-fm24.exe` (the release ZIP's `FM24` folder) is the companion packaged with Python, Pillow, zstandard and the FM24 DLL, so players need no Python or compiler.
 
 **Using it:**
-1. Put `.fm24-auth` beside `fmface-fm24.exe`.
-2. Start FM24, then double-click the exe.
-3. The first time, it asks for your OpenAI key in its window. Paste it (right-click or Ctrl+V) or type it; it isn't shown. It checks the key with a free OpenAI request and saves it encrypted for your Windows user in `%APPDATA%\FM Face\openai-key`, the same file the FM26 plugin uses. Delete that folder to forget the key. On later starts it checks the saved key the same free way and asks again only if OpenAI rejects it. A `.env` beside the exe with `OPENAI_API_KEY` takes priority, as before.
+1. Copy the `FM24` folder somewhere of your own, not into the game folder.
+2. Close FM24 and double-click `fmface-fm24.exe`. The first time (and after an FM Face update) it runs the setup above.
+3. It asks for your OpenAI key in its window. Paste it (right-click or Ctrl+V) or type it; it isn't shown. It checks the key with a free OpenAI request and saves it encrypted for your Windows user in `%APPDATA%\FM Face\openai-key`, the same file the FM26 plugin uses. Delete that folder to forget the key. On later starts it checks the saved key the same free way and asks again only if OpenAI rejects it. A `.env` beside the exe with `OPENAI_API_KEY` takes priority.
+4. Start FM24 and choose the skin as above. Keep the window open while you play.
 
-**Defaults:** with no arguments it reads `.fm24-auth` from its own folder. It finds `Documents\Sports Interactive\Football Manager 2024\graphics\fmface` itself, and creates it if FM24's user-data folder exists. The same options as above (`--graphics-dir`, `--preview-only` and so on) still work. If it stops with an error, the window stays open until you press Enter.
+**Defaults:** it reads `.fm24-auth` from its own folder and finds `Documents\Sports Interactive\Football Manager 2024\graphics\fmface` itself. `fmface-fm24.exe setup [--game-dir ...] [--remove]` runs only the setup. The companion options below (`--graphics-dir`, `--preview-only` and so on) still work. If it stops with an error, the window stays open until you press Enter.
 
-**Building it:** run `fm24/build_exe.py` with a Windows Python 3.11 that has `fm24/requirements-exe.txt` installed. On Linux, a Windows Python under Wine works:
+**Building it:** build the DLL first (see [native_menu/README.md](native_menu/README.md); it needs MinGW), then run `fm24/build_exe.py` with a Windows Python 3.11 that has `fm24/requirements-exe.txt` installed. On Linux, a Windows Python under Wine works:
 
 ```sh
 wine python.exe -m pip install -r fm24/requirements-exe.txt
@@ -79,7 +61,26 @@ The output is the folder `dist/fmface-fm24/`, about 30 MB, which `make_release.p
 
 **Testing it under Proton:** the exe has been run under Wine in FM24's Proton prefix. Start it with `WINEFSYNC=1` (Proton's wineserver uses fsync) and pipe its output (`| cat`); under Wine, redirecting it straight to a file fails to set up its output streams.
 
-Setup steps 2–4 (building the skin) and installing the DLL still need Python and MinGW once, as above.
+## Running from source (Linux)
+
+1. Create a virtual environment and install the companion's dependencies:
+
+   ```sh
+   python3 -m venv .venv-fm24
+   .venv-fm24/bin/pip install -r fm24/requirements.txt
+   ```
+
+2. With FM24 closed, run the setup: `.venv-fm24/bin/python fm24/setup_fm24.py`. It needs the DLL from `fm24/native_menu/build.py` (MinGW) in `fm24/native_menu/build/`, or take `FM24/_internal/fm24-dll/winmm.dll` from a release ZIP and put it there.
+3. Set FM24's Steam launch option to `WINEDLLOVERRIDES="winmm=n,b" %command%`.
+4. Copy `.env.example` to `.env` and set `OPENAI_API_KEY` there. Keep the file private (`chmod 600 .env`). Each generated or updated face is one billed image API request. If you don't have a key yet, follow [Get an OpenAI API key](../README.md#1-get-an-openai-api-key).
+5. Start FM24 and the companion:
+
+   ```sh
+   .venv-fm24/bin/python fm24/companion.py \
+     --graphics-dir '/path/to/Football Manager 2024/graphics/fmface'
+   ```
+
+   `--auth-file` defaults to `.fm24-auth` in the repository. `fm24/build_skin.py` still builds the skin from panels you extracted yourself, if you prefer.
 
 ## Use
 

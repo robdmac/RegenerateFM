@@ -14,7 +14,6 @@
     <Reference Include="0Harmony" HintPath="$(GameDir)/BepInEx/core/0Harmony.dll" Private="false" />
     <Reference Include="Il2CppInterop.Runtime" HintPath="$(GameDir)/BepInEx/core/Il2CppInterop.Runtime.dll" Private="false" />
     <Reference Include="Il2Cppmscorlib" HintPath="$(GameDir)/BepInEx/interop/Il2Cppmscorlib.dll" Private="false" />
-    <Reference Include="FMActionLink" HintPath="$(GameDir)/BepInEx/plugins/FMActionLink/FMActionLink.dll" Private="false" />
     <Reference Include="SI.Core" HintPath="$(GameDir)/BepInEx/interop/SI.Core.dll" Private="false" />
     <Reference Include="SI.Bindable" HintPath="$(GameDir)/BepInEx/interop/SI.Bindable.dll" Private="false" />
     <Reference Include="SI.Input" HintPath="$(GameDir)/BepInEx/interop/SI.Input.dll" Private="false" />

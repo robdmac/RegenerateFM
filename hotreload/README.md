@@ -6,15 +6,17 @@ This BepInEx plugin lets you left-click a player or staff portrait on FM26's Ove
 
 On **Squad > Overview**, open the top **Squad** dropdown and choose **Generate faces…** below it. The plugin scans the roster, identifies players whose portrait asset is `person_default`, and requires the number scanned to match FM's displayed player count. It then asks for confirmation showing the number of missing portraits and billed image requests. Each confirmed player is opened in sequence; the plugin checks the visible name and age, captures the same profile details as individual generation, saves a face and reloads graphics before moving on. **Stop after current face** stops before the next request, with a five-second pause between completed players. A failed capture or request stops the batch without sending later requests. The squad command does not replace existing portraits and is currently FM26-only.
 
-The plugin is pinned to the checked FM26 26.3.2 game binaries. It disables its buttons if those binaries change. It was tested with [BepInEx 6.0.0-be.760 Unity IL2CPP Windows x64](https://builds.bepinex.dev/projects/bepinex_be/) and [FM ActionLink 1.0.0](https://sortitoutsi.net/content/77820/fm-actionlink-free-plugin-for-modders-connect-fm-screens-to-external-tools), created by @marceloouw / @FMSeasonHub. It uses FM26's local-asset registration and panel reload methods, identified with help from the MIT-licensed [FM Graphics Reload source](https://github.com/dev-junos/FM-Graphics-Reload). It does not include these projects' binaries or injection code.
+The plugin is pinned to the checked FM26 26.3.2 game binaries. It disables its buttons if those binaries change. It was tested with [BepInEx 6.0.0-be.760 Unity IL2CPP Windows x64](https://builds.bepinex.dev/projects/bepinex_be/), which the release ZIP's `FM26` folder includes unmodified (see `licenses/THIRD_PARTY_NOTICES.md`). It no longer needs [FM ActionLink](https://sortitoutsi.net/content/77820/fm-actionlink-free-plugin-for-modders-connect-fm-screens-to-external-tools), created by @marceloouw / @FMSeasonHub, and works beside it. It uses FM26's local-asset registration and panel reload methods, identified with help from the MIT-licensed [FM Graphics Reload source](https://github.com/dev-junos/FM-Graphics-Reload).
 
-Build with the .NET 6 SDK after installing BepInEx IL2CPP and FM ActionLink:
+**Installing:** copy the release ZIP's `FM26` folder's contents into the `Football Manager 26` folder (on Linux, also set the launch option `WINEDLLOVERRIDES="winhttp=n,b" %command%`). The first start takes a few minutes while BepInEx generates its game bindings.
+
+**Building it yourself** needs the .NET 6 SDK and a game folder where BepInEx has started once (the build references its generated `BepInEx/interop` assemblies):
 
 ```bash
 dotnet build hotreload/FMFaceHotReload.csproj -c Release -p:GameDir="/path/to/Football Manager 26"
 ```
 
-Copy `hotreload/bin/Release/net6.0/FMFaceHotReload.dll` into `Football Manager 26/BepInEx/plugins/FMFaceHotReload/`, set FM ActionLink's `playerProfile.buttons` to `[]`, and restart FM26 once.
+Copy `hotreload/bin/Release/net6.0/FMFaceHotReload.dll` into `Football Manager 26/BepInEx/plugins/FMFaceHotReload/` and restart FM26.
 
 ## OpenAI key
 

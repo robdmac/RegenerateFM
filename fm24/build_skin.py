@@ -62,6 +62,20 @@ def add_staff_panel(panel_source: Path, skin_dir: Path) -> Path:
     return destination
 
 
+def ensure_token(auth_file: Path) -> str:
+    """The private token the DLL and companion share, created on first use."""
+    if auth_file.exists():
+        token = auth_file.read_text(encoding="ascii").strip()
+        if len(token) < 40:
+            raise ValueError("Existing FM24 callback token is invalid.")
+        return token
+    token = secrets.token_urlsafe(32)
+    auth_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(auth_file, "x", encoding="ascii", opener=lambda path, flags: os.open(path, flags, 0o600)) as handle:
+        handle.write(token + "\n")
+    return token
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--panel-source", required=True, type=Path)
@@ -70,15 +84,7 @@ def main() -> None:
     parser.add_argument("--skin-dir", required=True, type=Path)
     parser.add_argument("--auth-file", required=True, type=Path)
     args = parser.parse_args()
-    if args.auth_file.exists():
-        token = args.auth_file.read_text(encoding="ascii").strip()
-        if len(token) < 40:
-            raise ValueError("Existing FM24 callback token is invalid.")
-    else:
-        token = secrets.token_urlsafe(32)
-        args.auth_file.parent.mkdir(parents=True, exist_ok=True)
-        with open(args.auth_file, "x", encoding="ascii", opener=lambda path, flags: os.open(path, flags, 0o600)) as handle:
-            handle.write(token + "\n")
+    ensure_token(args.auth_file)
     add_player_panel(args.panel_source, args.skin_dir)
     if args.staff_panel_source:
         add_staff_panel(args.staff_panel_source, args.skin_dir)

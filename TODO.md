@@ -69,17 +69,23 @@
 
 ## Next (2026-10-17)
 
-- **FM24 setup without Python:** ship the prebuilt skin builder and DLL
-  installer inside the exe (or the release ZIP), so Windows players need no
-  Python or MinGW.
-- **FM26 plugin install:** ship the built DLL in the release so players don't
-  need the .NET SDK; `install_fm26.py` still needs Python.
+- **FM24 setup without Python:** done (2026-10-17). `fmface-fm24.exe` sets
+  FM24 up itself: it finds the game through Steam, builds the skin from
+  FM24's own `panels.fmf` (no Resource Archiver) and installs the bundled DLL.
+  Checked under Wine and against the live game (preview mode).
+- **FM26 install without the .NET SDK or Python:** done (2026-10-17). The
+  plugin no longer needs FM ActionLink, and the release ZIP's `FM26` folder
+  (pinned BepInEx be.760 plus the plugin) is copied into the game folder.
+  Checked live from a vanilla game folder. `install_fm26.py` was removed.
+- **Real Windows check of the bundled FM24 DLL:** it forwards the WINMM
+  exports of Wine's DLL, which it was built against; check FM24 starts with
+  it on Windows.
 - **FM24 popup progress text:** after the first use in a session the DLL logs
   `FMFACE24_PROGRESS_NOT_SET` and the popup shows no progress. Cosmetic.
 - **FM26 reserve and youth squads:** the Generate faces… item depends on the
   Squad screen's player table; check it on the Under 21s and Under 18s tabs.
 - **FM26 biography:** needs a visit to the Career tab first; FM24 reads it
   from the Overview.
-- **Real Windows test** of both games, and the stale `dist/fmface-0.8.0.zip`
-  replaced by a 0.9.0 release.
+- **Real Windows test** of both games. `dist/fmface-0.9.0.zip` is built
+  but not published.
 - **Credits system:** deferred.

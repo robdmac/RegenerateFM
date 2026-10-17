@@ -9,7 +9,6 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using BepInEx;
 using BepInEx.Unity.IL2CPP;
-using FMActionLink;
 using HarmonyLib;
 using Il2CppInterop.Runtime.Injection;
 using SI.Bindable;
@@ -22,7 +21,6 @@ using UnityEngine.UIElements;
 namespace FMFaceHotReload
 {
     [BepInPlugin("fmface.hotreload", "FM Face", "0.9.0")]
-    [BepInDependency(Plugin.Guid)]
     public sealed class HotReloadPlugin : BasePlugin
     {
         internal static HotReloadPlugin Instance;
