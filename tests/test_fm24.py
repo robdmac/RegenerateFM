@@ -359,6 +359,32 @@ class PersonReferenceTests(unittest.TestCase):
             for reference in (0x01000040, 0x0100000F):
                 self.assertIsNone(person_handles._from_table(1, reference & 0x7FFFFF))
 
+    def test_person_table_is_found_in_another_database_slot(self):
+        import person_handles
+        image, database, decoy, table, other, person = 0x100000000, 0x7000, 0x8000, 0x9000, 0xB000, 0xA000
+        memory = {
+            image + 0x50: struct.pack("<Q", database),
+            # The layout's slot now holds another kind of object, also indexed by handle.
+            database + 0x18: struct.pack("<QQ", decoy, decoy + 8 * 0x20),
+            decoy + 8 * 0x0E: struct.pack("<Q", other),
+            other + 8: struct.pack("<III", 0x0E, 77, 1234),
+            database + 0x98: struct.pack("<QQ", table, table + 8 * 0x20),
+            table + 8 * 0x0E: struct.pack("<Q", person),
+            person + 8: struct.pack("<III", 0x0E, 4000829, 4000829) + bytes(4) + bytes([0, 0, 0x58, 0x10]),
+        }
+
+        def read(pid, address, size):
+            for start, data in memory.items():
+                if start <= address and address + size <= start + len(data):
+                    return data[address - start:address - start + size]
+            return bytes(size)
+        with patch.dict(person_handles.LAYOUT, {"person_table": (0x50, 0x18), "browser_reference": 0x878}), \
+                patch.dict(person_handles._table_slots, clear=True), \
+                patch.object(person_handles, "read_process_bytes", side_effect=read), \
+                patch.object(person_handles, "fm24_image_base", return_value=image):
+            self.assertEqual(person_handles._from_table(1, 0x0E), "4000829")
+            self.assertEqual(person_handles._table_slots[1], 0x98)
+
     def test_screen_reference_prefers_the_sidebar_which_survives_a_skin_reload(self):
         import person_handles
         image, sidebar, browser = 0x100000000, 0x5000, 0x6000

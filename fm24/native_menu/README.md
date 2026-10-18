@@ -159,8 +159,12 @@ open screen; its widget tree is walked through each widget's children vector
 The person is the object of the screen FM24 has navigated to, which the
 sidebar (`side`, class vtable RVA 0x57E3B48) keeps at +0x280:
 0x01000000 | the person's handle. FM24's database object (`*(fm.exe +
-0x6426D90)`) lists every person by handle in a vector at +0x920; the person
-must keep that handle at +8, followed by its canonical record (the ID twice,
+0x6426D90)`) keeps one vector per kind of object, each indexed by handle,
+in slots of {begin, end, capacity, allocator}. Which slot holds people changes
+between runs of FM24 (+0x920 in one, +0x9C0 in the next), so the DLL and the
+companion try the last slot found and otherwise every slot in the object's
+first 0x2000 bytes; the entry at the handle must be a person that keeps that
+handle at +8, followed by its canonical record (the ID twice,
 then a `00 xx 58` marker). The header (`head`) must contain one subtitle
 (`subs`, text at +0x190), "Role - Club", which the profile checks against the
 record; with screen IDs enabled it ends in "(ID:n)", and n must then be the
@@ -472,8 +476,8 @@ reference for the open profile. Staff names then come from first/surname
 records, which on the Mac can start at any byte. fm.exe (Windows and
 Proton) works the same way at its own offsets: the sidebar's class is
 `0x57e3b48` with the reference at +0x280, the browser (`0x56bae48`) holds it
-at +0x880 until a reload, and the database global at image + 0x6426D90 has
-the person vector at +0x920. There the DLL looks the person up itself and
+at +0x880 until a reload, and the database global is at image + 0x6426D90
+(its person vector's slot is searched, as above). There the DLL looks the person up itself and
 sends the ID, so the companion needs no `r<reference>`.
 
 **Key prompt.** On the Mac, FM24 asks for the OpenAI key itself, like the

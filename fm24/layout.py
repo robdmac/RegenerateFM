@@ -31,7 +31,7 @@ WINDOWS = {
     "person_vtables": None,        # the kind comes from the record type and position ratings
     "object_browser_vtable": 0x56BAE48,  # CLIENT_OBJECT_BROWSER, from fm.exe's RTTI
     "browser_reference": 0x880,    # cleared by a skin reload, like the Mac build's
-    "person_table": (0x6426D90, 0x920),
+    "person_table": (0x6426D90, 0x920),  # database global, first slot tried (person_handles)
     "sidebar_vtable": 0x57E3B48,   # SIDEBAR_MENU_TABLE, as in the DLL
     "sidebar_reference": 0x280,
 }
@@ -63,7 +63,9 @@ MACOS = {
     "object_browser_vtable": 0x4F77650,
     "browser_reference": 0x878,
     # The global (from the image header) pointing at the game's database,
-    # whose vector of person pointers, indexed by handle, starts at +0x318.
+    # and the slot where its vector of person pointers, indexed by handle,
+    # was seen (+0x318). person_handles searches the other slots when it
+    # isn't there: on fm.exe the slot changes between runs.
     "person_table": (0x5304848, 0x318),
     # The sidebar menu keeps the screen's object reference, also after a skin
     # reload, when the object browser's stops being updated.

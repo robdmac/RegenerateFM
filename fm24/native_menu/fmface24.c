@@ -152,7 +152,8 @@ static BOOL read_game(const void *address, void *buffer, SIZE_T size)
 #define SIDEBAR_VTABLE_RVA     0x57E3B48
 #define SIDEBAR_OBJECT         0x280
 #define DATABASE_GLOBAL_RVA    0x6426D90
-#define DATABASE_PEOPLE        0x920
+#define DATABASE_PEOPLE        0x920   /* the people's slot seen first; see object_person_id */
+#define DATABASE_SCAN          0x2000
 #define PERSON_OBJECT          0x01000000u
 #define PERSON_HANDLE          8
 #define MAX_DEPTH              64
@@ -186,17 +187,14 @@ static int widget_children(const unsigned char *object, unsigned char **children
 static unsigned char *search_children[MAX_CHILDREN];
 static unsigned char *search_stack[MAX_SEARCH];
 
-/* The person ID of a person object ID, through FM24's person table, or 0. */
-static LONG object_person_id(unsigned int object_id)
+/* The person ID at this handle in the database's vector at slot, or 0. */
+static LONG slot_person_id(unsigned char *database, size_t slot, unsigned int handle)
 {
-    unsigned char *database, *range[2], *person;
+    unsigned char *range[2], *person;
     struct { unsigned int handle, id, again, zero; unsigned char marker[4]; } record;
-    unsigned int handle = object_id & 0xFFFFFFu;
-    if ((object_id & 0xFF000000u) != PERSON_OBJECT ||
-        !read_pointer(game_base + DATABASE_GLOBAL_RVA, &database) ||
-        !read_game(database + DATABASE_PEOPLE, range, sizeof(range)) || !range[0] || range[1] < range[0] ||
+    if (!read_game(database + slot, range, sizeof(range)) || !range[0] || range[1] <= range[0] ||
         (range[1] - range[0]) % sizeof(void *) || handle >= (size_t)(range[1] - range[0]) / sizeof(void *) ||
-        !read_pointer(range[0] + (size_t)handle * sizeof(void *), &person) ||
+        !read_pointer(range[0] + (size_t)handle * sizeof(void *), &person) || !person ||
         !read_game(person + PERSON_HANDLE, &record, sizeof(record)))
         return 0;
     /* As in the companion: the ID twice, then a marker of 00 xx 58. */
@@ -204,6 +202,31 @@ static LONG object_person_id(unsigned int object_id)
         record.id < 1 || record.id > 0x7fffffffu)
         return 0;
     return (LONG)record.id;
+}
+
+/* The person ID of a person object ID, through FM24's person table, or 0.
+   The database keeps one vector per kind of object, indexed by handle, and
+   which slot holds people changes from one run of FM24 to the next: the last
+   slot found is tried first, then every slot in the first DATABASE_SCAN
+   bytes, which must all agree on the person. UI thread only. */
+static size_t people_slot = DATABASE_PEOPLE;
+
+static LONG object_person_id(unsigned int object_id)
+{
+    unsigned char *database;
+    unsigned int handle = object_id & 0xFFFFFFu;
+    LONG id, found = 0;
+    size_t found_slot = 0;
+    if ((object_id & 0xFF000000u) != PERSON_OBJECT || !read_pointer(game_base + DATABASE_GLOBAL_RVA, &database))
+        return 0;
+    if ((id = slot_person_id(database, people_slot, handle))) return id;
+    for (size_t slot = 0; slot < DATABASE_SCAN; slot += sizeof(void *)) {
+        if (slot == people_slot || !(id = slot_person_id(database, slot, handle))) continue;
+        if (found && id != found) return 0;
+        if (!found) { found = id; found_slot = slot; }
+    }
+    if (found) people_slot = found_slot;
+    return found;
 }
 
 /* Reads the person the open screen shows, starting from FM Face's portrait
@@ -535,7 +558,12 @@ static BOOL make_ok_dialog(void *manager, const char *label);
 
 static BOOL apply_progress(void *manager)
 {
-    if (progress_target == 3 && !make_ok_dialog(manager, "OK")) return FALSE;
+    if (progress_target == 3) {
+        if (!make_ok_dialog(manager, "OK")) return FALSE;
+        /* Now an OK message: a pending relabel must not bring back "Stop after this face". */
+        dialog_kind = 2;
+        ok_dialog_tries = 0;
+    }
     unsigned char *widget = progress_target == 1 ?
         find_widget(manager, SKIN_ID('f','m','n','P'), SKIN_ID('f','m','n','S'), NULL) :
         dialog_state == DIALOG_SHOWN && dialog_object ? find_widget(manager, 0, 0, dialog_object) : NULL;

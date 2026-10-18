@@ -29,6 +29,8 @@ _INDEX_MASK = 0x7FFFFF
 # bytes.find, which is far faster than a regular expression over the heap.
 _MARKERS = tuple(bytes([kind, last]) for kind in (0x50, 0x58) for last in (0x10, 0x12, 0x18))
 _REBUILD_AFTER = 10.0
+DATABASE_SCAN = 0x2000
+_table_slots: dict[int, int] = {}           # pid -> database slot of the person vector
 
 _lock = threading.Lock()
 _index: dict[int, dict[int, int]] = {}      # pid -> handle -> record address
@@ -73,20 +75,43 @@ def _check(pid: int, handle: int, record: int) -> str | None:
     return str(number)
 
 
-def _from_table(pid: int, handle: int) -> str | None:
-    """The person ID at this handle in FM24's person table, or None."""
-    if LAYOUT["person_table"] is None:
-        return None
-    pointer, vector = LAYOUT["person_table"]
+def _slot_person(pid: int, database: int, slot: int, handle: int) -> str | None:
+    """The person ID at this handle in the database's vector at ``slot``, or None."""
     try:
-        database = struct.unpack("<Q", read_process_bytes(pid, fm24_image_base(pid) + pointer, 8))[0]
-        begin, end = struct.unpack("<QQ", read_process_bytes(pid, database + vector, 16))
-        if not begin or end < begin or handle >= (end - begin) // 8:
+        begin, end = struct.unpack("<QQ", read_process_bytes(pid, database + slot, 16))
+        if not begin or end <= begin or (end - begin) % 8 or handle >= (end - begin) // 8:
             return None
         person = struct.unpack("<Q", read_process_bytes(pid, begin + 8 * handle, 8))[0]
         return _check(pid, handle, person + PERSON_HANDLE + 4) if person else None
     except (OSError, ValueError, struct.error):
         return None
+
+
+def _from_table(pid: int, handle: int) -> str | None:
+    """The person ID at this handle in FM24's person table, or None.
+
+    The database object keeps one vector per kind of object, each indexed by
+    handle ({begin, end, capacity, allocator}), and which slot holds people
+    changes from one run of FM24 to the next. The layout's slot is tried
+    first, then every slot in the first DATABASE_SCAN bytes; the people's is
+    the one whose entry is a person record carrying this handle.
+    """
+    if LAYOUT["person_table"] is None:
+        return None
+    pointer, hint = LAYOUT["person_table"]
+    try:
+        database = struct.unpack("<Q", read_process_bytes(pid, fm24_image_base(pid) + pointer, 8))[0]
+    except (OSError, ValueError, struct.error):
+        return None
+    first = _table_slots.get(pid, hint)
+    if person := _slot_person(pid, database, first, handle):
+        return person
+    found = {slot: person for slot in range(0, DATABASE_SCAN, 8)
+             if slot != first and (person := _slot_person(pid, database, slot, handle))}
+    if len(set(found.values())) != 1:
+        return None
+    _table_slots[pid] = min(found)
+    return next(iter(found.values()))
 
 
 def build(pid: int) -> None:
