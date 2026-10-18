@@ -89,3 +89,83 @@
 - **Real Windows test** of both games. `dist/fmface-0.9.0.zip` is built
   but not published.
 - **Credits system:** deferred.
+
+## macOS (2026-10-17)
+
+- **FM26 on macOS:** loads (2026-10-17). BepInEx be.789 under Rosetta 2 with
+  funchook and a patched Il2CppInterop, started by `run_fmface.sh`; the
+  plugin loaded in 12 cold starts, including a quarantined install from the
+  release ZIP. Details in `hotreload/macos/README.md`. The Actions, portrait
+  and squad commands open the key dialog. Still to check: a saved key and a
+  billed face in game; starting through Steam's launch option; whether one
+  plugin DLL serves be.760 (Windows) and be.789 (macOS).
+- **FM26 person ID from the data binding:** done (2026-10-17). The plugin
+  reads `objectID` (`Person.UniqueId`) from the profile header's binding, so
+  "Show screen IDs in Title Bar" isn't needed; `(ID:n)` text is the fallback.
+  Check it on Linux and on a staff profile.
+- **FM26 squad command closes with the dropdown:** FM26 closes the Squad
+  dropdown once the pointer leaves it, and the plugin removes **Generate
+  faces…** at its next 0.5 s scan, so a slow click misses it (seen on macOS;
+  same code on every platform).
+- **FM24 on macOS:** works with preview faces (2026-10-17), on FM24 24.4.2's
+  arm64 build with a copy of a real save. `libfmface24.dylib`
+  (`fm24/native_menu/fmface24_macos.c`) adds the portrait popup, the
+  Overview tab rows and the Squad menu item, shows FM24's dialogs, reloads
+  the skin and serves the companion's memory reads; `setup_fm24.py`
+  installs it with `run_fmface24.sh`. Every Windows address was matched to
+  the Mac build (`supported_build_macos.json`); the companion's record
+  offsets are in `fm24/layout.py`. Checked: a player and a staff preview,
+  the squad count and its No, Update face greyed for a person without a
+  face, and the reload. Still to check: a billed face and a billed squad
+  batch, Update face on a person with a face, Steam's launch option, the
+  Development Center tabs, and `setup_fm24.py --remove`. Player-coaches
+  (db::ACTUAL_PLAYER_AND_NON_PLAYER) are refused. There is no packaged Mac
+  companion; it runs from source with Pillow and zstandard.
+- **FM24 key prompt in the game:** done on macOS (2026-10-18). With no saved
+  key, a face command shows a key prompt on FM24's window
+  (`key_prompt_macos.m`), checked live with a fake key: paste, OpenAI's
+  rejection and the second prompt, Cancel. A real key and a billed face are
+  still to check. Windows and Linux still ask in the companion's window;
+  `fmface24.c` could show a Win32 prompt the same way.
+- **FM26 face not appearing on macOS:** fixed (2026-10-18). A billed face
+  (Lucas Hoyos) was saved, but the graphics reload failed with FM26's
+  "invalid operation handle" and the popup waited 30 s before giving up:
+  Il2CppInterop's hook on EnumerateLocalAssetsComplete passes its struct
+  argument the Windows way. On macOS the plugin now follows
+  RegisterResourceLocator instead (see hotreload/macos/README.md). Checked
+  through Steam's launch option with a stand-in image API: Generate and
+  Update face both shown, reload under 1 s. The plugin also logs how long
+  the image request took, to tell OpenAI's time from FM26's.
+- **FM26 staff, squad batch and key paste on macOS:** fixed (2026-10-18),
+  each checked in game through Steam's launch option with a stand-in image
+  API. Staff names and jobs are read from the header boxes when screen IDs
+  are off (Tyler Ruthven: "job title Scout"); an unreadable staff header is
+  logged. Generate faces… sits inside the Squad dropdown, so the menu no
+  longer closes on the way to it; batches of 7 and 8 faces finished. The
+  batch waits up to 30 s for a profile and pauses while FM26 is in the
+  background (macOS throttles it). Cmd+V doesn't reach FM26 on macOS, so
+  the key prompt has a Paste button. Still to do: the dropdown stays open
+  after choosing Generate faces…; the FM24 in-game checks with
+  `OPENAI_BASE_URL` (a stand-in image API for testing, new in fmface.py).
+- **Steam launch options:** `steam_launch.py fm24|fm26 [--remove]` sets
+  FM Face's launch option in Steam's localconfig.vdf (Steam closed, backup
+  kept); FM24's setup uses it on macOS and Linux. Applied on this Mac.
+- **FM24 person after a skin reload:** fixed (2026-10-18). After the first
+  face's reload the object browser stopped tracking the screen, and the
+  next click said "FM24 did not report which person's menu was chosen". The
+  person now comes from the sidebar menu's reference, which survives the
+  reload. Checked with a scripted run in preview mode: Sly, Sly after a
+  reload, Paul Molesworth and John Marshall (staff, after the reload) from
+  the portrait popup, and John from the Overview tab menu.
+- **FM24 click delay without screen IDs:** fixed (2026-10-18). Clicks took
+  5-10 s before the key prompt or "Generating…" while the companion indexed
+  people with a memory pass. It now reads FM24's person table by handle
+  (0.3 ms), asks for the key before the lookup, and a click waits for a
+  pass already running instead of starting a second. fm.exe's table isn't
+  mapped yet, so Windows keeps the pass.
+- **FM24 without screen IDs:** done on macOS (2026-10-18). The person comes
+  from the screen's object browser (+0x878 on the Mac) by handle. For fm.exe
+  (Windows and Proton) the browser's offset is unconfirmed: run
+  `python3 fm24/probe_object_browser.py` on Linux with a profile open and
+  screen IDs on, then set `browser_reference` in `fm24/layout.py` and
+  extend `fmface24.c` the same way.

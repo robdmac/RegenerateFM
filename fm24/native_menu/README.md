@@ -386,3 +386,101 @@ byte searches. The companion now avoids repeat passes:
   second one.
 - The Squad person table's address is remembered and checked against every
   drawn row before use.
+
+## macOS
+
+FM24 24.4.2 for Mac is a universal clang build with the hardened runtime. Its
+entitlements allow `DYLD_INSERT_LIBRARIES` and libraries of other teams, so
+`run_fmface24.sh` (FM24's Steam launch option) loads `libfmface24.dylib` into
+the arm64 game without touching `fm.app`. `build_macos.py` builds it from
+[fmface24_macos.c](fmface24_macos.c), the same logic as `fmface24.c` with
+pthreads and BSD sockets. The library checks the arm64 slice's LC_UUID and
+the original vtable pointers before hooking, and the installer checks the
+executable's SHA-256, both pinned in
+[supported_build_macos.json](supported_build_macos.json).
+
+**Addresses.** Each address in `supported_build.json` was matched to the Mac
+build. The vtable slots come from the RTTI both builds keep: the event handler
+is `GAME_SCREEN_CLIENT` slot 6 on the Mac (slot 5 in fm.exe; Itanium vtables
+have two destructors), the Squad provider `TEAM_EXPORT_ACTION_UI` slots 2 and
+3, the tab button `MENUBAR_POPUP_BUTTON`. The other functions were found
+through their callers: FM24's preferences-screen skin reload (`GChS` with
+`SkNM`, `dlog`, `dela`, `chev`) gives the reload functions, its "Quit game"
+query (`NOEX`, `noet`, `widt`, `heig`) the dialog functions, and the Squad
+provider's own item the item and value functions. On the Mac, dialog
+properties are a record with their own init, set and free functions; `acte`
+is an event code, as the game itself passes it. The item constructor returns
+the item through `x8`, and items are released through vtable slot 1. The
+skin-change stage counter is at manager + 0x2aa.
+
+**Widgets and menus.** Checked live: the widget part (+0x38), its manager,
+parent and skin ID, the children vector (+0x100), the event source (+0x20),
+the event's property vector and the popup root item (+0x4f8) are at the same
+offsets as in fm.exe.
+
+**Memory.** The companion can't read FM24's memory on macOS: the hardened
+runtime without get-task-allow makes `task_for_pid` fail, even as root. The
+library listens on loopback TCP at the bridge port + 2. After
+`FMFACE24M 1 <token>` it answers three requests: the image header and UUID,
+the read/write regions not backed by a file, and guarded reads
+(`mach_vm_read_overwrite` on its own task), up to 16 MB each. It writes
+nothing. `process_memory_macos.py` gives the companion the same functions as
+on Linux; a full pass over 2.1 GB takes about 2 s.
+
+**Person records.** The record that starts with the person's ID twice is the
+same, 12 bytes into the person object, but clang lays the person classes out
+differently from MSVC: the dates, name, attributes, positions, height,
+nation, clubs and contract are at other offsets ([layout.py](../layout.py)),
+and pointers are 8 bytes. The nation, club, club-details and contract objects
+keep fm.exe's internal offsets. Byte 12 of the marker is 0 for most people
+but 1, 2, 4, 5 or 6 for some, and byte 14 is 0x50 on some staff and reserve
+records. Where fm.exe keeps zeros for staff in the position-rating bytes, the
+Mac build has other data, so the person's kind comes from the object's
+vtable: `db::ACTUAL_PLAYER` or `db::ACTUAL_NON_PLAYER`. Player-coaches
+(`db::ACTUAL_PLAYER_AND_NON_PLAYER`) keep their player fields elsewhere and
+are refused. The Squad table, its row model and the person handle table are
+read at the same offsets as in fm.exe.
+
+**Without screen IDs.** FM24 refers to the object a screen shows as
+`type << 24 | index`, `0x01000000 | handle` for a person. The sidebar menu
+(`side`, `SIDEBAR_MENU_TABLE`) keeps that reference at +0x278 for every
+screen. The screen's `CLIENT_OBJECT_BROWSER` (an ancestor of every widget on
+it) holds it at +0x878, but only until the first skin reload: after one,
+FM24 builds a new browser that no longer tracks the screen, which broke
+every face after the first in a session. So the library reads the sidebar
+first and the browser only as a fallback, and sends `r<reference>` in the
+person field of the click and the face check when the header shows no
+"(ID:n)". It doesn't call FM24's resolver, which can load and register
+objects. The companion looks the handle up in FM24's person table: the
+global at image + 0x5304848 points to the game database, whose vector of
+person pointers at +0x318 is indexed by handle (two reads, about 0.3 ms;
+every record carries its handle 4 bytes before it, which is checked). If
+that read fails it maps handles to people with one memory pass of about
+10 s (`person_handles.py`) and checks the mapping again before each use; `native_screen.py` uses the same
+reference for the open profile. Staff names then come from first/surname
+records, which on the Mac can start at any byte. In fm.exe the browser's
+class is known (vtable RVA `0x56bae48`) but not where it keeps the
+reference: its members match the Mac build's up to +0x568 and are 8 bytes
+lower after that, and the code that reads it is in the protected part.
+`fm24/probe_object_browser.py` finds it on a running game; until then the
+Windows build needs screen IDs.
+
+**Key prompt.** On the Mac, FM24 asks for the OpenAI key itself, like the
+FM26 plugin. When a face command finds no saved key (or one OpenAI rejected),
+the companion sends `FMFACE24K 1 <serial> <token> <base64 text>` to the
+bridge port + 1, and the library shows [key_prompt_macos.m](key_prompt_macos.m)'s
+prompt as a sheet on FM24's window: a secure field (Cmd+V pastes, though
+FM24 has no Edit menu), Save key, Cancel and Get a key…, which opens OpenAI's
+key page. Polling the same serial answers `shown`, `key <base64>` or
+`cancel`; the typed key stays in the library only until the next request.
+The companion checks the key with OpenAI (free), asks again with the reason
+if it fails, and saves it in `~/Library/Application Support/FM Face`.
+
+Checked on 2026-10-17 on an Apple M2 (macOS 26) with a copy of a real save,
+in preview mode: a player (Sly) and a staff member (Terry McPhillips) read
+in full and matched their screens, the 25-row Squad table and its 8 players
+without a face, the squad count dialog and No, the greyed Update face, and
+an in-game skin reload. On 2026-10-18, with screen IDs turned off: player and
+staff previews from the portrait popup and the Overview tab menu, and Update
+face greyed for a person without a face. No billed face has been made on macOS
+yet.

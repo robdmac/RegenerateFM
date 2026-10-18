@@ -12,7 +12,9 @@ hotreload/bin/
 hotreload/obj/
 dist/
 fm24/native_menu/build/
+fm24/native_menu/build-macos/
 FM-Graphics-Reload-guide.en.md
 mono_crash.*.json
 tests/fm26_generator/bin/
 tests/fm26_generator/obj/
+hotreload/macos/build/

@@ -228,6 +228,9 @@ def has_existing_portrait(person_id: str, graphics_dir: Path, game_dir: Path | N
 
 
 def game_dir_from_process(pid: int) -> Path | None:
-    """FM24's installation folder, from the running game's fm.exe."""
+    """FM24's installation folder, from the running game's fm.exe (or, on macOS,
+    the folder holding fm.app, from fm.app/Contents/MacOS/fm)."""
     executable = process_executable(pid)
-    return executable.parent if executable else None
+    if not executable:
+        return None
+    return executable.parents[3] if executable.parent.name == "MacOS" else executable.parent

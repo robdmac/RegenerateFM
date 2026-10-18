@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Set up FM Face for FM24 in one step: find the game, build the FM Face skin
-from FM24's own panels and install the native DLL.
+from FM24's own panels and install the native library (the DLL on Windows and
+Proton, libfmface24.dylib and run_fmface24.sh on macOS).
 
 The packaged companion runs this itself the first time it starts. From
 source: python3 fm24/setup_fm24.py [--game-dir ...] [--user-data-dir ...]
@@ -23,7 +24,9 @@ sys.path.insert(0, str(HERE.parent))
 import build_skin  # noqa: E402
 import game_archive  # noqa: E402
 import install as native_install  # noqa: E402
+import steam_launch  # noqa: E402
 from fmface import ROOT  # noqa: E402
+from steam_launch import steam_libraries, steam_roots  # noqa: E402,F401
 
 APP_ID = "2252570"
 GAME_FOLDER = "Football Manager 2024"
@@ -32,56 +35,18 @@ PANELS = {"player": "/panels/player/player overview panel.xml",
 
 
 def bundled_dll() -> Path:
-    """The DLL inside the packaged companion, or the one fm24/native_menu/build.py made."""
+    """The DLL inside the packaged companion, or the library fm24/native_menu/build.py
+    (build_macos.py on macOS) made."""
     # Packaged in its own folder, so the companion itself never loads it as WINMM.
     if hasattr(sys, "_MEIPASS"):
-        return Path(sys._MEIPASS) / "fm24-dll" / "winmm.dll"
-    return HERE / "native_menu" / "build" / "winmm.dll"
-
-
-def steam_roots() -> list[Path]:
-    roots = []
-    if sys.platform == "win32":
-        import winreg
-        for hive, key, value in ((winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam", "SteamPath"),
-                                 (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Valve\Steam", "InstallPath")):
-            try:
-                with winreg.OpenKey(hive, key) as handle:
-                    roots.append(Path(winreg.QueryValueEx(handle, value)[0]))
-            except OSError:
-                pass
-    else:
-        home = Path.home()
-        roots += [home / ".steam" / "steam", home / ".local" / "share" / "Steam",
-                  home / ".steam" / "debian-installation",
-                  home / ".var" / "app" / "com.valvesoftware.Steam" / ".local" / "share" / "Steam"]
-    return roots
-
-
-def steam_libraries() -> list[Path]:
-    """Every Steam library folder (the ones holding steamapps), without duplicates."""
-    found: list[Path] = []
-    for root in steam_roots():
-        candidates = [root]
-        try:
-            text = (root / "steamapps" / "libraryfolders.vdf").read_text(encoding="utf-8", errors="replace")
-            candidates += [Path(match.replace("\\\\", "\\")) for match in re.findall(r'"path"\s+"([^"]+)"', text)]
-        except OSError:
-            pass
-        for library in candidates:
-            try:
-                resolved = library.resolve()
-            except OSError:
-                continue
-            if (resolved / "steamapps").is_dir() and resolved not in found:
-                found.append(resolved)
-    return found
+        return Path(sys._MEIPASS) / "fm24-dll" / native_install.LIBRARY
+    return native_install.DEFAULT_LIBRARY
 
 
 def find_game_dir() -> Path | None:
-    for library in steam_libraries():
+    for library in steam_launch.steam_libraries():
         game = library / "steamapps" / "common" / GAME_FOLDER
-        if (game / "fm.exe").is_file():
+        if (game / native_install.EXECUTABLE).is_file():
             return game
     return None
 
@@ -94,6 +59,8 @@ def find_user_data_dir(game: Path) -> Path | None:
         if ctypes.windll.shell32.SHGetFolderPathW(None, 5, None, 0, buffer) != 0:  # CSIDL_PERSONAL
             return None
         documents = Path(buffer.value)
+    elif sys.platform == "darwin":
+        documents = Path.home() / "Library" / "Application Support"
     else:
         # Steam/Proton keeps it in the game's Wine prefix beside the library's common folder.
         documents = (game.parent.parent / "compatdata" / APP_ID / "pfx" / "drive_c" / "users" /
@@ -129,15 +96,17 @@ def installed_token(game: Path) -> str | None:
 
 
 def is_set_up(game: Path, skin_dir: Path, auth_file: Path) -> bool:
-    """True when this DLL, the skin and the companion's token are installed."""
+    """True when this library (and on macOS its launcher), the skin and the companion's token are installed."""
     manifest = game / "fmface24-install.json"
-    dll = game / "winmm.dll"
+    dll = game / native_install.LIBRARY
     try:
         metadata = native_install.load_manifest(manifest)
         return bool(metadata and (skin_dir / "skin_config.xml").is_file() and
                     native_install.digest(dll) == native_install.digest(bundled_dll()) ==
                     metadata["dllSha256"] and
-                    installed_token(game) == auth_file.read_text(encoding="ascii").strip())
+                    installed_token(game) == auth_file.read_text(encoding="ascii").strip() and
+                    (not native_install.LAUNCHER or native_install.digest(game / native_install.LAUNCHER) ==
+                     native_install.digest(native_install.HERE / native_install.LAUNCHER)))
     except (OSError, ValueError, KeyError):
         return False
 
@@ -146,11 +115,13 @@ def setup(game: Path, user_data: Path, auth_file: Path) -> None:
     skin_dir = user_data / "skins" / "fmface"
     if is_set_up(game, skin_dir, auth_file):
         print("FM Face is already set up for FM24.", flush=True)
+        _launch_option(game)
         return
     if native_install.game_running():
         raise SystemExit("Close FM24, then run the FM Face setup again.")
     if not bundled_dll().is_file():
-        raise SystemExit(f"The FM Face DLL is missing: {bundled_dll()}. Build it with fm24/native_menu/build.py.")
+        builder = "build_macos.py" if native_install.MACOS else "build.py"
+        raise SystemExit(f"The FM Face library is missing: {bundled_dll()}. Build it with fm24/native_menu/{builder}.")
     # A companion in a new folder (an update, say) keeps the token FM24 already has.
     existing = installed_token(game)
     if existing and not auth_file.exists():
@@ -164,20 +135,33 @@ def setup(game: Path, user_data: Path, auth_file: Path) -> None:
     (user_data / "graphics" / "fmface").mkdir(parents=True, exist_ok=True)
     native_install.main(["--game-dir", str(game), "--skin-dir", str(skin_dir),
                          "--auth-file", str(auth_file), "--dll", str(bundled_dll())])
-    print("\nIn FM24, open Preferences > Interface and:\n"
-          "  1. choose the \"FM Face\" skin;\n"
-          "  2. tick \"Show screen IDs in Title Bar to assist skinning\".\n", flush=True)
+    _launch_option(game)
+    if native_install.MACOS:
+        # The macOS build reads the person from the screen's object browser.
+        print("\nIn FM24, open Preferences > Interface and choose the \"FM Face\" skin.\n", flush=True)
+    else:
+        print("\nIn FM24, open Preferences > Interface and:\n"
+              "  1. choose the \"FM Face\" skin;\n"
+              "  2. tick \"Show screen IDs in Title Bar to assist skinning\".\n", flush=True)
+
+
+def _launch_option(game: Path, *, remove: bool = False) -> None:
+    """Steam's launch option for FM24 (macOS and Proton), so Play starts FM Face."""
+    if sys.platform != "win32":
+        print(steam_launch.apply("fm24", game, remove=remove), flush=True)
 
 
 def resolve_dirs(game_dir: Path | None, user_data_dir: Path | None) -> tuple[Path, Path]:
     game = game_dir.expanduser().resolve() if game_dir else find_game_dir()
-    if game is None or not (game / "fm.exe").is_file():
+    if game is None or not (game / native_install.EXECUTABLE).is_file():
         raise SystemExit("FM Face couldn't find FM24 in your Steam libraries. Run the setup again with "
                          "--game-dir \"<path to Football Manager 2024>\".")
     user_data = user_data_dir.expanduser().resolve() if user_data_dir else find_user_data_dir(game)
     if user_data is None or not user_data.is_dir():
-        raise SystemExit("FM Face couldn't find FM24's user-data folder (Documents\\Sports Interactive\\"
-                         "Football Manager 2024). Start FM24 once to create it, or pass --user-data-dir.")
+        where = ("~/Library/Application Support/Sports Interactive/Football Manager 2024"
+                 if native_install.MACOS else "Documents\\Sports Interactive\\Football Manager 2024")
+        raise SystemExit(f"FM Face couldn't find FM24's user-data folder ({where}). "
+                         "Start FM24 once to create it, or pass --user-data-dir.")
     return game, user_data
 
 
@@ -193,6 +177,7 @@ def main(argv: list[str] | None = None) -> None:
     print(f"FM24: {game}\nFM24 user data: {user_data}", flush=True)
     if args.remove:
         native_install.main(["--game-dir", str(game), "--skin-dir", str(user_data / "skins" / "fmface"), "--remove"])
+        _launch_option(game, remove=True)
         return
     setup(game, user_data, args.auth_file)
 

@@ -1,9 +1,10 @@
 """The player's OpenAI key, kept outside the game and FM Face folders.
 
 On Windows it is encrypted with DPAPI for the current Windows user, in
-%APPDATA%\\FM Face\\openai-key. The FM26 plugin (hotreload/FaceGenerator.cs,
-KeyStore) reads and writes the same file in the same format, so on one
-Windows user both games share one key.
+%APPDATA%\\FM Face\\openai-key. On macOS it is in ~/Library/Application
+Support/FM Face/openai-key, readable only by the user. The FM26 plugin
+(hotreload/FaceGenerator.cs, KeyStore) reads and writes the same file in the
+same format, so the plugin and fmface.py share one key.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ import os
 import re
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -21,11 +23,14 @@ PLAIN = b"FMFK0\n"
 ENTROPY = b"FM Face OpenAI API key"
 KEY_RE = re.compile(r"sk-[A-Za-z0-9_\-]{16,300}")
 KEYS_PAGE = "https://platform.openai.com/api-keys"
+DEFAULT_API = "https://api.openai.com/v1"
 REJECTED = "OpenAI didn't accept this key. Check that you copied all of it."
 
 
 def default_path() -> Path | None:
-    """The key file on Windows, or None elsewhere (Linux keeps the key in .env)."""
+    """The key file on Windows and macOS, or None on Linux (which keeps the key in .env)."""
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "FM Face" / "openai-key"
     if sys.platform != "win32":
         return None
     appdata = os.environ.get("APPDATA")
@@ -70,9 +75,21 @@ def save(path: Path, key: str) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def check(key: str, timeout: float = 30) -> str | None:
+def api_base(configured: str = "") -> str:
+    """The image API address: OpenAI's, or OPENAI_BASE_URL for testing. Plain
+    http only for this computer, so a key is never sent unencrypted."""
+    base = (configured or "").strip().rstrip("/") or DEFAULT_API
+    parts = urllib.parse.urlsplit(base)
+    if parts.scheme == "https" and parts.hostname:
+        return base
+    if parts.scheme == "http" and parts.hostname in ("127.0.0.1", "localhost", "::1"):
+        return base
+    raise ValueError("OPENAI_BASE_URL must be an https address, or http on this computer (127.0.0.1).")
+
+
+def check(key: str, timeout: float = 30, base: str = DEFAULT_API) -> str | None:
     """None if OpenAI accepts the key, otherwise the problem. Listing models is free."""
-    request = urllib.request.Request("https://api.openai.com/v1/models",
+    request = urllib.request.Request(f"{base}/models",
                                      headers={"Authorization": f"Bearer {key}"})
     try:
         with urllib.request.urlopen(request, timeout=timeout):

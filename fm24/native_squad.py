@@ -20,12 +20,13 @@ import re
 import struct
 from dataclasses import dataclass
 
-from live_memory import MemoryUnavailable, _parse_record, find_game_pid, person_kind
+from layout import LAYOUT
+from live_memory import MemoryUnavailable, _parse_record, find_game_pid, person_kind, record_marker
 from native_profile import collect_object_names, _alternate_name
 from process_memory import MemoryScan, fm24_image_base, read_process_bytes
 
-MANAGER_GLOBAL_RVA = 0x63635B8
-NAME_CELL_VTABLE_RVA = 0x56807C8
+MANAGER_GLOBAL_RVA = LAYOUT["manager_global"]
+NAME_CELL_VTABLE_RVA = LAYOUT["name_cell_vtable"]
 NAME_CELL_ID = int.from_bytes(b"Pnms", "big")
 # A team's Overview squad list (a reserve or youth team in the Development
 # Center) uses the same cell class named PnmP, two levels inside a row widget
@@ -141,7 +142,7 @@ def _player_id(pid: int, person: int) -> str:
     # FM24 lists as "Scouting Required" with no age or ability (players of
     # leagues it hasn't loaded) have other markers (00 02 00 10, 08 02 40 30)
     # and none of the fields a prompt needs.
-    if raw[12] or raw[14] != 0x58 or raw[15] not in (0x10, 0x12, 0x18):
+    if not record_marker(raw):
         raise BriefRecord(str(number))
     if person_kind(pid, record, raw[16]) != "player":
         raise MemoryUnavailable("A Squad row does not show a validated FM24 player.")
@@ -275,8 +276,9 @@ def read_squad(pid: int | None = None, attempts: int = 3, catalogue: bool = True
             "can't describe them." if brief else "The open FM24 Squad table has no players.")
     today = dt.date.min
     if catalogue:
-        # Person records carry the current game year at +0x36.
-        years = {struct.unpack("<H", read_process_bytes(pid, row.record + 0x36, 2))[0] for row in result}
+        # Person records carry the current game year (layout "record_year").
+        years = {struct.unpack("<H", read_process_bytes(pid, row.record + LAYOUT["record_year"], 2))[0]
+                 for row in result}
         if len(years) != 1 or not 1900 < min(years) < 2200:
             raise MemoryUnavailable("Could not read FM24's current year.")
         year = str(years.pop())

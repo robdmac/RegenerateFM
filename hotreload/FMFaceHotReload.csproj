@@ -19,6 +19,7 @@
     <Reference Include="SI.Input" HintPath="$(GameDir)/BepInEx/interop/SI.Input.dll" Private="false" />
     <Reference Include="SI.UI" HintPath="$(GameDir)/BepInEx/interop/SI.UI.dll" Private="false" />
     <Reference Include="UnityEngine.CoreModule" HintPath="$(GameDir)/BepInEx/interop/UnityEngine.CoreModule.dll" Private="false" />
+    <Reference Include="UnityEngine.IMGUIModule" HintPath="$(GameDir)/BepInEx/interop/UnityEngine.IMGUIModule.dll" Private="false" />
     <Reference Include="UnityEngine.TextRenderingModule" HintPath="$(GameDir)/BepInEx/interop/UnityEngine.TextRenderingModule.dll" Private="false" />
     <Reference Include="UnityEngine.UIElementsModule" HintPath="$(GameDir)/BepInEx/interop/UnityEngine.UIElementsModule.dll" Private="false" />
   </ItemGroup>

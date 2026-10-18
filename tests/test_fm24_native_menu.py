@@ -13,6 +13,8 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "fm24"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "fm24" / "native_menu"))
+import layout  # noqa: E402  The fixtures are records from the Windows fm.exe.
+layout.LAYOUT.update(layout.WINDOWS)
 import install
 import native_listener
 import skin
@@ -208,7 +210,7 @@ class NativeBridgeTests(unittest.TestCase):
 
     def test_squad_command_ignores_person_field(self):
         done = threading.Event()
-        with patch.object(native_listener, "run_native_squad_batch", side_effect=lambda *args: done.set()) as batch:
+        with patch.object(native_listener, "run_native_squad_batch", side_effect=lambda *args, **kwargs: done.set()) as batch:
             bridge = Bridge(self)
             bridge.send(1, action="squad")
             self.assertEqual(bridge.reply(), b"FMFACE24 ACK 1 accepted")
@@ -240,6 +242,41 @@ class NativeBridgeTests(unittest.TestCase):
         with patch.object(native_listener, "run_native_squad_batch"):
             bridge.send(1, action="squad")
             self.assertEqual(bridge.reply(), b"FMFACE24 ACK 1 accepted")
+
+    def test_references_resolve_to_the_person_without_screen_ids(self):
+        # The macOS library sends "r<reference>" when the header shows no ID.
+        resolved = []
+
+        def resolve(reference, *, wait):
+            resolved.append((reference, wait))
+            return "123"
+        bridge = Bridge(self, has_face=lambda person: person == "123", resolve=resolve)
+        bridge.client.sendto(f"FMFACE24F 1 1 r16780302 {KEY}".encode(), bridge.address)
+        self.assertEqual(bridge.reply(), b"FMFACE24F 1 yes")
+        self.assertEqual(resolved, [(16780302, False)])  # a menu never waits for the index
+        done = threading.Event()
+        with patch.object(native_listener, "request_generation",
+                          side_effect=lambda *a, **k: (done.set(), {"ok": True, "preview": True})[1]) as request:
+            bridge.send(1, person="r16780302")
+            self.assertEqual(bridge.reply(), b"FMFACE24 ACK 1 accepted")
+            self.assertTrue(done.wait(2))
+        self.assertEqual(request.call_args.kwargs["expected_id"], "123")
+        self.assertEqual(resolved[-1], (16780302, True))
+        # Without a resolver (or with a malformed field) nothing is requested.
+        notices = []
+        plain = Bridge(self, notify=notices.append)
+        with patch.object(native_listener, "request_generation") as request:
+            plain.send(1, person="r16780302")
+            self.assertEqual(plain.reply(), b"FMFACE24 ACK 1 accepted")
+            for _ in range(20):
+                if notices:
+                    break
+                time.sleep(.05)
+            request.assert_not_called()
+        self.assertIn("screen IDs", notices[0])
+        plain.send(2, person="rx")
+        with self.assertRaises(socket.timeout):
+            plain.reply()
 
     def test_failed_face_check_sends_no_answer(self):
         # The DLL then leaves "Update face" enabled; the update is refused later.
@@ -334,6 +371,9 @@ class NativeInstallerTests(unittest.TestCase):
             self.assertEqual(directory.stat().st_mode & 0o777, 0o700)
 
     def setUp(self):
+        # The fixtures are a Windows/Proton game folder (fm.exe and winmm.dll) on any system.
+        install.use_system(False)
+        self.addCleanup(install.use_system, sys.platform == "darwin")
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         root = Path(directory.name)
@@ -466,6 +506,36 @@ class NativeInstallerTests(unittest.TestCase):
             with patch("sys.stderr"), self.assertRaises(SystemExit):
                 self.run_installer(*extra)
 
+
+
+class FindGamePidTests(unittest.TestCase):
+    """Why the companion can't reach FM24, in words a player can act on."""
+
+    def find(self, processes, unreadable=(), platform="linux"):
+        import live_memory
+
+        def image_base(pid):
+            if pid in unreadable:
+                raise OSError("no answer")
+            return 0x140000000
+        with patch.object(live_memory, "running_executables", return_value=processes), \
+                patch.object(live_memory, "fm24_image_base", side_effect=image_base), \
+                patch.object(live_memory, "EXECUTABLE_SUFFIX", "/fm.exe"), \
+                patch.object(sys, "platform", platform):
+            return live_memory.find_game_pid()
+
+    def test_messages(self):
+        from live_memory import MemoryUnavailable
+        game = "C:/Games/FM24/fm.exe"
+        self.assertEqual(self.find([(7, "/bin/sh"), (9, game)]), 9)
+        with self.assertRaisesRegex(MemoryUnavailable, "isn't running. Start it"):
+            self.find([(7, "/bin/sh")])
+        with self.assertRaisesRegex(MemoryUnavailable, "More than one FM24"):
+            self.find([(8, game), (9, game)])
+        with self.assertRaisesRegex(MemoryUnavailable, "isn't answering. Quit FM24 and start it again"):
+            self.find([(9, game)], unreadable={9}, platform="darwin")
+        with self.assertRaisesRegex(MemoryUnavailable, r"can't read the running FM24 \(no answer\)"):
+            self.find([(9, game)], unreadable={9})
 
 if __name__ == "__main__":
     unittest.main()

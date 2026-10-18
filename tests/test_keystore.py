@@ -57,6 +57,17 @@ class KeyStoreTests(unittest.TestCase):
                 self.assertEqual(fmface.load_env(env_file)["OPENAI_API_KEY"], "sk-from-env")
 
 
+class ApiBaseTests(unittest.TestCase):
+    def test_openai_by_default_and_http_only_on_this_computer(self):
+        self.assertEqual(keystore.api_base(""), "https://api.openai.com/v1")
+        self.assertEqual(keystore.api_base(" http://127.0.0.1:8899/v1/ "), "http://127.0.0.1:8899/v1")
+        self.assertEqual(keystore.api_base("https://proxy.example/v1"), "https://proxy.example/v1")
+        for unsafe in ("http://192.168.1.5:8899/v1", "ftp://127.0.0.1/v1", "api.openai.com"):
+            with self.assertRaises(ValueError):
+                keystore.api_base(unsafe)
+        self.assertEqual(fmface.api_base({"OPENAI_BASE_URL": "http://localhost:1/v1"}), "http://localhost:1/v1")
+
+
 class CompanionKeyPromptTests(unittest.TestCase):
     def setUp(self):
         sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "fm24"))
@@ -110,6 +121,66 @@ class CompanionKeyPromptTests(unittest.TestCase):
 
     def test_no_prompt_without_a_key_file_location(self):
         self.assertEqual(self.prompt(None, []), (0, 0))
+
+
+class CompanionInGameKeyTests(unittest.TestCase):
+    """FM24 for macOS asks for the key in the game (the library's key prompt)."""
+
+    def setUp(self):
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "fm24"))
+        import companion
+        self.companion = companion
+        self.handler = type("Handler", (), {"preview_only": False, "reload_port": 8770, "token": "t" * 43,
+                                            "key_lock": companion.threading.Lock(), "key_rejected": False})
+
+    def ensure(self, store, answers, problems=(), env_key="", saved_key="", platform="darwin"):
+        def load_env(use_key_file=True):
+            key = env_key or (saved_key if use_key_file else "")
+            return {"OPENAI_API_KEY": key} if key else {}
+        with mock.patch.object(keystore, "default_path", return_value=store), \
+                mock.patch.object(self.companion, "load_env", side_effect=load_env), \
+                mock.patch.object(sys, "platform", platform), \
+                mock.patch.object(self.companion, "ask_key", side_effect=answers) as asked, \
+                mock.patch.object(keystore, "check", side_effect=list(problems) + [None]) as checked, \
+                mock.patch("builtins.print"):
+            ready = self.companion.ensure_key(self.handler)
+        return ready, asked, checked.call_count
+
+    def test_asks_in_game_until_a_key_is_accepted_then_saves_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Path(tmp) / "FM Face" / "openai-key"
+            ready, asked, checked = self.ensure(store, ["hello", "sk-wrong_" + "c" * 30, f" {KEY} "],
+                                                problems=["OpenAI didn't accept this key."])
+            self.assertEqual((ready, asked.call_count, checked), (True, 3, 2))
+            self.assertEqual(keystore.load(store), KEY)
+            # Each retry says what was wrong with the last answer.
+            self.assertIn("starts with sk-", asked.call_args_list[1].args[2])
+            self.assertIn("didn't accept", asked.call_args_list[2].args[2])
+
+    def test_cancel_saves_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Path(tmp) / "openai-key"
+            ready, asked, checked = self.ensure(store, [None])
+            self.assertEqual((ready, asked.call_count, checked), (False, 1, 0))
+            self.assertFalse(store.exists())
+
+    def test_no_prompt_with_a_key_or_off_macos(self):
+        store = Path("unused")
+        self.assertEqual(self.ensure(store, [], env_key=KEY)[1].call_count, 0)
+        self.assertEqual(self.ensure(store, [], saved_key=KEY)[1].call_count, 0)
+        self.assertEqual(self.ensure(store, [], platform="win32")[1].call_count, 0)
+
+    def test_a_rejected_saved_key_is_asked_for_again(self):
+        message = self.companion.error_text(RuntimeError("OpenAI image API returned HTTP 401: x"), self.handler)
+        self.assertIn("face command again", message)
+        self.assertTrue(self.handler.key_rejected)
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Path(tmp) / "openai-key"
+            ready, asked, _ = self.ensure(store, [KEY], saved_key="sk-old_" + "d" * 30)
+            self.assertTrue(ready)
+            self.assertIn("didn't accept the saved key", asked.call_args.args[2])
+            self.assertFalse(self.handler.key_rejected)
+            self.assertEqual(keystore.load(store), KEY)
 
 
 if __name__ == "__main__":

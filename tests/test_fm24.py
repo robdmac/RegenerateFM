@@ -19,6 +19,8 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "fm24"))
+import layout  # noqa: E402  The fixtures are records from the Windows fm.exe.
+layout.LAYOUT.update(layout.WINDOWS)
 import companion
 import process_memory
 import live_memory
@@ -28,6 +30,7 @@ from fmface import PNG_SIGNATURE
 
 
 class MemoryProbeTests(unittest.TestCase):
+    @unittest.skipIf(sys.platform == "darwin", "macOS reads only FM24, through FM Face's library inside it")
     def test_read_only_process_memory_access(self):
         sample = ctypes.create_string_buffer(b"FM24 probe")
         address = ctypes.addressof(sample)
@@ -318,8 +321,85 @@ class NativeProfileReadTests(unittest.TestCase):
         screen = OpenScreen("7458500", "A biography.", "Attacking Midfielder - Inter Miami")
         (person_id, result), first, again = self.read([screen, screen], identity_only=True)
         self.assertEqual((person_id, result), ("7458500", self.PROFILE))
-        self.assertEqual(first.call_args.kwargs, {"identity_only": True})
+        # The profile read takes the person and title from the screen, not "(ID:n)" titles.
+        self.assertEqual(first.call_args.kwargs, {"identity_only": True, "screen": screen})
         self.assertEqual(again.call_args.kwargs, {"identity_only": True})
+
+
+class PersonReferenceTests(unittest.TestCase):
+    def test_only_person_references_have_a_handle(self):
+        import person_handles
+        self.assertEqual(person_handles.person_handle(0x01000C0E), 0xC0E)
+        for reference in (0x18000CB8, 0x01000000, 0x017FFFFF, 0):
+            with self.assertRaises(ValueError):
+                person_handles.person_handle(reference)
+
+    def test_person_table_lookup_reads_the_handle_slot_and_checks_the_record(self):
+        import person_handles
+        image, database, table, person = 0x100000000, 0x7000, 0x9000, 0xA000
+        memory = {
+            image + 0x50: struct.pack("<Q", database),
+            database + 0x18: struct.pack("<QQ", table, table + 8 * 0x20),
+            table + 8 * 0x0E: struct.pack("<Q", person),
+            # The handle, then the record: the ID twice and, at byte 12, a full-record marker.
+            person + 8: struct.pack("<III", 0x0E, 4000829, 4000829) + bytes(4) + bytes([0, 0, 0x58, 0x10]),
+        }
+
+        def read(pid, address, size):
+            for start, data in memory.items():
+                if start <= address and address + size <= start + len(data):
+                    return data[address - start:address - start + size]
+            return bytes(size)
+        with patch.dict(person_handles.LAYOUT, {"person_table": (0x50, 0x18), "browser_reference": 0x878}), \
+                patch.object(person_handles, "read_process_bytes", side_effect=read), \
+                patch.object(person_handles, "fm24_image_base", return_value=image), \
+                patch.object(person_handles, "_scan", side_effect=AssertionError("no memory pass")):
+            self.assertEqual(person_handles.person_for_reference(1, 0x0100000E, wait=False), "4000829")
+            # Outside the table, or an empty slot: the lookup falls back to the index.
+            for reference in (0x01000040, 0x0100000F):
+                self.assertIsNone(person_handles._from_table(1, reference & 0x7FFFFF))
+
+    def test_screen_reference_prefers_the_sidebar_which_survives_a_skin_reload(self):
+        import person_handles
+        image, sidebar, browser = 0x100000000, 0x5000, 0x6000
+        side, other = int.from_bytes(b"side", "big"), int.from_bytes(b"NULL", "big")
+        memory = {sidebar: struct.pack("<Q", image + 0x40), sidebar + 0x278: struct.pack("<I", 0x01000ED8),
+                  browser: struct.pack("<Q", image + 0x80), browser + 0x878: struct.pack("<I", 0x78008020)}
+
+        def read(pid, address, size):
+            return memory.get(address, bytes(size))[:size]
+        layout = {"sidebar_vtable": 0x40, "sidebar_reference": 0x278,
+                  "object_browser_vtable": 0x80, "browser_reference": 0x878}
+        with patch.dict(person_handles.LAYOUT, layout), \
+                patch.object(person_handles, "read_process_bytes", side_effect=read), \
+                patch.object(person_handles, "fm24_image_base", return_value=image):
+            # After a reload the browser holds something else; the sidebar still has the person.
+            self.assertEqual(person_handles.screen_reference(1, 0, {side: [sidebar], other: [browser]}), 0x01000ED8)
+            # A sidebar showing a club falls back to the browser, which is checked as before.
+            memory[sidebar + 0x278] = struct.pack("<I", 0x18000CB8)
+            memory[browser + 0x878] = struct.pack("<I", 0x01001BAD)
+            self.assertEqual(person_handles.screen_reference(1, 0, {side: [sidebar], other: [browser]}), 0x01001BAD)
+
+    def test_a_click_waits_for_the_running_pass_instead_of_starting_another(self):
+        import person_handles
+        started, release = threading.Event(), threading.Event()
+        calls = []
+
+        def scan(pid):
+            calls.append(pid)
+            started.set()
+            release.wait(2)
+            return {}
+        with patch.object(person_handles, "_scan", side_effect=scan):
+            first = threading.Thread(target=person_handles.build, args=(99,))
+            first.start()
+            self.assertTrue(started.wait(2))
+            second = threading.Thread(target=person_handles.build, args=(99,))
+            second.start()
+            release.set()
+            first.join(2)
+            second.join(2)
+        self.assertEqual(calls, [99])
 
 
 class GraphicsTests(unittest.TestCase):

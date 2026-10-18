@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using BepInEx;
 using BepInEx.Unity.IL2CPP;
 using HarmonyLib;
+using Il2CppInterop.Runtime;
 using Il2CppInterop.Runtime.Injection;
 using SI.Bindable;
 using SI.Core;
@@ -57,6 +58,9 @@ namespace FMFaceHotReload
         private int _graphicsLoadSerial;
         private long _portraitMenuPersonId;
         private System.DateTime _refreshStartedUtc;
+        // macOS: when FM26 last registered a file from a folder being reloaded (LocatorPatch).
+        private static System.DateTime? _lastLocatorUtc;
+        private static readonly TimeSpan LocatorsSettled = TimeSpan.FromMilliseconds(250);
         private readonly Dictionary<long, string> _biographyCache = new Dictionary<long, string>();
         private Harmony _harmony;
         private FaceMenuContributor _menuContributor;
@@ -72,6 +76,9 @@ namespace FMFaceHotReload
         private BepInEx.Configuration.ConfigEntry<string> _apiBaseUrl;
         private static readonly TimeSpan GenerationTimeout = TimeSpan.FromMinutes(5);
         private static readonly TimeSpan GraphicsTimeout = TimeSpan.FromSeconds(30);
+        // How long the squad batch waits for an opened profile to show all it reads
+        // (within the batch's 45 s limit for each step).
+        private static readonly TimeSpan ProfileBindTimeout = TimeSpan.FromSeconds(30);
 
         public override void Load()
         {
@@ -88,7 +95,11 @@ namespace FMFaceHotReload
             });
             _menuContributor = new FaceMenuContributor();
             _harmony = new Harmony("fmface.hotreload");
-            _harmony.PatchAll(typeof(AssetLoadPatch));
+            // See LocatorPatch: on macOS the reload is followed another way.
+            if (OperatingSystem.IsMacOS())
+                _harmony.PatchAll(typeof(LocatorPatch));
+            else
+                _harmony.PatchAll(typeof(AssetLoadPatch));
             _harmony.PatchAll(typeof(MenuOpenPatch));
             AddComponent<StaffWatcher>();
             Log.LogInfo("FM Face Actions and portrait menu integration loaded");
@@ -135,6 +146,14 @@ namespace FMFaceHotReload
         {
             try
             {
+                if (OperatingSystem.IsMacOS())
+                {
+                    string contents = Path.Combine(Paths.GameRootPath, "fm.app", "Contents");
+                    return HasHash(Path.Combine(contents, "Frameworks", "GameAssembly.dylib"),
+                               "7886b66692c18504de32ad3973fe4c9afc3edfe12a6941b44e83627cb9563e26")
+                        && HasHash(Path.Combine(contents, "PlugIns", "game_plugin.bundle", "Contents", "MacOS", "game_plugin"),
+                               "de6b048ab1a95fd4ae683a7d751a33645183a9a570fa1c2fba32fd308ca87979");
+                }
                 return HasHash(Path.Combine(Paths.GameRootPath, "GameAssembly.dll"),
                            "7ce3eb474dc6093df633f979e869e55b2ec7953fde2e732392a694d379ff7a0c")
                     && HasHash(Path.Combine(Paths.GameRootPath, "fm_Data", "Plugins", "x86_64", "game_plugin.dll"),
@@ -291,8 +310,8 @@ namespace FMFaceHotReload
             var header = FindNamed(root, "ReportHeader");
             if (header == null || header.worldBound.width < 800)
                 throw new InvalidOperationException("Open a player Overview before generating a face.");
-            if (!HeaderId(TextValues(header), out long visibleId))
-                throw new InvalidOperationException("This player profile does not show its ID. Enable player IDs in the skin, then try again.");
+            if (!HeaderId(header, out long visibleId))
+                throw new InvalidOperationException("Could not read this player's ID from the profile. Reopen it and try again.");
             if (visibleId != playerId)
                 throw new InvalidOperationException("Player profile changed; reopen it and try again.");
             picture = FindNamed(header, "PersonPicture");
@@ -386,7 +405,7 @@ namespace FMFaceHotReload
                 throw new InvalidOperationException("Open a staff Overview before generating a face.");
             picture = FindNamed(header, "PersonPicture");
             var texts = TextValues(header);
-            if (!HeaderId(texts, out long visibleId) || visibleId != personId)
+            if (!HeaderId(header, out long visibleId) || visibleId != personId)
                 throw new InvalidOperationException("Staff profile changed; reopen it and try again.");
             var profile = new ProfileSnapshot { Type = "staff" };
             var banner = FindNamed(header, "report-player-banner-max") ?? header;
@@ -403,6 +422,20 @@ namespace FMFaceHotReload
                         profile.JobTitle = bannerTexts[i + 1];
                     break;
                 }
+            }
+            // Without screen IDs the header has no "(ID:n)" text: the name is in
+            // the same box as a player's, and the job title follows it.
+            if (string.IsNullOrWhiteSpace(profile.Name))
+            {
+                foreach (var value in TextValues(FindNamed(banner, "Frame 1000003381")))
+                    if (!IdPattern.IsMatch(value))
+                    {
+                        profile.Name = value;
+                        break;
+                    }
+                int nameIndex = profile.Name == null ? -1 : bannerTexts.IndexOf(profile.Name);
+                if (nameIndex >= 0 && nameIndex + 1 < bannerTexts.Count && string.IsNullOrWhiteSpace(profile.JobTitle))
+                    profile.JobTitle = bannerTexts[nameIndex + 1];
             }
             profile.JobTitle = FirstText(FindNamed(banner, "Frame 1000003901")) ?? profile.JobTitle;
             profile.Club = FirstText(FindNamed(header, "PlayingTeam"));
@@ -424,8 +457,11 @@ namespace FMFaceHotReload
             }
             if (string.IsNullOrWhiteSpace(profile.Name) || string.IsNullOrWhiteSpace(profile.JobTitle) ||
                 string.IsNullOrWhiteSpace(profile.Nationality) || profile.Age < 14 || profile.Age > 100 || picture == null)
+            {
+                Instance?.Log.LogWarning("Staff header, for diagnosis: " + DescribeTexts(banner));
                 throw new InvalidOperationException("Incomplete staff profile (no API request): name=" + profile.Name +
                     ", age=" + profile.Age + ", nationality=" + profile.Nationality + ", job=" + profile.JobTitle + ".");
+            }
             profile.BiographyHeadline = CaptureBiographyHeadline(root);
             return profile;
         }
@@ -452,7 +488,52 @@ namespace FMFaceHotReload
             return false;
         }
 
-        private static bool HeaderId(List<string> values, out long id)
+        // The person a profile header shows. Its binding remapper maps "objectID"
+        // to Person.UniqueId, the ID FM26 shows with "Show screen IDs in Title Bar",
+        // so that preference isn't needed. Skins that print "(ID:n)" still work.
+        private static bool HeaderId(VisualElement header, out long id)
+        {
+            return BoundObjectId(header, out id) || TextId(TextValues(header), out id);
+        }
+
+        private static bool BoundObjectId(VisualElement header, out long id)
+        {
+            id = 0;
+            var remapper = ObjectIdRemapper(header);
+            var view = remapper?.TryCast<IBindableElement>()?.GetView();
+            if (view == null || !GameSubsystems.TryGet<Bindings>(out var bindings) || bindings == null)
+                return false;
+            var key = view.Key;
+            if (!bindings.TryGetNode(ref key, out var node) || node == null)
+                return false;
+            for (var child = node.FirstChild; child != null; child = child.NextSibling)
+                if (child.Name == "objectID")
+                {
+                    var value = child.Value;
+                    return value != null && !value.IsNull && long.TryParse(value.AsString(), out id) && id > 0;
+                }
+            return false;
+        }
+
+        private static BindingRemapper ObjectIdRemapper(VisualElement element)
+        {
+            if (element == null)
+                return null;
+            var remapper = element.TryCast<BindingRemapper>();
+            if (remapper?.Mappings != null)
+                foreach (var mapping in remapper.Mappings)
+                    if (mapping.from == "objectID" && (mapping.to ?? "").EndsWith(".UniqueId", StringComparison.OrdinalIgnoreCase))
+                        return remapper;
+            for (int i = 0; i < element.hierarchy.childCount; i++)
+            {
+                var found = ObjectIdRemapper(element.hierarchy.ElementAt(i));
+                if (found != null)
+                    return found;
+            }
+            return null;
+        }
+
+        private static bool TextId(List<string> values, out long id)
         {
             foreach (var value in values)
             {
@@ -562,6 +643,8 @@ namespace FMFaceHotReload
             public Label Status;
             public bool StopAfterCurrent;
             public System.DateTime NextPlayerUtc;
+            public double LastDiagnosis = -10;
+            public System.DateTime? UnfocusedSinceUtc;
         }
 
         private void CheckSquadMenu()
@@ -586,9 +669,13 @@ namespace FMFaceHotReload
             var scroll = menuList.parent?.TryCast<ScrollView>();
             if (scroll == null)
                 return;
+            // FM26 closes the dropdown when the pointer leaves it, so the item goes
+            // inside the dropdown, after its list: moving to it never leaves the menu.
+            var dropdown = scroll.parent;
             if (_squadMenuButton != null && _squadMenuButton.parent != null && _squadMenuList == menuList)
             {
-                PositionSquadMenuButton(_squadMenuButton, scroll, root);
+                if (_squadMenuButton.parent == root)
+                    PositionSquadMenuButton(_squadMenuButton, scroll, root);
                 return;
             }
             RemoveSquadMenuButton();
@@ -597,16 +684,28 @@ namespace FMFaceHotReload
                 name = "fmface-squad-command", text = "Generate faces…", focusable = false
             };
             button.style.height = 36;
-            button.style.position = Position.Absolute;
-            PositionSquadMenuButton(button, scroll, root);
+            button.style.flexShrink = 0;
             button.style.color = Color.white;
             button.style.backgroundColor = new Color(0.18f, 0.13f, 0.24f, 1f);
             button.style.unityTextAlign = TextAnchor.MiddleLeft;
             button.style.paddingLeft = 12;
-            root.Add(button);
+            if (dropdown != null)
+            {
+                dropdown.Add(button);
+            }
+            else
+            {
+                button.style.position = Position.Absolute;
+                PositionSquadMenuButton(button, scroll, root);
+                root.Add(button);
+            }
             _squadMenuButton = button;
             _squadMenuList = menuList;
-            Log.LogInfo("FM Face squad command added to Squad menu");
+            var chain = new List<string>();
+            for (VisualElement element = scroll; element != null && chain.Count < 6; element = element.parent)
+                chain.Add((element.name ?? "") + " " + element.GetType().Name + " " + element.worldBound);
+            Log.LogInfo("FM Face squad command added to Squad menu " + (dropdown != null ? "(inside it)" : "(below it)") +
+                        "; dropdown: " + string.Join(" < ", chain));
         }
 
         private static void PositionSquadMenuButton(VisualElement button, ScrollView scroll, VisualElement root)
@@ -817,6 +916,27 @@ namespace FMFaceHotReload
             var batch = _squadBatch;
             if (batch == null)
                 return;
+            // FM26 is throttled while it isn't the focused app (macOS draws a hidden
+            // window very slowly), so a profile then takes far longer to fill in.
+            // Time away doesn't count towards the batch's waits.
+            if (!Application.isFocused)
+            {
+                if (!batch.UnfocusedSinceUtc.HasValue)
+                {
+                    batch.UnfocusedSinceUtc = System.DateTime.UtcNow;
+                    batch.Status.text = "Paused while FM26 is in the background; return to FM26 to continue.";
+                    Log.LogInfo("FM Face squad batch paused: FM26 is in the background");
+                }
+                return;
+            }
+            if (batch.UnfocusedSinceUtc.HasValue)
+            {
+                var away = System.DateTime.UtcNow - batch.UnfocusedSinceUtc.Value;
+                batch.StageStartedUtc += away;
+                batch.NextPlayerUtc += away;
+                batch.UnfocusedSinceUtc = null;
+                Log.LogInfo("FM Face squad batch resumed after " + away.TotalSeconds.ToString("0") + " s in the background");
+            }
             if (batch.StopAfterCurrent && batch.Stage != SquadStage.Request && batch.Stage != SquadStage.Refresh)
             {
                 StopSquadBatch("Stopped after " + batch.Completed + " faces.");
@@ -927,22 +1047,33 @@ namespace FMFaceHotReload
         private void CaptureBatchPlayer(SquadBatch batch)
         {
             var header = FindNamed(CurrentRoot(), "ReportHeader");
-            if (header == null || !HeaderId(TextValues(header), out long personId) || !IsPlayerOverview(CurrentRoot()))
+            if (header == null || !HeaderId(header, out long personId) || !IsPlayerOverview(CurrentRoot()))
                 return;
             var target = batch.Queue[batch.Index];
             ProfileSnapshot profile;
             VisualElement picture;
             VisualElement root;
             try { profile = CaptureProfile(personId, out picture, out root); }
-            catch (InvalidOperationException) when (System.DateTime.UtcNow - batch.StageStartedUtc < TimeSpan.FromSeconds(10))
+            catch (InvalidOperationException error) when (System.DateTime.UtcNow - batch.StageStartedUtc < ProfileBindTimeout)
             {
-                // FM creates the header before its bound name, stats and height arrive.
+                // FM creates the header before its bound name, stats and height
+                // arrive; under Rosetta 2 on macOS that took more than 10 s.
+                var waited = (System.DateTime.UtcNow - batch.StageStartedUtc).TotalSeconds;
+                if (waited - batch.LastDiagnosis >= 2)
+                {
+                    batch.LastDiagnosis = waited;
+                    var headers = new List<VisualElement>();
+                    CollectNamed(CurrentRoot(), "ReportHeader", headers);
+                    Log.LogInfo("DIAG batch capture after " + waited.ToString("0.0") + " s: " + headers.Count +
+                                " ReportHeader(s), first " + header.worldBound + "; " + error.Message + " | " +
+                                DescribeTexts(header));
+                }
                 return;
             }
             if (!string.Equals(profile.Name, target.Name, StringComparison.OrdinalIgnoreCase) ||
                 (target.Age > 0 && profile.Age != target.Age))
             {
-                if (System.DateTime.UtcNow - batch.StageStartedUtc < TimeSpan.FromSeconds(10))
+                if (System.DateTime.UtcNow - batch.StageStartedUtc < ProfileBindTimeout)
                     return;
                 throw new InvalidOperationException("Opened player does not match " + target.Name + "; no image requested");
             }
@@ -1106,8 +1237,42 @@ namespace FMFaceHotReload
             open.style.marginBottom = 10;
             dialog.Add(open);
             var field = new TextField { isPasswordField = true, maskChar = '•' };
+            // FM26's text field doesn't paste on macOS (the game has no Edit menu
+            // for Cmd+V), so there is a Paste button, and Cmd+V or Ctrl+V reaching
+            // the field is handled here too: the clipboard replaces its text.
+            Action paste = () =>
+            {
+                var clip = (GUIUtility.systemCopyBuffer ?? "").Trim();
+                if (clip.Length > 0)
+                    field.value = clip;
+                if (_keyStatus != null)
+                    _keyStatus.text = clip.Length > 0
+                        ? "Pasted " + clip.Length + " characters. Choose Save key."
+                        : "The clipboard is empty. Copy your key, then choose Paste.";
+            };
+            field.RegisterCallback(DelegateSupport.ConvertDelegate<EventCallback<KeyDownEvent>>(
+                new Action<KeyDownEvent>(key =>
+                {
+                    if (key.keyCode != KeyCode.V || !(key.commandKey || key.ctrlKey))
+                        return;
+                    paste();
+                    key.StopPropagation();
+                })), TrickleDown.TrickleDown);
+            // The dialog is 420 wide with 16 padding each side: 388 for both.
             field.style.height = 30;
-            dialog.Add(field);
+            field.style.width = 312;
+            field.style.flexShrink = 0;
+            var pasteButton = new Button((Il2CppSystem.Action)(System.Action)(() => paste()))
+            { text = "Paste", focusable = false };
+            pasteButton.style.height = 30;
+            pasteButton.style.width = 70;
+            pasteButton.style.marginLeft = 6;
+            pasteButton.style.flexShrink = 0;
+            var entry = new VisualElement();
+            entry.style.flexDirection = FlexDirection.Row;
+            entry.Add(field);
+            entry.Add(pasteButton);
+            dialog.Add(entry);
             _keyStatus = text("Paste or type the key (it starts with sk-), then choose Save.", 13);
             _keyStatus.style.marginTop = 6;
             var buttons = new VisualElement();
@@ -1125,7 +1290,8 @@ namespace FMFaceHotReload
                 buttons.Add(button);
             }
             dialog.Add(buttons);
-            text("The key is kept on this computer only, encrypted for your Windows user, in " +
+            text("The key is kept on this computer only, " +
+                 (OperatingSystem.IsWindows() ? "encrypted for your Windows user" : "readable only by your user account") + ", in " +
                  Path.GetDirectoryName(KeyStore.DefaultPath) + ". Delete that folder to forget it.", 12);
             root.Add(dialog);
             _keyDialog = dialog;
@@ -1281,7 +1447,7 @@ namespace FMFaceHotReload
             var root = CurrentRoot();
             var header = FindNamed(root, "ReportHeader");
             if (header == null || header.worldBound.width < 800 ||
-                !HeaderId(TextValues(header), out long personId))
+                !HeaderId(header, out long personId))
             {
                 ClosePortraitMenu();
                 return;
@@ -1318,7 +1484,7 @@ namespace FMFaceHotReload
             var header = FindNamed(root, "ReportHeader");
             var picture = FindNamed(header, "PersonPicture");
             if (root == null || header == null || picture == null ||
-                !HeaderId(TextValues(header), out long personId))
+                !HeaderId(header, out long personId))
                 return;
             if (_portraitMenu != null && _portraitMenu.parent != null && _portraitMenuPersonId == personId)
             {
@@ -1372,7 +1538,7 @@ namespace FMFaceHotReload
                 ClosePortraitMenu();
                 var currentRoot = CurrentRoot();
                 var currentHeader = FindNamed(currentRoot, "ReportHeader");
-                if (currentHeader == null || !HeaderId(TextValues(currentHeader), out long currentId) ||
+                if (currentHeader == null || !HeaderId(currentHeader, out long currentId) ||
                     currentId != personId)
                 {
                     Log.LogWarning("Portrait menu profile changed before selection; no image request was made");
@@ -1411,7 +1577,7 @@ namespace FMFaceHotReload
             var header = FindNamed(root, "ReportHeader");
             if (header == null || header.worldBound.width < 800 || FindNamed(header, "PersonPicture") == null)
                 return;
-            if (!HeaderId(TextValues(header), out long personId))
+            if (!HeaderId(header, out long personId))
                 return;
             var biography = CaptureBiographyHeadline(root);
             if (!string.IsNullOrWhiteSpace(biography))
@@ -1488,6 +1654,30 @@ namespace FMFaceHotReload
                 CollectTexts(element.hierarchy.ElementAt(i), values);
         }
 
+        // Each shown text with the names of the elements above it, up to the given one.
+        private static string DescribeTexts(VisualElement top)
+        {
+            var parts = new List<string>();
+            void Visit(VisualElement element, string path)
+            {
+                if (element == null || element.worldBound.width <= 0 || element.worldBound.height <= 0 || parts.Count >= 60)
+                    return;
+                if (!string.IsNullOrEmpty(element.name))
+                    path = path.Length == 0 ? element.name : path + "/" + element.name;
+                var text = element.TryCast<TextElement>();
+                if (text != null)
+                {
+                    var value = WebUtility.HtmlDecode(Tags.Replace(text.text ?? "", "")).Trim();
+                    if (value.Length > 0)
+                        parts.Add(path + " = \"" + value + "\"");
+                }
+                for (int i = 0; i < element.hierarchy.childCount; i++)
+                    Visit(element.hierarchy.ElementAt(i), path);
+            }
+            Visit(top, "");
+            return string.Join("; ", parts);
+        }
+
         private static string FirstText(VisualElement element)
         {
             var values = TextValues(element);
@@ -1551,9 +1741,9 @@ namespace FMFaceHotReload
         {
             var root = CurrentRoot();
             var header = FindNamed(root, "ReportHeader");
-            if (header == null || !HeaderId(TextValues(header), out long personId))
+            if (header == null || !HeaderId(header, out long personId))
             {
-                Log.LogWarning("The profile's ID is not shown yet; no image request was made");
+                Log.LogWarning("The profile's ID could not be read yet; no image request was made");
                 ShowBusyNotice("The profile is still loading. Choose it again.");
                 return;
             }
@@ -1686,8 +1876,10 @@ namespace FMFaceHotReload
             try
             {
                 string folder = GraphicsFolder();
+                var timer = System.Diagnostics.Stopwatch.StartNew();
                 await FaceGenerator.MakePortrait(settings, folder, playerId.ToString(System.Globalization.CultureInfo.InvariantCulture),
                                                  profile, mode == "update", shownPng).ConfigureAwait(false);
+                Instance?.Log.LogInfo("Image request and save took " + timer.Elapsed.TotalSeconds.ToString("0.0") + " s");
                 return new GenerationResult { Success = true, GraphicsDir = folder };
             }
             catch (ApiKeyRejectedException error)
@@ -1700,10 +1892,13 @@ namespace FMFaceHotReload
             }
         }
 
+        // FM26's user-data folder is in Documents on Windows and in Application Support on macOS.
         private static string GraphicsFolder()
         {
-            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                "Sports Interactive", "Football Manager 26", "graphics", "fmface");
+            string userData = OperatingSystem.IsMacOS()
+                ? KeyStore.ApplicationSupport
+                : Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+            return Path.Combine(userData, "Sports Interactive", "Football Manager 26", "graphics", "fmface");
         }
 
         private bool Refresh()
@@ -1728,6 +1923,7 @@ namespace FMFaceHotReload
             try
             {
                 WaitingForGraphics = true;
+                _lastLocatorUtc = null;
                 _refreshStartedUtc = System.DateTime.UtcNow;
                 resources[0].RegisterLocalPath(folder, null);
                 Log.LogInfo("Requested FM Face graphics reload from " + folder);
@@ -1743,6 +1939,16 @@ namespace FMFaceHotReload
 
         private void CheckRefreshTimeout()
         {
+            if (WaitingForGraphics && _lastLocatorUtc.HasValue &&
+                System.DateTime.UtcNow - _lastLocatorUtc.Value >= LocatorsSettled)
+            {
+                WaitingForGraphics = false;
+                _lastLocatorUtc = null;
+                Log.LogInfo("FM Face graphics registered after " +
+                            (System.DateTime.UtcNow - _refreshStartedUtc).TotalSeconds.ToString("0.0") + " s");
+                GraphicsLoaded();
+                return;
+            }
             if (!WaitingForGraphics || System.DateTime.UtcNow - _refreshStartedUtc < GraphicsTimeout)
                 return;
             WaitingForGraphics = false;
@@ -1791,6 +1997,24 @@ namespace FMFaceHotReload
             }
         }
 
+        // EnumerateLocalAssetsComplete takes an AsyncOperationHandle struct, which
+        // Il2CppInterop's hook passes with the Windows calling convention. Under
+        // macOS's x64 System V convention the game then gets a broken handle,
+        // throws "Attempting to use an invalid operation handle" and never
+        // finishes the reload, so there that method isn't hooked. FM26 calls
+        // RegisterResourceLocator (object arguments only) for each file of the
+        // folder as the enumeration completes; once those calls have stopped for
+        // LocatorsSettled, CheckRefreshTimeout refreshes the panels.
+        [HarmonyPatch(typeof(ResourcesSubsystem), "RegisterResourceLocator")]
+        private static class LocatorPatch
+        {
+            private static void Postfix()
+            {
+                if (WaitingForGraphics)
+                    _lastLocatorUtc = System.DateTime.UtcNow;
+            }
+        }
+
         [HarmonyPatch(typeof(ContextMenuSubsystem), "OpenContextMenu")]
         private static class MenuOpenPatch
         {
@@ -1804,7 +2028,7 @@ namespace FMFaceHotReload
                     var root = CurrentRoot();
                     var header = FindNamed(root, "ReportHeader");
                     // The ID is read again on click: just after a profile opens the
-                    // header can be drawn before its ID text arrives.
+                    // header can be drawn before its data is bound.
                     if (header == null || !IsActionTarget(context.Target, header))
                         return;
                     var contributor = Instance._menuContributor.TryCast<IMenuContributor>();
@@ -1855,7 +2079,7 @@ namespace FMFaceHotReload
                 var header = FindNamed(root, "ReportHeader");
                 if (header == null || !IsActionTarget(context.Target, header))
                     return;
-                long? personId = HeaderId(TextValues(header), out long shownId) ? shownId : (long?)null;
+                long? personId = HeaderId(header, out long shownId) ? shownId : (long?)null;
                 context.Description.AddItem(parent, "Generate face",
                     (Il2CppSystem.Action)(System.Action)(() => Instance.GenerateOpenProfile(personId, false)));
                 var update = context.Description.AddItem(parent, "Update face",

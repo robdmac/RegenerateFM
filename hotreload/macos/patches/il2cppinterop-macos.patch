@@ -1,0 +1,311 @@
+diff --git a/Il2CppInterop.Common/GameAssemblyModule.cs b/Il2CppInterop.Common/GameAssemblyModule.cs
+new file mode 100644
+index 0000000..43f3dc1
+--- /dev/null
++++ b/Il2CppInterop.Common/GameAssemblyModule.cs
+@@ -0,0 +1,121 @@
++using System;
++using System.Diagnostics;
++using System.Runtime.InteropServices;
++using System.Text;
++
++namespace Il2CppInterop.Common;
++
++/// <summary>
++///     The loaded IL2CPP game assembly: its file name, load address and the size of memory to scan for code.
++///     On macOS, .NET's Process.Modules lists only the main executable (with a zero base address), so the
++///     game assembly is looked up through dyld there, and only its __TEXT segment is used for scanning.
++/// </summary>
++public sealed class GameAssemblyModule
++{
++    private static readonly string[] Names = { "GameAssembly.dll", "GameAssembly.dylib", "GameAssembly.so", "UserAssembly.dll" };
++
++    private GameAssemblyModule(string moduleName, IntPtr baseAddress, long moduleMemorySize)
++    {
++        ModuleName = moduleName;
++        BaseAddress = baseAddress;
++        ModuleMemorySize = moduleMemorySize;
++    }
++
++    public string ModuleName { get; }
++    public IntPtr BaseAddress { get; }
++    public long ModuleMemorySize { get; }
++
++    /// <summary>The game assembly, or null if it isn't loaded.</summary>
++    public static GameAssemblyModule TryFind()
++    {
++        return RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? FindWithDyld() : FindInProcessModules();
++    }
++
++    /// <summary>The game assembly; throws if it isn't loaded.</summary>
++    public static GameAssemblyModule Find()
++    {
++        return TryFind() ?? throw new InvalidOperationException(
++            "Couldn't find the IL2CPP game assembly (" + string.Join(", ", Names) + ") among the loaded modules.");
++    }
++
++    private static bool IsGameAssembly(string fileName)
++    {
++        foreach (var name in Names)
++            if (string.Equals(fileName, name, StringComparison.OrdinalIgnoreCase))
++                return true;
++        return false;
++    }
++
++    private static GameAssemblyModule FindInProcessModules()
++    {
++        foreach (ProcessModule module in Process.GetCurrentProcess().Modules)
++            if (IsGameAssembly(module.ModuleName))
++                return new GameAssemblyModule(module.ModuleName, module.BaseAddress, module.ModuleMemorySize);
++        return null;
++    }
++
++    private const string LibSystem = "/usr/lib/libSystem.B.dylib";
++    private const uint MachHeader64Magic = 0xfeedfacf;
++    private const int MachHeader64Size = 32;
++    private const uint LoadCommandSegment64 = 0x19;
++
++    [DllImport(LibSystem)]
++    private static extern uint _dyld_image_count();
++
++    [DllImport(LibSystem)]
++    private static extern IntPtr _dyld_get_image_name(uint index);
++
++    [DllImport(LibSystem)]
++    private static extern IntPtr _dyld_get_image_header(uint index);
++
++    private static GameAssemblyModule FindWithDyld()
++    {
++        var count = _dyld_image_count();
++        for (uint i = 0; i < count; i++)
++        {
++            var path = PtrToStringUtf8(_dyld_get_image_name(i));
++            if (path == null)
++                continue;
++            var fileName = path.Substring(path.LastIndexOf('/') + 1);
++            if (!IsGameAssembly(fileName))
++                continue;
++            var header = _dyld_get_image_header(i);
++            if (header == IntPtr.Zero || (uint)Marshal.ReadInt32(header) != MachHeader64Magic)
++                continue;
++            var textSize = TextSegmentSize(header);
++            if (textSize > 0)
++                return new GameAssemblyModule(fileName, header, textSize);
++        }
++        return null;
++    }
++
++    // The __TEXT segment starts at the Mach-O header and holds the code that signatures are searched for.
++    private static long TextSegmentSize(IntPtr header)
++    {
++        var commandCount = Marshal.ReadInt32(header, 16);
++        var command = header + MachHeader64Size;
++        for (var i = 0; i < commandCount; i++)
++        {
++            var kind = (uint)Marshal.ReadInt32(command);
++            var size = Marshal.ReadInt32(command, 4);
++            if (kind == LoadCommandSegment64 && PtrToStringUtf8(command + 8, 16) == "__TEXT")
++                return Marshal.ReadInt64(command, 32);
++            if (size <= 0)
++                break;
++            command += size;
++        }
++        return 0;
++    }
++
++    private static string PtrToStringUtf8(IntPtr pointer, int maxLength = 4096)
++    {
++        if (pointer == IntPtr.Zero)
++            return null;
++        var length = 0;
++        while (length < maxLength && Marshal.ReadByte(pointer, length) != 0)
++            length++;
++        var bytes = new byte[length];
++        Marshal.Copy(pointer, bytes, 0, length);
++        return Encoding.UTF8.GetString(bytes);
++    }
++}
+diff --git a/Il2CppInterop.Common/XrefScans/XrefScanMethodDb.cs b/Il2CppInterop.Common/XrefScans/XrefScanMethodDb.cs
+index 3958f4a..a102f91 100644
+--- a/Il2CppInterop.Common/XrefScans/XrefScanMethodDb.cs
++++ b/Il2CppInterop.Common/XrefScans/XrefScanMethodDb.cs
+@@ -20,12 +20,7 @@ public static class XrefScanMethodDb
+             GeneratedDatabasesUtil.GetDatabasePath(MethodAddressToTokenMap.FileName));
+         XrefScanCache = new MethodXrefScanCache(GeneratedDatabasesUtil.GetDatabasePath(MethodXrefScanCache.FileName));
+ 
+-        foreach (ProcessModule module in Process.GetCurrentProcess().Modules)
+-            if (module.ModuleName == "GameAssembly.dll")
+-            {
+-                GameAssemblyBase = (long)module.BaseAddress;
+-                break;
+-            }
++        GameAssemblyBase = (long)(GameAssemblyModule.TryFind()?.BaseAddress ?? IntPtr.Zero);
+     }
+ 
+     public static MethodBase TryResolvePointer(IntPtr methodStart)
+diff --git a/Il2CppInterop.Common/XrefScans/XrefScannerLowLevel.cs b/Il2CppInterop.Common/XrefScans/XrefScannerLowLevel.cs
+index a8d44d7..683dc5f 100644
+--- a/Il2CppInterop.Common/XrefScans/XrefScannerLowLevel.cs
++++ b/Il2CppInterop.Common/XrefScans/XrefScannerLowLevel.cs
+@@ -43,6 +43,83 @@ public static class XrefScannerLowLevel
+         }
+     }
+ 
++    /// <summary>
++    ///     The target of the tail call that ends a function's straight-line code (calls are allowed before it), or
++    ///     zero if the code returns or branches first. Unlike <see cref="JumpTargets" /> this doesn't run on into the
++    ///     next function when functions are padded with nops instead of int3, as clang does on macOS.
++    /// </summary>
++    public static IntPtr TailCallTarget(IntPtr codeStart)
++    {
++        return StraightLineEnd(codeStart, out _);
++    }
++
++    /// <summary>
++    ///     Follows tail calls through functions that are straight-line code with no calls (thunks, and wrappers that
++    ///     only compute an argument), and returns the first function that isn't one.
++    /// </summary>
++    public static IntPtr FollowTailCalls(IntPtr codeStart)
++    {
++        for (var i = 0; i < 16; i++)
++        {
++            var next = StraightLineEnd(codeStart, out var calls);
++            if (next == IntPtr.Zero || calls)
++                return codeStart;
++            codeStart = next;
++        }
++        return codeStart;
++    }
++
++    /// <summary>
++    ///     The target of the first call in a function whose second argument (rsi) was just set to the address of a
++    ///     stack slot, the way clang passes an out parameter, or zero if there is none before the function returns.
++    /// </summary>
++    public static IntPtr CallWithStackAddressArgument(IntPtr codeStart)
++    {
++        var decoder = XrefScanner.DecoderForAddress(codeStart);
++        var sinceLea = -1;
++        for (var i = 0; i < 512; i++)
++        {
++            decoder.Decode(out var instruction);
++            if (decoder.LastError == DecoderError.NoMoreBytes || instruction.FlowControl == FlowControl.Return)
++                break;
++            if (instruction.Mnemonic == Mnemonic.Lea && instruction.Op0Register == Register.RSI &&
++                instruction.MemoryBase is Register.RBP or Register.RSP)
++            {
++                sinceLea = 0;
++                continue;
++            }
++            if (instruction.FlowControl == FlowControl.Call && sinceLea is >= 0 and <= 2 &&
++                instruction.Op0Kind is OpKind.NearBranch32 or OpKind.NearBranch64)
++                return (IntPtr)ExtractTargetAddress(in instruction);
++            if (sinceLea >= 0)
++                sinceLea++;
++        }
++        return IntPtr.Zero;
++    }
++
++    private static IntPtr StraightLineEnd(IntPtr codeStart, out bool calls)
++    {
++        calls = false;
++        var decoder = XrefScanner.DecoderForAddress(codeStart);
++        for (var i = 0; i < 256; i++)
++        {
++            decoder.Decode(out var instruction);
++            if (decoder.LastError == DecoderError.NoMoreBytes)
++                break;
++            if (instruction.FlowControl == FlowControl.Call)
++            {
++                calls = true;
++                continue;
++            }
++            if (instruction.FlowControl == FlowControl.UnconditionalBranch && !instruction.IsJmpShort &&
++                instruction.Op0Kind is OpKind.NearBranch32 or OpKind.NearBranch64)
++                return (IntPtr)ExtractTargetAddress(in instruction);
++            if (instruction.FlowControl != FlowControl.Next)
++                break;
++        }
++        return IntPtr.Zero;
++    }
++
+     public static IEnumerable<IntPtr> CallAndIndirectTargets(IntPtr pointer)
+     {
+         return CallAndIndirectTargetsImpl(XrefScanner.DecoderForAddress(pointer, 1024 * 1024));
+diff --git a/Il2CppInterop.Runtime/Injection/Hooks/Class_GetFieldDefaultValue_Hook.cs b/Il2CppInterop.Runtime/Injection/Hooks/Class_GetFieldDefaultValue_Hook.cs
+index cf06db2..0b22690 100644
+--- a/Il2CppInterop.Runtime/Injection/Hooks/Class_GetFieldDefaultValue_Hook.cs
++++ b/Il2CppInterop.Runtime/Injection/Hooks/Class_GetFieldDefaultValue_Hook.cs
+@@ -126,6 +126,17 @@ namespace Il2CppInterop.Runtime.Injection.Hooks
+                 var getStaticFieldValueInternal = getStaticFieldValueTargets[^1];
+                 Logger.Instance.LogTrace("Field::StaticGetValueInternal: 0x{GetStaticFieldValueInternalAddress}", getStaticFieldValueInternal.ToInt64().ToString("X2"));
+ 
++                if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
++                {
++                    // clang's Field::StaticGetValueInternal calls Class::GetFieldDefaultValue(field, &type) and then
++                    // BlobReader::GetConstantValueFromBlob, so "the last of three calls" is the wrong function here.
++                    // GetFieldDefaultValue is the call that takes the address of a local; follow its thunks.
++                    var getFieldDefaultValue = XrefScannerLowLevel.CallWithStackAddressArgument(getStaticFieldValueInternal);
++                    Logger.Instance.LogTrace("macOS Class::GetFieldDefaultValue call: 0x{Address}", getFieldDefaultValue.ToInt64().ToString("X2"));
++                    if (getFieldDefaultValue != IntPtr.Zero)
++                        return XrefScannerLowLevel.FollowTailCalls(getFieldDefaultValue);
++                }
++
+                 var getStaticFieldValueInternalTargets = XrefScannerLowLevel.JumpTargets(getStaticFieldValueInternal).ToArray();
+ 
+                 if (getStaticFieldValueInternalTargets.Length == 0) return FindClassGetFieldDefaultValueXref(true);
+diff --git a/Il2CppInterop.Runtime/Injection/Hooks/MetadataCache_GetTypeInfoFromTypeDefinitionIndex_Hook.cs b/Il2CppInterop.Runtime/Injection/Hooks/MetadataCache_GetTypeInfoFromTypeDefinitionIndex_Hook.cs
+index 943a9ad..20144a9 100644
+--- a/Il2CppInterop.Runtime/Injection/Hooks/MetadataCache_GetTypeInfoFromTypeDefinitionIndex_Hook.cs
++++ b/Il2CppInterop.Runtime/Injection/Hooks/MetadataCache_GetTypeInfoFromTypeDefinitionIndex_Hook.cs
+@@ -64,6 +64,17 @@ namespace Il2CppInterop.Runtime.Injection.Hooks
+                 var imageGetType = XrefScannerLowLevel.JumpTargets(imageGetClassAPI).First();
+                 Logger.Instance.LogTrace("Image::GetType: 0x{ImageGetTypeAddress}", imageGetType.ToInt64().ToString("X2"));
+ 
++                if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX) && UnityVersionHandler.IsMetadataV29OrHigher)
++                {
++                    // clang pads functions with nops, so JumpTargets runs past Image::GetType's tail call into the
++                    // next function. Image::GetType calls GetAssemblyTypeHandle and tail-calls GetTypeInfoFromHandle,
++                    // which reaches GetTypeInfoFromTypeDefinitionIndex through tail calls.
++                    var getTypeInfoFromHandle = XrefScannerLowLevel.TailCallTarget(imageGetType);
++                    Logger.Instance.LogTrace("macOS getTypeInfoFromHandle: 0x{Address}", getTypeInfoFromHandle.ToInt64().ToString("X2"));
++                    if (getTypeInfoFromHandle != IntPtr.Zero)
++                        return XrefScannerLowLevel.FollowTailCalls(getTypeInfoFromHandle);
++                }
++
+                 var imageGetTypeXrefs = XrefScannerLowLevel.JumpTargets(imageGetType).ToArray();
+ 
+                 if (imageGetTypeXrefs.Length == 0)
+diff --git a/Il2CppInterop.Runtime/Injection/InjectorHelpers.cs b/Il2CppInterop.Runtime/Injection/InjectorHelpers.cs
+index 9418c06..f020f6c 100644
+--- a/Il2CppInterop.Runtime/Injection/InjectorHelpers.cs
++++ b/Il2CppInterop.Runtime/Injection/InjectorHelpers.cs
+@@ -27,9 +27,7 @@ namespace Il2CppInterop.Runtime.Injection
+         internal static Assembly Il2CppMscorlib = typeof(Il2CppSystem.Type).Assembly;
+         internal static INativeAssemblyStruct InjectedAssembly;
+         internal static INativeImageStruct InjectedImage;
+-        internal static ProcessModule Il2CppModule = Process.GetCurrentProcess()
+-            .Modules.OfType<ProcessModule>()
+-            .Single((x) => x.ModuleName is "GameAssembly.dll" or "GameAssembly.dylib" or "GameAssembly.so" or "UserAssembly.dll" || string.Equals(x.ModuleName, "GameAssembly.dll", StringComparison.OrdinalIgnoreCase));
++        internal static GameAssemblyModule Il2CppModule = GameAssemblyModule.Find();
+ 
+         internal static IntPtr Il2CppHandle = NativeLibrary.Load("GameAssembly", typeof(InjectorHelpers).Assembly, null);
+ 
+diff --git a/Il2CppInterop.Runtime/MemoryUtils.cs b/Il2CppInterop.Runtime/MemoryUtils.cs
+index 71aa32e..87b160c 100644
+--- a/Il2CppInterop.Runtime/MemoryUtils.cs
++++ b/Il2CppInterop.Runtime/MemoryUtils.cs
+@@ -1,12 +1,13 @@
+ ﻿using System.Diagnostics;
+ using System.Linq;
++using Il2CppInterop.Common;
+ using Il2CppInterop.Common.XrefScans;
+ 
+ namespace Il2CppInterop.Runtime;
+ 
+ internal class MemoryUtils
+ {
+-    public static nint FindSignatureInModule(ProcessModule module, SignatureDefinition sigDef)
++    public static nint FindSignatureInModule(GameAssemblyModule module, SignatureDefinition sigDef)
+     {
+         var ptr = FindSignatureInBlock(
+             module.BaseAddress,

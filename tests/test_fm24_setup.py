@@ -13,6 +13,12 @@ TOKEN = "t" * 43
 
 class SetupTests(unittest.TestCase):
     def setUp(self):
+        # The fixtures are Linux Steam libraries with fm.exe and Proton prefixes, on any system.
+        setup_fm24.native_install.use_system(False)
+        self.addCleanup(setup_fm24.native_install.use_system, sys.platform == "darwin")
+        platform = mock.patch.object(setup_fm24.sys, "platform", "linux")
+        platform.start()
+        self.addCleanup(platform.stop)
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
 
@@ -33,7 +39,7 @@ class SetupTests(unittest.TestCase):
         (steam / "steamapps" / "libraryfolders.vdf").write_text(
             '"libraryfolders"\n{\n\t"0"\n\t{\n\t\t"path"\t\t"%s"\n\t}\n\t"1"\n\t{\n\t\t"path"\t\t"%s"\n\t}\n}\n'
             % (steam, other), encoding="utf-8")
-        with mock.patch.object(setup_fm24, "steam_roots", return_value=[steam]):
+        with mock.patch.object(setup_fm24.steam_launch, "steam_roots", return_value=[steam]):
             self.assertEqual(setup_fm24.steam_libraries(), [steam.resolve(), other.resolve()])
             self.assertEqual(setup_fm24.find_game_dir(),
                              other.resolve() / "steamapps" / "common" / "Football Manager 2024")

@@ -27,3 +27,19 @@ loads the FM Face plugin into FM26. Its parts and their licences:
 
 The FM24 companion (`FM24` folder) is packaged with PyInstaller and includes
 Python 3.11 (PSF licence), Pillow (MIT-CMU) and zstandard (BSD-3-Clause).
+
+The `FM26-macOS` folder contains the same components from the
+[BepInEx 6.0.0-be.789 Unity IL2CPP macOS x64](https://builds.bepinex.dev/projects/bepinex_be/)
+build (`BepInEx-Unity.IL2CPP-macos-x64-6.0.0-be.789+6cea286.zip`, SHA-256
+`cc2341544d271f8bcea4e7415acad10766e968d236aaee30cdd79780ec7db00b`), where
+UnityDoorstop is `libdoorstop.dylib` and Dobby is `libdobby.dylib`, with these
+changes:
+
+| Component | Licence | Source |
+|---|---|---|
+| Il2CppInterop 1.5.3 (`Il2CppInterop.Runtime.dll`, `Il2CppInterop.Common.dll`), modified | LGPL-3.0 (`Il2CppInterop-LICENSE.txt`) | https://github.com/BepInEx/Il2CppInterop at `dbda1cb`, with `source/hotreload/macos/patches/il2cppinterop-macos.patch` |
+| funchook 1.1.3 (`libfunchook.dylib`), modified | GPL-2.0-or-later with a linking exception | https://github.com/kubo/funchook at `88388db`, with `source/hotreload/macos/patches/funchook-rosetta.patch` |
+| diStorm3 (inside `libfunchook.dylib`) | BSD-3-Clause | https://github.com/gdabah/distorm at `ab59d6e` |
+
+`source/hotreload/macos/build.py` rebuilds both modified components from
+those commits and patches.

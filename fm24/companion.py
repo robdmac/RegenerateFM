@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """FM24 companion: read the open profile from game memory and generate its portrait.
 
-Requires the FM Face native DLL (fm24/native_menu); there is no X11 code.
+Requires FM Face's native library in FM24 (fm24/native_menu: the DLL on
+Windows and Proton, libfmface24.dylib on macOS); there is no X11 code.
 """
 
 from __future__ import annotations
@@ -18,19 +19,20 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 from xml.etree.ElementTree import ParseError
 
-if sys.platform != "win32" and not sys.platform.startswith("linux"):
-    sys.exit("FM Face's FM24 companion runs on Linux (Steam/Proton) and Windows. The macOS version "
-             "of FM24 is a separate program that the FM Face DLL and memory reader do not support.")
+if sys.platform not in ("win32", "darwin") and not sys.platform.startswith("linux"):
+    sys.exit("FM Face's FM24 companion runs on Linux (Steam/Proton), Windows and macOS.")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from fmface import ROOT, check_graphics_config, edit_png, generate_png, load_env, profile_prompt, update_prompt
+from fmface import ROOT, api_base, check_graphics_config, edit_png, generate_png, load_env, profile_prompt, update_prompt
 from existing_portrait import find_existing_portrait, game_dir_from_process, has_existing_portrait
 from graphics import save_versioned_portrait
+from layout import LAYOUT
 from live_memory import MemoryUnavailable, find_game_pid
 from native_profile import read_open_profile, reread_profile
-from native_dialog import DialogUnavailable, set_progress
+from native_dialog import DialogUnavailable, ask_key, set_progress
 from native_reload import request_native_reload
 from native_screen import read_open_screen
+from person_handles import build_in_background, person_for_reference
 
 
 MISSING_KEY = ("FM Face has no OpenAI key. Close and restart the companion to enter it, "
@@ -39,12 +41,96 @@ MISSING_KEY = ("FM Face has no OpenAI key. Close and restart the companion to en
 
 REJECTED_KEY = (" Close the companion and start it again to enter a new key (on Windows, a key in .env "
                 "takes priority over the saved one).")
+# On macOS FM24 asks for the key itself (ensure_key).
+REJECTED_KEY_IN_GAME = " Choose the face command again to enter a new key."
+NO_KEY_SAVED = "No OpenAI key was saved, so no image request was made."
 
 
-def error_text(exc: Exception) -> str:
+def error_text(exc: Exception, handler=None) -> str:
     """The error for FM24's dialog; a rejected key says how to replace it."""
     text = str(exc)
-    return text + REJECTED_KEY if "HTTP 401" in text else text
+    if "HTTP 401" not in text:
+        return text
+    if handler is not None and _asks_in_game(handler) and not _env_key():
+        _handler_class(handler).key_rejected = True
+        return text + REJECTED_KEY_IN_GAME
+    return text + REJECTED_KEY
+
+
+def _api() -> str:
+    """The image API address the key is checked against (fmface.api_base)."""
+    return api_base(load_env())
+
+
+def _env_key() -> str:
+    """A key set in .env or the environment, which takes priority over the saved one."""
+    return load_env(use_key_file=False).get("OPENAI_API_KEY", "").strip()
+
+
+def _handler_class(handler) -> type:
+    """Handler state lives on the class; menus pass the class, requests an instance."""
+    return handler if isinstance(handler, type) else type(handler)
+
+
+def _asks_in_game(handler) -> bool:
+    return sys.platform == "darwin" and bool(handler.reload_port)
+
+
+def ensure_key(handler) -> bool:
+    """FM24 for macOS asks for the OpenAI key in the game, like FM26: with no
+    key saved (or one OpenAI rejected), show the library's key prompt, check
+    the key with OpenAI (free) and save it in FM Face's key file. False when
+    the player cancels; True otherwise (a missing key elsewhere fails later
+    with MISSING_KEY)."""
+    import keystore
+    store = keystore.default_path()
+    if handler.preview_only or not _asks_in_game(handler) or store is None or _env_key():
+        return True
+    problem = None
+    if load_env().get("OPENAI_API_KEY", "").strip():
+        if not handler.key_rejected:
+            return True
+        problem = "OpenAI didn't accept the saved key. Paste a new one."
+    with handler.key_lock:
+        while True:
+            text = (problem or "FM Face makes faces with your own OpenAI API key. Each face is one billed "
+                               "request on your OpenAI account, usually a few cents or less.") + \
+                   ("\n\nPaste or type the key (it starts with sk-), then choose Save key. "
+                    f"Get a key… opens {keystore.KEYS_PAGE}.\n\n"
+                    f"The key is kept on this Mac only, readable only by your user account, in {store.parent}. "
+                    "Delete that folder to forget it.")
+            try:
+                entered = ask_key(handler.reload_port, handler.token, text)
+            except (DialogUnavailable, OSError, ValueError, TimeoutError) as exc:
+                print(f"FM24 couldn't ask for the OpenAI key ({exc}).", flush=True)
+                return True
+            if entered is None:
+                return False
+            try:
+                key = keystore.clean(entered)
+            except ValueError as exc:
+                problem = str(exc)
+                continue
+            problem = keystore.check(key, base=_api())
+            if problem:
+                continue
+            try:
+                keystore.save(store, key)
+            except (OSError, ValueError) as exc:
+                problem = f"Could not save the key: {exc}"
+                continue
+            _handler_class(handler).key_rejected = False
+            print(f"OpenAI key checked and saved in {store.parent}.", flush=True)
+            return True
+
+
+def _check_saved_key(handler) -> None:
+    """At start on macOS: a saved key OpenAI now rejects is asked for again in game."""
+    import keystore
+    saved = "" if _env_key() else load_env().get("OPENAI_API_KEY", "").strip()
+    if saved and keystore.check(saved, base=_api()) == keystore.REJECTED:
+        _handler_class(handler).key_rejected = True
+        print("OpenAI no longer accepts the saved key; FM24 will ask for a new one.", flush=True)
 
 
 class NativePortraitProgress:
@@ -97,8 +183,11 @@ def read_native_profile(*, identity_only: bool = False):
     """
     try:
         pid = find_game_pid()
-        person_id, profile = read_open_profile(pid, identity_only=identity_only)
+    except MemoryUnavailable as exc:
+        raise ValueError(f"{exc} No image request was made.") from exc
+    try:
         screen = read_open_screen(pid)
+        person_id, profile = read_open_profile(pid, identity_only=identity_only, screen=screen)
         if screen.person_id != person_id:
             raise ValueError(f"The open FM24 screen shows {screen.person_id}, not person {person_id}; "
                              "no image request was made.")
@@ -132,6 +221,15 @@ def existing_portrait(handler, person_id: str, name: str) -> tuple[bytes, str]:
     return found
 
 
+def resolve_reference(reference: int, *, wait: bool) -> str:
+    """The person ID for the object browser reference the macOS library sends
+    when the header shows no ID (person_handles)."""
+    try:
+        return person_for_reference(find_game_pid(), reference, wait=wait)
+    except MemoryUnavailable as exc:
+        raise ValueError(f"{exc} No image request was made.") from exc
+
+
 def face_exists(handler, person_id: str) -> bool:
     """Whether "Update face" has a portrait to start from (for the DLL's popup)."""
     if handler.game_dir is None:
@@ -162,6 +260,8 @@ def generate_for_profile(handler, player_id: str, profile: dict) -> dict:
     Used by the in-game squad batch, which reads each player from memory
     instead of opening the profile. Shares the endpoint's in-flight lock.
     """
+    if not ensure_key(handler):
+        return {"ok": False, "cancelled": True, "error": NO_KEY_SAVED}
     with handler.lock:
         if handler.in_flight:
             return {"ok": False, "error": "A portrait is already being generated."}
@@ -186,7 +286,7 @@ def generate_for_profile(handler, player_id: str, profile: dict) -> dict:
             old.unlink(missing_ok=True)
         return {"ok": True, "playerId": player_id, "refreshed": True}
     except (ValueError, OSError, RuntimeError, ParseError) as exc:
-        return {"ok": False, "error": error_text(exc)}
+        return {"ok": False, "error": error_text(exc, handler)}
     finally:
         with handler.lock:
             handler.in_flight = False
@@ -200,6 +300,8 @@ class Handler(BaseHTTPRequestHandler):
     preview_only = False
     lock = threading.Lock()
     in_flight = False
+    key_lock = threading.Lock()
+    key_rejected = False
     nonces: dict[str, float] = {}
 
     def log_message(self, format, *args):
@@ -300,6 +402,9 @@ again.onclick=()=>{{sessionStorage.removeItem('fmface-fm24-ran');location.reload
             return
         progress = None
         try:
+            if not ensure_key(self):
+                self._json(200, {"ok": False, "cancelled": True, "error": NO_KEY_SAVED})
+                return
             if not self.preview_only:
                 progress = start_progress(self, "Updating…" if mode == "update" else "Generating…")
             player_id, profile = read_native_profile(identity_only=mode == "update")
@@ -339,7 +444,7 @@ again.onclick=()=>{{sessionStorage.removeItem('fmface-fm24-ran');location.reload
         except (ValueError, OSError, RuntimeError, ParseError) as exc:
             if progress:
                 progress.fail()
-            self._json(422, {"ok": False, "error": error_text(exc)})
+            self._json(422, {"ok": False, "error": error_text(exc, self)})
         finally:
             if progress and not progress.failed:
                 progress.close()
@@ -348,7 +453,10 @@ again.onclick=()=>{{sessionStorage.removeItem('fmface-fm24-ran');location.reload
 
 
 def _default_graphics_dir() -> Path | None:
-    """FM24's user-data graphics/fmface folder on Windows (Documents may be redirected)."""
+    """FM24's user-data graphics/fmface folder on Windows (Documents may be redirected) and macOS."""
+    if sys.platform == "darwin":
+        return (Path.home() / "Library" / "Application Support" / "Sports Interactive" /
+                "Football Manager 2024" / "graphics" / "fmface")
     if sys.platform != "win32":
         return None
     import ctypes
@@ -386,7 +494,7 @@ def main() -> None:
         graphics_dir.mkdir(exist_ok=True)
     if not graphics_dir.is_dir() or graphics_dir.name != "fmface" or graphics_dir.parent.name != "graphics" or graphics_dir.parent.parent.name != "Football Manager 2024":
         parser.error("--graphics-dir must be the existing Football Manager 2024/graphics/fmface directory")
-    if not args.preview_only:
+    if not args.preview_only and sys.platform != "darwin":
         ask_for_key()
     Handler.token = token
     Handler.graphics_dir = graphics_dir
@@ -401,12 +509,22 @@ def main() -> None:
     from native_listener import start_native_listener
     try:
         start_native_listener(args.port, args.native_port, token, Handler, generate=generate_for_profile,
-                              has_face=lambda person_id: face_exists(Handler, person_id))
+                              has_face=lambda person_id: face_exists(Handler, person_id),
+                              resolve=resolve_reference, key_ready=lambda: ensure_key(Handler))
     except RuntimeError as exc:
         parser.exit(1, f"{exc}\n")
     # Index the portraits now, so the first popup's face check is quick (the
     # game archive only if FM24 is already running).
     threading.Thread(target=lambda: _quietly(face_exists, Handler, "1"), daemon=True).start()
+    if not args.preview_only and sys.platform == "darwin":
+        threading.Thread(target=_quietly, args=(_check_saved_key, Handler), daemon=True).start()
+    # People by handle, for profiles whose header shows no ID, where FM24's
+    # person table isn't mapped.
+    if LAYOUT["browser_reference"] is not None and LAYOUT["person_table"] is None:
+        try:
+            build_in_background(find_game_pid())
+        except (MemoryUnavailable, OSError, ValueError):
+            pass  # FM24 isn't running yet; the first lookup indexes it.
     print(f"FM24 companion listening on 127.0.0.1:{args.port} "
           f"({'preview' if args.preview_only else 'generation'} mode)", flush=True)
     server.serve_forever()
@@ -415,8 +533,10 @@ def main() -> None:
 def ask_for_key() -> None:
     """With no key in .env or FM Face's key file, ask for one in this window.
 
-    The key is checked with OpenAI (free) and saved encrypted in
-    %APPDATA%\\FM Face, which the FM26 plugin also reads.
+    The key is checked with OpenAI (free) and saved in FM Face's key file,
+    which the FM26 plugin also reads: encrypted for the Windows user in
+    %APPDATA%\\FM Face, or readable only by this user in macOS's
+    ~/Library/Application Support/FM Face.
     """
     import getpass
     import keystore
@@ -429,7 +549,7 @@ def ask_for_key() -> None:
     if saved:
         # A saved key can be revoked later; checking it is free. Ask again only
         # when OpenAI says no, not when it can't be reached.
-        if keystore.check(saved) != keystore.REJECTED:
+        if keystore.check(saved, base=_api()) != keystore.REJECTED:
             return
         print("OpenAI no longer accepts the saved key.", flush=True)
     print("FM Face makes faces with your own OpenAI API key. Each face is one billed request on your "
@@ -451,7 +571,7 @@ def ask_for_key() -> None:
             print(exc, flush=True)
             continue
         print("Checking the key with OpenAI (this is free)...", flush=True)
-        problem = keystore.check(key)
+        problem = keystore.check(key, base=_api())
         if problem:
             print(problem, flush=True)
             continue
@@ -460,7 +580,8 @@ def ask_for_key() -> None:
         except (OSError, ValueError) as exc:
             print(f"Could not save the key: {exc}", flush=True)
             return
-        print(f"Key saved, encrypted for your Windows user, in {store.parent}. "
+        stored = "readable only by you" if sys.platform == "darwin" else "encrypted for your Windows user"
+        print(f"Key saved, {stored}, in {store.parent}. "
               "Delete that folder to forget it.", flush=True)
         return
 

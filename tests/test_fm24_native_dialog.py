@@ -8,6 +8,8 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "fm24"))
+import layout  # noqa: E402  The fixtures are records from the Windows fm.exe.
+layout.LAYOUT.update(layout.WINDOWS)
 import native_dialog
 
 TOKEN = "k" * 43
@@ -58,6 +60,19 @@ class NativeDialogTests(unittest.TestCase):
         self.assertEqual(base64.b64decode(text).decode(), "4 of 29 players have no face.")
         # Polling repeats the same serial, so the DLL never opens a second dialog.
         self.assertEqual({fields[2] for fields in dll.packets}, {serial})
+
+    def test_key_prompt_returns_the_typed_key_or_none(self):
+        typed = base64.b64encode(b"sk-typed").decode()
+        dll = FakeDll(self, ["shown", "shown", f"key {typed}"])
+        self.assertEqual(native_dialog.ask_key(dll.port, TOKEN, "Paste it.\n\nKept on this Mac."), "sk-typed")
+        magic, version, serial, token, text = dll.packets[0]
+        self.assertEqual((magic, version), ("FMFACE24K", "1"))
+        # Line breaks are kept: the prompt shows paragraphs.
+        self.assertEqual(base64.b64decode(text).decode(), "Paste it.\n\nKept on this Mac.")
+        self.assertEqual({fields[2] for fields in dll.packets}, {serial})
+        self.assertIsNone(native_dialog.ask_key(FakeDll(self, ["shown", "cancel"]).port, TOKEN, "Paste it."))
+        with self.assertRaises(native_dialog.DialogUnavailable):
+            native_dialog.ask_key(FakeDll(self, ["busy"]).port, TOKEN, "Paste it.")
 
     def test_message_returns_once_shown(self):
         dll = FakeDll(self, ["queued", "shown"])

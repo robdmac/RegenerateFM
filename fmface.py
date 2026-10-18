@@ -300,6 +300,13 @@ def profile_prompt(profile: dict, *, person_id: str | None = None,
     )
 
 
+def api_base(env: dict[str, str]) -> str:
+    """OPENAI_BASE_URL, for testing against a local stand-in (like the FM26
+    plugin's ApiBaseUrl); OpenAI's own address by default. Plain http is
+    accepted only for this computer."""
+    return keystore.api_base(env.get("OPENAI_BASE_URL", ""))
+
+
 def _image_settings(env: dict[str, str]) -> tuple[str, dict[str, str]]:
     key = env.get("OPENAI_API_KEY", "").strip()
     if not key:
@@ -317,9 +324,9 @@ def _image_settings(env: dict[str, str]) -> tuple[str, dict[str, str]]:
 
 
 def _image_request(key: str, endpoint: str, body: bytes, content_type: str,
-                   settings: dict[str, str], metadata: dict | None) -> bytes:
+                   settings: dict[str, str], metadata: dict | None, base: str) -> bytes:
     request = urllib.request.Request(
-        f"https://api.openai.com/v1/images/{endpoint}", data=body,
+        f"{base}/images/{endpoint}", data=body,
         headers={"Authorization": f"Bearer {key}", "Content-Type": content_type},
         method="POST",
     )
@@ -373,7 +380,7 @@ def generate_png(env: dict[str, str], prompt: str, *, metadata: dict | None = No
     key, settings = _image_settings(env)
     payload = dict(settings, prompt=prompt)
     return _image_request(key, "generations", json.dumps(payload).encode("utf-8"),
-                          "application/json", settings, metadata)
+                          "application/json", settings, metadata, api_base(env))
 
 
 def edit_png(env: dict[str, str], prompt: str, reference: bytes, *,
@@ -394,7 +401,7 @@ def edit_png(env: dict[str, str], prompt: str, reference: bytes, *,
                  + reference + b"\r\n")
     parts.append(f"--{boundary}--\r\n".encode("ascii"))
     return _image_request(key, "edits", b"".join(parts),
-                          f"multipart/form-data; boundary={boundary}", settings, metadata)
+                          f"multipart/form-data; boundary={boundary}", settings, metadata, api_base(env))
 
 
 def _atomic_write(path: Path, content: bytes) -> None:

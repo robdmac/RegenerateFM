@@ -36,6 +36,18 @@ Run it with FM24 closed. Running it again does nothing unless something changed,
 
 Afterwards, in FM24's **Preferences > Interface**, choose the **FM Face** skin and tick **Show screen IDs in Title Bar to assist skinning**.
 
+## macOS (Apple Silicon, experimental)
+
+FM24 for Mac is its own program, so FM Face uses a Mac library instead of the DLL: `libfmface24.dylib`, from [native_menu/fmface24_macos.c](native_menu/fmface24_macos.c), pinned to FM24 24.4.2's arm64 build. Its in-game features are the same: the portrait popup, the Overview tab rows, the Squad menu item, FM24's dialogs and the skin reload. macOS doesn't let another program read FM24's memory, so the library also serves the companion's reads.
+
+1. Install Xcode's command-line tools (`xcode-select --install`) and the companion's Python packages (`pip install -r fm24/requirements.txt`).
+2. Build the library: `python3 fm24/native_menu/build_macos.py`.
+3. Close FM24 and run `python3 fm24/setup_fm24.py`. It finds FM24 in `~/Library/Application Support/Steam`, builds the skin in `~/Library/Application Support/Sports Interactive/Football Manager 2024/skins/fmface`, and puts `libfmface24.dylib`, `run_fmface24.sh` and `fmface24.ini` beside `fm.app`.
+4. Set FM24's Steam launch option to the line it prints: `"<the game folder>/run_fmface24.sh" %command%`.
+5. Start the companion, `python3 fm24/companion.py`. The first time you choose a face command, FM24 asks for your OpenAI key in a prompt on its window (paste with Cmd+V; the key isn't shown). The companion checks it with a free OpenAI request, keeps it in `~/Library/Application Support/FM Face`, readable only by you, and asks again in the game if OpenAI later rejects it. Then choose the FM Face skin in FM24's **Preferences > Interface**. On the Mac, **Show screen IDs in Title Bar** isn't needed: the library reports the person from the screen's object browser, and the companion finds them by their handle in FM24's person table.
+
+`fm.app` is never changed. `python3 fm24/setup_fm24.py --remove` removes the library and launcher and restores the panels; then clear the launch option. On an Intel Mac, `run_fmface24.sh` starts FM24 without FM Face. The memory layouts are in [layout.py](layout.py) and described in [native_menu/README.md](native_menu/README.md#macos).
+
 ## Packaged companion for Windows
 
 `fmface-fm24.exe` (the release ZIP's `FM24` folder) is the companion packaged with Python, Pillow, zstandard and the FM24 DLL, so players need no Python or compiler.
