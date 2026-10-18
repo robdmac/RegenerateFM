@@ -112,6 +112,51 @@ def set_progress(port: int, token: str, target: str, text: str, *, clock=time.mo
     raise DialogUnavailable("FM24 did not apply the progress text.")
 
 
+def ask_key(port: int, token: str, text: str, *, timeout: float = 1800, clock=time.monotonic,
+            serial: int | None = None) -> str | None:
+    """Ask for the OpenAI key in FM24 (the macOS library's key prompt) and
+    return what was typed, or None for Cancel. ``text`` may have line breaks.
+    Raises DialogUnavailable when the library can't show the prompt."""
+    data = text.strip().encode("utf-8")
+    if not data or len(data) > MAX_TEXT or b"\0" in data:
+        raise ValueError("FM24 key prompt text is empty or too long.")
+    serial = serial or time.time_ns() // 1_000_000
+    packet = f"FMFACE24K 1 {serial} {token} {base64.b64encode(data).decode('ascii')}".encode("ascii")
+    prefix = f"FMFACE24K {serial} "
+    replied = False
+    start = clock()
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as connection:
+        connection.connect(("127.0.0.1", port))
+        connection.settimeout(.5)
+        while True:
+            waited = clock() - start
+            if not replied and waited > 5:
+                raise DialogUnavailable("The FM24 native library did not answer the key prompt request.")
+            if waited > timeout:
+                raise TimeoutError("No answer to FM24's key prompt.")
+            try:
+                connection.send(packet)
+                reply = connection.recv(1024).decode("ascii", "replace")
+            except ConnectionRefusedError:
+                raise DialogUnavailable("The FM24 native library is not listening.") from None
+            except socket.timeout:
+                continue
+            if not reply.startswith(prefix):
+                continue
+            replied = True
+            status = reply[len(prefix):]
+            if status == "busy":
+                raise DialogUnavailable("FM24 is already showing the key prompt.")
+            if status == "cancel":
+                return None
+            if status.startswith("key "):
+                try:
+                    return base64.b64decode(status[4:], validate=True).decode("utf-8")
+                except ValueError:
+                    return ""
+            time.sleep(.25)
+
+
 def notify(port: int | None, token: str, text: str, fallback) -> None:
     """Show text in an FM24 OK dialog, or call ``fallback(text)`` if FM24 can't."""
     if port:

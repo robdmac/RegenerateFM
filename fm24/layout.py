@@ -31,6 +31,9 @@ WINDOWS = {
     "person_vtables": None,        # the kind comes from the record type and position ratings
     "object_browser_vtable": 0x56BAE48,  # CLIENT_OBJECT_BROWSER, from fm.exe's RTTI
     "browser_reference": None,     # not yet confirmed on fm.exe (probe_object_browser.py)
+    "person_table": None,          # not mapped on fm.exe; person_handles scans memory instead
+    "sidebar_vtable": None,        # SIDEBAR_MENU_TABLE; not mapped on fm.exe
+    "sidebar_reference": None,
 }
 
 MACOS = {
@@ -59,6 +62,13 @@ MACOS = {
     # shown: type << 24 | index, 0x01000000 | handle for a person.
     "object_browser_vtable": 0x4F77650,
     "browser_reference": 0x878,
+    # The global (from the image header) pointing at the game's database,
+    # whose vector of person pointers, indexed by handle, starts at +0x318.
+    "person_table": (0x5304848, 0x318),
+    # The sidebar menu keeps the screen's object reference, also after a skin
+    # reload, when the object browser's stops being updated.
+    "sidebar_vtable": 0x5060DC0,
+    "sidebar_reference": 0x278,
 }
 
 # A copy, so tests with records from one build can select its layout on any

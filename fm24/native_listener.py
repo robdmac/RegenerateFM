@@ -30,7 +30,8 @@ def _person_field(value: str) -> bool:
 
 
 def start_native_listener(port, bridge_port, token, handler, *,
-                          notify=None, clock=time.time, generate=None, has_face=None, resolve=None):
+                          notify=None, clock=time.time, generate=None, has_face=None, resolve=None,
+                          key_ready=None):
     if notify is None:
         # FM24's own OK dialog through the DLL, else the companion terminal.
         def notify(message):
@@ -56,13 +57,17 @@ def start_native_listener(port, bridge_port, token, handler, *,
                 # Roster, portrait state and prompts come from game memory.
                 run_native_squad_batch(handler,
                                        lambda person_id, profile: generate(handler, person_id, profile),
-                                       describe_result)
+                                       describe_result, key_ready=key_ready)
                 return
             # The companion reads the open profile from memory and refuses the
             # request unless it is still this person.
             if not bound_id:
                 raise ValueError("FM24 did not report which person's menu was chosen; "
                                  "no image request was made.")
+            # FM24 for macOS asks for a missing key first, before the request.
+            if key_ready is not None and not key_ready():
+                print("No OpenAI key was saved; no image request was made.", flush=True)
+                return
             if bound_id.startswith("r"):
                 if resolve is None:
                     raise ValueError("Enable screen IDs in FM24's preferences; no image request was made.")
@@ -70,7 +75,7 @@ def start_native_listener(port, bridge_port, token, handler, *,
             result = request_generation(port, token, handler, expected_id=bound_id,
                                         mode="update" if action == "update" else "generate")
             print(describe_result(result), flush=True)
-            if not result.get("ok"):
+            if not result.get("ok") and not result.get("cancelled"):
                 notify(result.get("error", "FM Face could not generate this portrait."))
             elif not result.get("preview") and not result.get("refreshed"):
                 notify(result.get("warning", "The portrait was saved, but FM24 did not reload it."))

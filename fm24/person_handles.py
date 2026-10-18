@@ -4,9 +4,11 @@ FM24 refers to an object by a 32-bit reference, type << 24 | index; a person
 is 0x01000000 | their handle, the u32 just before their record (person + 8;
 see native_squad). The open screen's object browser holds the reference of
 what it shows (layout "browser_reference"), so the library can report the
-person on a profile when the header shows no "(ID:n)". The companion maps
-handles to people with one pass over the game's memory and checks each
-mapping again before it is used.
+person on a profile when the header shows no "(ID:n)". Where the layout
+maps FM24's person table (a vector of person pointers indexed by handle,
+"person_table"), a lookup is two reads. Otherwise, or if the table read
+fails, the companion maps handles to people with one pass over the game's
+memory, and checks each mapping again before it is used.
 """
 
 from __future__ import annotations
@@ -19,6 +21,8 @@ from layout import LAYOUT
 from live_memory import MemoryUnavailable, record_marker
 from process_memory import MemoryScan, fm24_image_base, read_process_bytes
 
+PERSON_HANDLE = 8
+
 PERSON_TYPE = 1
 _INDEX_MASK = 0x7FFFFF
 # Bytes 14-15 of a full person record (live_memory.record_marker): found with
@@ -30,6 +34,7 @@ _lock = threading.Lock()
 _index: dict[int, dict[int, int]] = {}      # pid -> handle -> record address
 _built: dict[int, float] = {}               # pid -> time of the last pass
 _building: set[int] = set()
+_built_event = threading.Condition(_lock)
 
 
 def person_handle(reference: int) -> int:
@@ -68,28 +73,52 @@ def _check(pid: int, handle: int, record: int) -> str | None:
     return str(number)
 
 
+def _from_table(pid: int, handle: int) -> str | None:
+    """The person ID at this handle in FM24's person table, or None."""
+    if LAYOUT["person_table"] is None:
+        return None
+    pointer, vector = LAYOUT["person_table"]
+    try:
+        database = struct.unpack("<Q", read_process_bytes(pid, fm24_image_base(pid) + pointer, 8))[0]
+        begin, end = struct.unpack("<QQ", read_process_bytes(pid, database + vector, 16))
+        if not begin or end < begin or handle >= (end - begin) // 8:
+            return None
+        person = struct.unpack("<Q", read_process_bytes(pid, begin + 8 * handle, 8))[0]
+        return _check(pid, handle, person + PERSON_HANDLE + 4) if person else None
+    except (OSError, ValueError, struct.error):
+        return None
+
+
 def build(pid: int) -> None:
-    """Map every person record's handle (one memory pass, about 10 s)."""
-    found = _scan(pid)
+    """Map every person record's handle (one memory pass, about 10 s). A
+    pass already running for this game is waited for, not repeated."""
     with _lock:
-        _index[pid] = found
-        _built[pid] = time.monotonic()
+        if pid in _building:
+            while pid in _building:
+                _built_event.wait()
+            return
+        _building.add(pid)
+    try:
+        found = _scan(pid)
+        with _lock:
+            _index[pid] = found
+            _built[pid] = time.monotonic()
+    finally:
+        with _lock:
+            _building.discard(pid)
+            _built_event.notify_all()
 
 
 def build_in_background(pid: int) -> None:
     with _lock:
         if pid in _building:
             return
-        _building.add(pid)
 
     def run():
         try:
             build(pid)
         except (MemoryUnavailable, OSError, ValueError):
             pass
-        finally:
-            with _lock:
-                _building.discard(pid)
     threading.Thread(target=run, name="fm24-person-handles", daemon=True).start()
 
 
@@ -99,6 +128,8 @@ def person_for_reference(pid: int, reference: int, *, wait: bool = True) -> str:
     if LAYOUT["browser_reference"] is None:
         raise MemoryUnavailable("This FM24 build's object browser isn't mapped; enable screen IDs.")
     handle = person_handle(reference)
+    if person := _from_table(pid, handle):
+        return person
     with _lock:
         record = _index.get(pid, {}).get(handle)
         last = _built.get(pid)
@@ -118,8 +149,20 @@ def person_for_reference(pid: int, reference: int, *, wait: bool = True) -> str:
 
 
 def screen_reference(pid: int, manager: int, widgets: dict[int, list[int]]) -> int:
-    """The person reference of the open screen's object browser (exactly one)."""
-    vtable = fm24_image_base(pid) + LAYOUT["object_browser_vtable"]
+    """The open screen's object reference: the sidebar menu's, which FM24 keeps
+    after a skin reload, else the object browser's (exactly one)."""
+    image = fm24_image_base(pid)
+    if LAYOUT["sidebar_vtable"] is not None:
+        sidebars = [widget for widget in widgets.get(int.from_bytes(b"side", "big"), [])
+                    if struct.unpack("<Q", read_process_bytes(pid, widget, 8))[0] == image + LAYOUT["sidebar_vtable"]]
+        if len(sidebars) == 1:
+            reference = struct.unpack("<I", read_process_bytes(pid, sidebars[0] + LAYOUT["sidebar_reference"], 4))[0]
+            try:
+                person_handle(reference)
+                return reference
+            except ValueError:
+                pass
+    vtable = image + LAYOUT["object_browser_vtable"]
     browsers = [widget for found in widgets.values() for widget in found
                 if struct.unpack("<Q", read_process_bytes(pid, widget, 8))[0] == vtable]
     if len(browsers) != 1:

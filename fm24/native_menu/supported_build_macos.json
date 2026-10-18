@@ -49,6 +49,8 @@
     "vtable": "0x4f77650",
     "referenceOffset": "0x878",
     "resolve": "0x353cea4",
+    "sidebarVtable": "0x5060dc0",
+    "sidebarReferenceOffset": "0x278",
     "playerVtable": "0x51e6fd0",
     "staffVtable": "0x51e1150"
   }

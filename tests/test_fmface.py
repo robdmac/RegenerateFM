@@ -144,7 +144,9 @@ class PortraitTests(unittest.TestCase):
             env_file.write_text("OPENAI_API_KEY=\n")
             handler = object.__new__(FaceHandler)
             handler.reload_env = True
-            with patch("fmface.load_env", side_effect=lambda: load_env(env_file)):
+            # Never the key this computer has saved.
+            with patch("fmface.load_env", side_effect=lambda: load_env(env_file)), \
+                    patch("keystore.default_path", return_value=None):
                 self.assertFalse(handler._current_env().get("OPENAI_API_KEY"))
                 env_file.write_text("OPENAI_API_KEY=test-key\n")
                 self.assertEqual(handler._current_env()["OPENAI_API_KEY"], "test-key")

@@ -203,26 +203,43 @@ static long popup_person_id(void *manager, unsigned char *popup)
     return value <= 0x7fffffffu ? (long)value : 0;
 }
 
-/* Without "Show screen IDs in Title Bar" the header shows no ID. The screen's
-   CLIENT_OBJECT_BROWSER, an ancestor of every widget on it, holds a reference
-   to the object it shows: type << 24 | index, 0x01000000 | the handle for a
-   person. The companion turns the handle into the person (every person record
-   carries it), so the library doesn't call into the game to resolve it. */
-static unsigned int browser_reference(void *manager, unsigned char *widget)
+/* Without "Show screen IDs in Title Bar" the header shows no ID. FM24 refers
+   to the object a screen shows as type << 24 | index, 0x01000000 | the handle
+   for a person; the companion turns the handle into the person (every person
+   record carries it), so the library doesn't call into the game to resolve it.
+   The sidebar menu ('side', SIDEBAR_MENU_TABLE) keeps that reference at
+   +0x278 for every screen, also after a skin reload. The screen's
+   CLIENT_OBJECT_BROWSER, an ancestor of every widget on it, holds it too until
+   the first reload (FM Face reloads after each face), so it is only the
+   fallback. */
+static unsigned char *find_widget(void *manager, unsigned int a, unsigned int b, const void *object);
+
+static unsigned int person_reference(unsigned int reference)
+{
+    unsigned int index = reference & 0x7fffff;
+    return reference >> 24 == 1 && index && index != 0x7fffff ? reference : 0;
+}
+
+static unsigned int screen_reference(void *manager, unsigned char *widget)
 {
     unsigned int skin_id, reference;
+    void *vtable;
+    unsigned char *sidebar = find_widget(manager, SKIN_ID('s','i','d','e'), 0, NULL);
+    if (sidebar && read_game(sidebar, &vtable, sizeof(vtable)) && vtable == game_base + BROWSER_SIDEBAR_VTABLE &&
+        read_game(sidebar + BROWSER_SIDEBAR_REFERENCE_OFFSET, &reference, sizeof(reference)) &&
+        person_reference(reference))
+        return reference;
     for (int depth = 0; depth < 64 && widget && widget_id(widget, manager, &skin_id); ++depth) {
-        void *vtable;
         if (read_game(widget, &vtable, sizeof(vtable)) && vtable == game_base + BROWSER_VTABLE)
-            return read_game(widget + BROWSER_REFERENCE_OFFSET, &reference, sizeof(reference)) &&
-                   reference >> 24 == 1 && (reference & 0x7fffff) != 0x7fffff ? reference : 0;
+            return read_game(widget + BROWSER_REFERENCE_OFFSET, &reference, sizeof(reference)) ?
+                   person_reference(reference) : 0;
         if (!read_pointer(widget + WIDGET_PARENT, &widget)) return 0;
     }
     return 0;
 }
 
 /* Who the popup's screen shows: the person ID from the header's "(ID:n)",
-   else minus the browser's person reference, else 0 (refused). */
+   else minus the screen's person reference, else 0 (refused). */
 static long long popup_target(void *manager, unsigned char *popup)
 {
     long person = popup_person_id(manager, popup);
@@ -232,7 +249,7 @@ static long long popup_target(void *manager, unsigned char *popup)
         (skin_id != SKIN_ID('f','m','n','P') && skin_id != SKIN_ID('f','m','n','S') &&
          skin_id != SKIN_ID('P','p','r','f')))
         return 0;
-    return -(long long)browser_reference(manager, popup);
+    return -(long long)screen_reference(manager, popup);
 }
 
 /* The bridge's person field: the ID, or "r<reference>" for the companion to resolve. */
@@ -1033,8 +1050,44 @@ static BOOL base64_text(const char *in, char *out, size_t size)
     return written == strlen(out);  /* No embedded NULs. */
 }
 
-/* Loopback requests on bridge port + 1 (reload, dialogs, progress), all
-   carrying the private token; the protocol is described in fmface24.c. */
+/* Standard base64 of size bytes into out (NUL-terminated). */
+static void base64_encode(const unsigned char *in, size_t size, char *out)
+{
+    static const char digits[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    size_t written = 0;
+    for (size_t i = 0; i < size; i += 3) {
+        unsigned int bits = (unsigned int)in[i] << 16 | (i + 1 < size ? (unsigned int)in[i + 1] << 8 : 0) |
+                            (i + 2 < size ? in[i + 2] : 0);
+        out[written++] = digits[bits >> 18 & 63];
+        out[written++] = digits[bits >> 12 & 63];
+        out[written++] = i + 1 < size ? digits[bits >> 6 & 63] : '=';
+        out[written++] = i + 2 < size ? digits[bits & 63] : '=';
+    }
+    out[written] = 0;
+}
+
+/* The OpenAI key prompt (key_prompt_macos.m), which the companion asks for
+   when no key is saved. The typed key stays here only until the next request. */
+void fmface_key_prompt(const char *text, void (*answer)(const char *key));
+enum { KEY_NONE, KEY_SHOWN, KEY_ENTERED, KEY_CANCELLED };
+static int key_state;
+static pthread_mutex_t key_lock = PTHREAD_MUTEX_INITIALIZER;
+static char entered_key[384];
+
+static void key_answered(const char *key)
+{
+    pthread_mutex_lock(&key_lock);
+    snprintf(entered_key, sizeof(entered_key), "%s", key ? key : "");
+    set_state(&key_state, key ? KEY_ENTERED : KEY_CANCELLED);
+    pthread_mutex_unlock(&key_lock);
+    log_line(key ? "FMFACE24_KEY_ENTERED" : "FMFACE24_KEY_CANCELLED");
+}
+
+/* Loopback requests on bridge port + 1 (reload, dialogs, progress, the key
+   prompt), all carrying the private token; the protocol is described in
+   fmface24.c. "FMFACE24K 1 <serial> <token> <text>" shows the key prompt with
+   the base64 text; the same serial polls for "shown", "key <base64>" or
+   "cancel". */
 static void *reload_listener(void *unused)
 {
     (void)unused;
@@ -1050,7 +1103,7 @@ static void *reload_listener(void *unused)
         return NULL;
     }
     log_line("FMFACE24_RELOAD_READY");
-    long long last = 0, last_dialog = 0, last_progress = 0;
+    long long last = 0, last_dialog = 0, last_progress = 0, last_key = 0;
     static char packet[4096], title_b64[400], text_b64[1500], title[256], text[1024];
     for (;;) {
         char token[160], kind[16], extra;
@@ -1086,6 +1139,41 @@ static void *reload_listener(void *unused)
             }
             count = snprintf(reply, sizeof(reply), "FMFACE24D %lld %s", serial, status);
             sendto(socket_fd, reply, (size_t)count, 0, (struct sockaddr *)&peer, sizeof(peer));
+            continue;
+        }
+        if (sscanf(packet, "FMFACE24K 1 %lld %159s %1499s %c", &serial, token, text_b64, &extra) == 3) {
+            if (serial <= 0 || strcmp(token, bridge_token) || !base64_text(text_b64, text, sizeof(text)))
+                continue;
+            char key_reply[640];
+            pthread_mutex_lock(&key_lock);
+            int state = get_state(&key_state);
+            if (serial > last_key) {
+                if (state == KEY_SHOWN) {
+                    status = "busy";
+                } else {
+                    last_key = serial;
+                    memset(entered_key, 0, sizeof(entered_key));
+                    set_state(&key_state, KEY_SHOWN);
+                    fmface_key_prompt(text, key_answered);
+                    log_line("FMFACE24_KEY_PROMPT");
+                    status = "shown";
+                }
+            } else if (serial == last_key) {
+                status = state == KEY_CANCELLED ? "cancel" : "shown";
+                if (state == KEY_ENTERED) {
+                    char encoded[520];
+                    base64_encode((const unsigned char *)entered_key, strlen(entered_key), encoded);
+                    snprintf(key_reply, sizeof(key_reply), "key %s", encoded);
+                    status = key_reply;
+                }
+            } else {
+                pthread_mutex_unlock(&key_lock);
+                continue;
+            }
+            char answer[700];
+            count = snprintf(answer, sizeof(answer), "FMFACE24K %lld %s", serial, status);
+            pthread_mutex_unlock(&key_lock);
+            sendto(socket_fd, answer, (size_t)count, 0, (struct sockaddr *)&peer, sizeof(peer));
             continue;
         }
         if (sscanf(packet, "FMFACE24P 1 %lld %159s %15s %399s %c", &serial, token, kind, title_b64, &extra) == 4) {
@@ -1252,6 +1340,10 @@ static void *memory_listener(void *unused)
     local.sin_family = AF_INET;
     local.sin_port = htons((unsigned short)(bridge_port + 2));
     local.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    /* A restarted FM24 must get the port back while the last run's
+       connections are still in TIME_WAIT. */
+    int reuse = 1;
+    if (listener >= 0) setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
     if (listener < 0 || bind(listener, (struct sockaddr *)&local, sizeof(local)) || listen(listener, 4)) {
         log_line("FMFACE24_MEMORY_PORT_FAILED");
         if (listener >= 0) close(listener);

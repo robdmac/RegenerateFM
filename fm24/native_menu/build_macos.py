@@ -37,7 +37,8 @@ def main() -> None:
     target = args.output / "libfmface24.dylib"
     subprocess.run([compiler, "-arch", "arm64", "-dynamiclib", "-O2", "-Wall", "-Wextra", "-Werror",
                     "-mmacosx-version-min=11.0", "-I", str(args.output),
-                    str(HERE / "fmface24_macos.c"), "-o", str(target)], check=True)
+                    str(HERE / "fmface24_macos.c"), "-fobjc-arc", str(HERE / "key_prompt_macos.m"),
+                    "-framework", "AppKit", "-o", str(target)], check=True)
     print(f"Built {target}.")
 
 

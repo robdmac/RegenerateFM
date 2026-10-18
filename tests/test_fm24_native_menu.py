@@ -210,7 +210,7 @@ class NativeBridgeTests(unittest.TestCase):
 
     def test_squad_command_ignores_person_field(self):
         done = threading.Event()
-        with patch.object(native_listener, "run_native_squad_batch", side_effect=lambda *args: done.set()) as batch:
+        with patch.object(native_listener, "run_native_squad_batch", side_effect=lambda *args, **kwargs: done.set()) as batch:
             bridge = Bridge(self)
             bridge.send(1, action="squad")
             self.assertEqual(bridge.reply(), b"FMFACE24 ACK 1 accepted")
@@ -506,6 +506,36 @@ class NativeInstallerTests(unittest.TestCase):
             with patch("sys.stderr"), self.assertRaises(SystemExit):
                 self.run_installer(*extra)
 
+
+
+class FindGamePidTests(unittest.TestCase):
+    """Why the companion can't reach FM24, in words a player can act on."""
+
+    def find(self, processes, unreadable=(), platform="linux"):
+        import live_memory
+
+        def image_base(pid):
+            if pid in unreadable:
+                raise OSError("no answer")
+            return 0x140000000
+        with patch.object(live_memory, "running_executables", return_value=processes), \
+                patch.object(live_memory, "fm24_image_base", side_effect=image_base), \
+                patch.object(live_memory, "EXECUTABLE_SUFFIX", "/fm.exe"), \
+                patch.object(sys, "platform", platform):
+            return live_memory.find_game_pid()
+
+    def test_messages(self):
+        from live_memory import MemoryUnavailable
+        game = "C:/Games/FM24/fm.exe"
+        self.assertEqual(self.find([(7, "/bin/sh"), (9, game)]), 9)
+        with self.assertRaisesRegex(MemoryUnavailable, "isn't running. Start it"):
+            self.find([(7, "/bin/sh")])
+        with self.assertRaisesRegex(MemoryUnavailable, "More than one FM24"):
+            self.find([(8, game), (9, game)])
+        with self.assertRaisesRegex(MemoryUnavailable, "isn't answering. Quit FM24 and start it again"):
+            self.find([(9, game)], unreadable={9}, platform="darwin")
+        with self.assertRaisesRegex(MemoryUnavailable, r"can't read the running FM24 \(no answer\)"):
+            self.find([(9, game)], unreadable={9})
 
 if __name__ == "__main__":
     unittest.main()

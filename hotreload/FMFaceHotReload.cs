@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using BepInEx;
 using BepInEx.Unity.IL2CPP;
 using HarmonyLib;
+using Il2CppInterop.Runtime;
 using Il2CppInterop.Runtime.Injection;
 using SI.Bindable;
 using SI.Core;
@@ -57,6 +58,9 @@ namespace FMFaceHotReload
         private int _graphicsLoadSerial;
         private long _portraitMenuPersonId;
         private System.DateTime _refreshStartedUtc;
+        // macOS: when FM26 last registered a file from a folder being reloaded (LocatorPatch).
+        private static System.DateTime? _lastLocatorUtc;
+        private static readonly TimeSpan LocatorsSettled = TimeSpan.FromMilliseconds(250);
         private readonly Dictionary<long, string> _biographyCache = new Dictionary<long, string>();
         private Harmony _harmony;
         private FaceMenuContributor _menuContributor;
@@ -72,6 +76,9 @@ namespace FMFaceHotReload
         private BepInEx.Configuration.ConfigEntry<string> _apiBaseUrl;
         private static readonly TimeSpan GenerationTimeout = TimeSpan.FromMinutes(5);
         private static readonly TimeSpan GraphicsTimeout = TimeSpan.FromSeconds(30);
+        // How long the squad batch waits for an opened profile to show all it reads
+        // (within the batch's 45 s limit for each step).
+        private static readonly TimeSpan ProfileBindTimeout = TimeSpan.FromSeconds(30);
 
         public override void Load()
         {
@@ -88,7 +95,11 @@ namespace FMFaceHotReload
             });
             _menuContributor = new FaceMenuContributor();
             _harmony = new Harmony("fmface.hotreload");
-            _harmony.PatchAll(typeof(AssetLoadPatch));
+            // See LocatorPatch: on macOS the reload is followed another way.
+            if (OperatingSystem.IsMacOS())
+                _harmony.PatchAll(typeof(LocatorPatch));
+            else
+                _harmony.PatchAll(typeof(AssetLoadPatch));
             _harmony.PatchAll(typeof(MenuOpenPatch));
             AddComponent<StaffWatcher>();
             Log.LogInfo("FM Face Actions and portrait menu integration loaded");
@@ -412,6 +423,20 @@ namespace FMFaceHotReload
                     break;
                 }
             }
+            // Without screen IDs the header has no "(ID:n)" text: the name is in
+            // the same box as a player's, and the job title follows it.
+            if (string.IsNullOrWhiteSpace(profile.Name))
+            {
+                foreach (var value in TextValues(FindNamed(banner, "Frame 1000003381")))
+                    if (!IdPattern.IsMatch(value))
+                    {
+                        profile.Name = value;
+                        break;
+                    }
+                int nameIndex = profile.Name == null ? -1 : bannerTexts.IndexOf(profile.Name);
+                if (nameIndex >= 0 && nameIndex + 1 < bannerTexts.Count && string.IsNullOrWhiteSpace(profile.JobTitle))
+                    profile.JobTitle = bannerTexts[nameIndex + 1];
+            }
             profile.JobTitle = FirstText(FindNamed(banner, "Frame 1000003901")) ?? profile.JobTitle;
             profile.Club = FirstText(FindNamed(header, "PlayingTeam"));
             profile.Nationality = FirstText(FindNamed(header, "Frame 1000003766"));
@@ -432,8 +457,11 @@ namespace FMFaceHotReload
             }
             if (string.IsNullOrWhiteSpace(profile.Name) || string.IsNullOrWhiteSpace(profile.JobTitle) ||
                 string.IsNullOrWhiteSpace(profile.Nationality) || profile.Age < 14 || profile.Age > 100 || picture == null)
+            {
+                Instance?.Log.LogWarning("Staff header, for diagnosis: " + DescribeTexts(banner));
                 throw new InvalidOperationException("Incomplete staff profile (no API request): name=" + profile.Name +
                     ", age=" + profile.Age + ", nationality=" + profile.Nationality + ", job=" + profile.JobTitle + ".");
+            }
             profile.BiographyHeadline = CaptureBiographyHeadline(root);
             return profile;
         }
@@ -615,6 +643,8 @@ namespace FMFaceHotReload
             public Label Status;
             public bool StopAfterCurrent;
             public System.DateTime NextPlayerUtc;
+            public double LastDiagnosis = -10;
+            public System.DateTime? UnfocusedSinceUtc;
         }
 
         private void CheckSquadMenu()
@@ -639,9 +669,13 @@ namespace FMFaceHotReload
             var scroll = menuList.parent?.TryCast<ScrollView>();
             if (scroll == null)
                 return;
+            // FM26 closes the dropdown when the pointer leaves it, so the item goes
+            // inside the dropdown, after its list: moving to it never leaves the menu.
+            var dropdown = scroll.parent;
             if (_squadMenuButton != null && _squadMenuButton.parent != null && _squadMenuList == menuList)
             {
-                PositionSquadMenuButton(_squadMenuButton, scroll, root);
+                if (_squadMenuButton.parent == root)
+                    PositionSquadMenuButton(_squadMenuButton, scroll, root);
                 return;
             }
             RemoveSquadMenuButton();
@@ -650,16 +684,28 @@ namespace FMFaceHotReload
                 name = "fmface-squad-command", text = "Generate faces…", focusable = false
             };
             button.style.height = 36;
-            button.style.position = Position.Absolute;
-            PositionSquadMenuButton(button, scroll, root);
+            button.style.flexShrink = 0;
             button.style.color = Color.white;
             button.style.backgroundColor = new Color(0.18f, 0.13f, 0.24f, 1f);
             button.style.unityTextAlign = TextAnchor.MiddleLeft;
             button.style.paddingLeft = 12;
-            root.Add(button);
+            if (dropdown != null)
+            {
+                dropdown.Add(button);
+            }
+            else
+            {
+                button.style.position = Position.Absolute;
+                PositionSquadMenuButton(button, scroll, root);
+                root.Add(button);
+            }
             _squadMenuButton = button;
             _squadMenuList = menuList;
-            Log.LogInfo("FM Face squad command added to Squad menu");
+            var chain = new List<string>();
+            for (VisualElement element = scroll; element != null && chain.Count < 6; element = element.parent)
+                chain.Add((element.name ?? "") + " " + element.GetType().Name + " " + element.worldBound);
+            Log.LogInfo("FM Face squad command added to Squad menu " + (dropdown != null ? "(inside it)" : "(below it)") +
+                        "; dropdown: " + string.Join(" < ", chain));
         }
 
         private static void PositionSquadMenuButton(VisualElement button, ScrollView scroll, VisualElement root)
@@ -870,6 +916,27 @@ namespace FMFaceHotReload
             var batch = _squadBatch;
             if (batch == null)
                 return;
+            // FM26 is throttled while it isn't the focused app (macOS draws a hidden
+            // window very slowly), so a profile then takes far longer to fill in.
+            // Time away doesn't count towards the batch's waits.
+            if (!Application.isFocused)
+            {
+                if (!batch.UnfocusedSinceUtc.HasValue)
+                {
+                    batch.UnfocusedSinceUtc = System.DateTime.UtcNow;
+                    batch.Status.text = "Paused while FM26 is in the background; return to FM26 to continue.";
+                    Log.LogInfo("FM Face squad batch paused: FM26 is in the background");
+                }
+                return;
+            }
+            if (batch.UnfocusedSinceUtc.HasValue)
+            {
+                var away = System.DateTime.UtcNow - batch.UnfocusedSinceUtc.Value;
+                batch.StageStartedUtc += away;
+                batch.NextPlayerUtc += away;
+                batch.UnfocusedSinceUtc = null;
+                Log.LogInfo("FM Face squad batch resumed after " + away.TotalSeconds.ToString("0") + " s in the background");
+            }
             if (batch.StopAfterCurrent && batch.Stage != SquadStage.Request && batch.Stage != SquadStage.Refresh)
             {
                 StopSquadBatch("Stopped after " + batch.Completed + " faces.");
@@ -987,15 +1054,26 @@ namespace FMFaceHotReload
             VisualElement picture;
             VisualElement root;
             try { profile = CaptureProfile(personId, out picture, out root); }
-            catch (InvalidOperationException) when (System.DateTime.UtcNow - batch.StageStartedUtc < TimeSpan.FromSeconds(10))
+            catch (InvalidOperationException error) when (System.DateTime.UtcNow - batch.StageStartedUtc < ProfileBindTimeout)
             {
-                // FM creates the header before its bound name, stats and height arrive.
+                // FM creates the header before its bound name, stats and height
+                // arrive; under Rosetta 2 on macOS that took more than 10 s.
+                var waited = (System.DateTime.UtcNow - batch.StageStartedUtc).TotalSeconds;
+                if (waited - batch.LastDiagnosis >= 2)
+                {
+                    batch.LastDiagnosis = waited;
+                    var headers = new List<VisualElement>();
+                    CollectNamed(CurrentRoot(), "ReportHeader", headers);
+                    Log.LogInfo("DIAG batch capture after " + waited.ToString("0.0") + " s: " + headers.Count +
+                                " ReportHeader(s), first " + header.worldBound + "; " + error.Message + " | " +
+                                DescribeTexts(header));
+                }
                 return;
             }
             if (!string.Equals(profile.Name, target.Name, StringComparison.OrdinalIgnoreCase) ||
                 (target.Age > 0 && profile.Age != target.Age))
             {
-                if (System.DateTime.UtcNow - batch.StageStartedUtc < TimeSpan.FromSeconds(10))
+                if (System.DateTime.UtcNow - batch.StageStartedUtc < ProfileBindTimeout)
                     return;
                 throw new InvalidOperationException("Opened player does not match " + target.Name + "; no image requested");
             }
@@ -1159,8 +1237,42 @@ namespace FMFaceHotReload
             open.style.marginBottom = 10;
             dialog.Add(open);
             var field = new TextField { isPasswordField = true, maskChar = '•' };
+            // FM26's text field doesn't paste on macOS (the game has no Edit menu
+            // for Cmd+V), so there is a Paste button, and Cmd+V or Ctrl+V reaching
+            // the field is handled here too: the clipboard replaces its text.
+            Action paste = () =>
+            {
+                var clip = (GUIUtility.systemCopyBuffer ?? "").Trim();
+                if (clip.Length > 0)
+                    field.value = clip;
+                if (_keyStatus != null)
+                    _keyStatus.text = clip.Length > 0
+                        ? "Pasted " + clip.Length + " characters. Choose Save key."
+                        : "The clipboard is empty. Copy your key, then choose Paste.";
+            };
+            field.RegisterCallback(DelegateSupport.ConvertDelegate<EventCallback<KeyDownEvent>>(
+                new Action<KeyDownEvent>(key =>
+                {
+                    if (key.keyCode != KeyCode.V || !(key.commandKey || key.ctrlKey))
+                        return;
+                    paste();
+                    key.StopPropagation();
+                })), TrickleDown.TrickleDown);
+            // The dialog is 420 wide with 16 padding each side: 388 for both.
             field.style.height = 30;
-            dialog.Add(field);
+            field.style.width = 312;
+            field.style.flexShrink = 0;
+            var pasteButton = new Button((Il2CppSystem.Action)(System.Action)(() => paste()))
+            { text = "Paste", focusable = false };
+            pasteButton.style.height = 30;
+            pasteButton.style.width = 70;
+            pasteButton.style.marginLeft = 6;
+            pasteButton.style.flexShrink = 0;
+            var entry = new VisualElement();
+            entry.style.flexDirection = FlexDirection.Row;
+            entry.Add(field);
+            entry.Add(pasteButton);
+            dialog.Add(entry);
             _keyStatus = text("Paste or type the key (it starts with sk-), then choose Save.", 13);
             _keyStatus.style.marginTop = 6;
             var buttons = new VisualElement();
@@ -1542,6 +1654,30 @@ namespace FMFaceHotReload
                 CollectTexts(element.hierarchy.ElementAt(i), values);
         }
 
+        // Each shown text with the names of the elements above it, up to the given one.
+        private static string DescribeTexts(VisualElement top)
+        {
+            var parts = new List<string>();
+            void Visit(VisualElement element, string path)
+            {
+                if (element == null || element.worldBound.width <= 0 || element.worldBound.height <= 0 || parts.Count >= 60)
+                    return;
+                if (!string.IsNullOrEmpty(element.name))
+                    path = path.Length == 0 ? element.name : path + "/" + element.name;
+                var text = element.TryCast<TextElement>();
+                if (text != null)
+                {
+                    var value = WebUtility.HtmlDecode(Tags.Replace(text.text ?? "", "")).Trim();
+                    if (value.Length > 0)
+                        parts.Add(path + " = \"" + value + "\"");
+                }
+                for (int i = 0; i < element.hierarchy.childCount; i++)
+                    Visit(element.hierarchy.ElementAt(i), path);
+            }
+            Visit(top, "");
+            return string.Join("; ", parts);
+        }
+
         private static string FirstText(VisualElement element)
         {
             var values = TextValues(element);
@@ -1740,8 +1876,10 @@ namespace FMFaceHotReload
             try
             {
                 string folder = GraphicsFolder();
+                var timer = System.Diagnostics.Stopwatch.StartNew();
                 await FaceGenerator.MakePortrait(settings, folder, playerId.ToString(System.Globalization.CultureInfo.InvariantCulture),
                                                  profile, mode == "update", shownPng).ConfigureAwait(false);
+                Instance?.Log.LogInfo("Image request and save took " + timer.Elapsed.TotalSeconds.ToString("0.0") + " s");
                 return new GenerationResult { Success = true, GraphicsDir = folder };
             }
             catch (ApiKeyRejectedException error)
@@ -1785,6 +1923,7 @@ namespace FMFaceHotReload
             try
             {
                 WaitingForGraphics = true;
+                _lastLocatorUtc = null;
                 _refreshStartedUtc = System.DateTime.UtcNow;
                 resources[0].RegisterLocalPath(folder, null);
                 Log.LogInfo("Requested FM Face graphics reload from " + folder);
@@ -1800,6 +1939,16 @@ namespace FMFaceHotReload
 
         private void CheckRefreshTimeout()
         {
+            if (WaitingForGraphics && _lastLocatorUtc.HasValue &&
+                System.DateTime.UtcNow - _lastLocatorUtc.Value >= LocatorsSettled)
+            {
+                WaitingForGraphics = false;
+                _lastLocatorUtc = null;
+                Log.LogInfo("FM Face graphics registered after " +
+                            (System.DateTime.UtcNow - _refreshStartedUtc).TotalSeconds.ToString("0.0") + " s");
+                GraphicsLoaded();
+                return;
+            }
             if (!WaitingForGraphics || System.DateTime.UtcNow - _refreshStartedUtc < GraphicsTimeout)
                 return;
             WaitingForGraphics = false;
@@ -1845,6 +1994,24 @@ namespace FMFaceHotReload
                     return;
                 WaitingForGraphics = false;
                 Instance.GraphicsLoaded();
+            }
+        }
+
+        // EnumerateLocalAssetsComplete takes an AsyncOperationHandle struct, which
+        // Il2CppInterop's hook passes with the Windows calling convention. Under
+        // macOS's x64 System V convention the game then gets a broken handle,
+        // throws "Attempting to use an invalid operation handle" and never
+        // finishes the reload, so there that method isn't hooked. FM26 calls
+        // RegisterResourceLocator (object arguments only) for each file of the
+        // folder as the enumeration completes; once those calls have stopped for
+        // LocatorsSettled, CheckRefreshTimeout refreshes the panels.
+        [HarmonyPatch(typeof(ResourcesSubsystem), "RegisterResourceLocator")]
+        private static class LocatorPatch
+        {
+            private static void Postfix()
+            {
+                if (WaitingForGraphics)
+                    _lastLocatorUtc = System.DateTime.UtcNow;
             }
         }
 

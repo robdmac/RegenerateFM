@@ -14,6 +14,7 @@ import os
 import re
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -22,6 +23,7 @@ PLAIN = b"FMFK0\n"
 ENTROPY = b"FM Face OpenAI API key"
 KEY_RE = re.compile(r"sk-[A-Za-z0-9_\-]{16,300}")
 KEYS_PAGE = "https://platform.openai.com/api-keys"
+DEFAULT_API = "https://api.openai.com/v1"
 REJECTED = "OpenAI didn't accept this key. Check that you copied all of it."
 
 
@@ -73,9 +75,21 @@ def save(path: Path, key: str) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def check(key: str, timeout: float = 30) -> str | None:
+def api_base(configured: str = "") -> str:
+    """The image API address: OpenAI's, or OPENAI_BASE_URL for testing. Plain
+    http only for this computer, so a key is never sent unencrypted."""
+    base = (configured or "").strip().rstrip("/") or DEFAULT_API
+    parts = urllib.parse.urlsplit(base)
+    if parts.scheme == "https" and parts.hostname:
+        return base
+    if parts.scheme == "http" and parts.hostname in ("127.0.0.1", "localhost", "::1"):
+        return base
+    raise ValueError("OPENAI_BASE_URL must be an https address, or http on this computer (127.0.0.1).")
+
+
+def check(key: str, timeout: float = 30, base: str = DEFAULT_API) -> str | None:
     """None if OpenAI accepts the key, otherwise the problem. Listing models is free."""
-    request = urllib.request.Request("https://api.openai.com/v1/models",
+    request = urllib.request.Request(f"{base}/models",
                                      headers={"Authorization": f"Bearer {key}"})
     try:
         with urllib.request.urlopen(request, timeout=timeout):

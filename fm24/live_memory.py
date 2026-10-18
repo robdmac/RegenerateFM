@@ -11,6 +11,7 @@ from __future__ import annotations
 import datetime as dt
 import re
 import struct
+import sys
 from dataclasses import dataclass
 
 from layout import EXECUTABLE_SUFFIX, LAYOUT
@@ -137,18 +138,27 @@ def _parse_record(pid: int, address: int, person_id: int) -> PersonIdentity | No
 
 
 def find_game_pid() -> int:
-    candidates = []
+    """The one running FM24; MemoryUnavailable says in the player's terms why not."""
+    candidates, unreadable = [], []
     for pid, executable in running_executables():
         if not executable.replace("\\", "/").lower().endswith(EXECUTABLE_SUFFIX):
             continue
         try:
             fm24_image_base(pid)
-        except (OSError, ValueError):
+        except (OSError, ValueError) as exc:
+            unreadable.append(exc)
             continue
         candidates.append(pid)
-    if len(candidates) != 1:
-        raise MemoryUnavailable(f"Expected one running FM24 process; found {len(candidates)}.")
-    return candidates[0]
+    if len(candidates) == 1:
+        return candidates[0]
+    if candidates:
+        raise MemoryUnavailable("More than one FM24 is running. Quit the others and try again.")
+    if unreadable and sys.platform == "darwin":
+        raise MemoryUnavailable("FM Face can't read FM24: its library in the game isn't answering. "
+                                "Quit FM24 and start it again from Steam, then try again.")
+    if unreadable:
+        raise MemoryUnavailable(f"FM Face can't read the running FM24 ({unreadable[0]}).")
+    raise MemoryUnavailable("FM24 isn't running. Start it, open the profile and try again.")
 
 
 def read_identity(person_id: str, pid: int | None = None) -> PersonIdentity:

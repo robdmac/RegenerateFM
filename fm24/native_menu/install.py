@@ -213,7 +213,8 @@ def main(argv: list[str] | None = None) -> None:
             _remove(skin, metadata, transaction, [target, config, manifest] + ([launcher] if launcher else []))
             print("Removed the native library and configuration and restored the original FM Face panels.")
             if launcher:
-                print("Also remove run_fmface24.sh from FM24's Steam launch options.")
+                print("FM24's Steam launch option is removed by fm24/setup_fm24.py --remove "
+                      "(or steam_launch.py fm24 --remove).")
             return
 
         if digest(game / EXECUTABLE) != SUPPORTED_SHA256:

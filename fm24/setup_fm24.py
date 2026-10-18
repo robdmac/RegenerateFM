@@ -24,7 +24,9 @@ sys.path.insert(0, str(HERE.parent))
 import build_skin  # noqa: E402
 import game_archive  # noqa: E402
 import install as native_install  # noqa: E402
+import steam_launch  # noqa: E402
 from fmface import ROOT  # noqa: E402
+from steam_launch import steam_libraries, steam_roots  # noqa: E402,F401
 
 APP_ID = "2252570"
 GAME_FOLDER = "Football Manager 2024"
@@ -41,49 +43,8 @@ def bundled_dll() -> Path:
     return native_install.DEFAULT_LIBRARY
 
 
-def steam_roots() -> list[Path]:
-    roots = []
-    if sys.platform == "win32":
-        import winreg
-        for hive, key, value in ((winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam", "SteamPath"),
-                                 (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Valve\Steam", "InstallPath")):
-            try:
-                with winreg.OpenKey(hive, key) as handle:
-                    roots.append(Path(winreg.QueryValueEx(handle, value)[0]))
-            except OSError:
-                pass
-    elif sys.platform == "darwin":
-        roots.append(Path.home() / "Library" / "Application Support" / "Steam")
-    else:
-        home = Path.home()
-        roots += [home / ".steam" / "steam", home / ".local" / "share" / "Steam",
-                  home / ".steam" / "debian-installation",
-                  home / ".var" / "app" / "com.valvesoftware.Steam" / ".local" / "share" / "Steam"]
-    return roots
-
-
-def steam_libraries() -> list[Path]:
-    """Every Steam library folder (the ones holding steamapps), without duplicates."""
-    found: list[Path] = []
-    for root in steam_roots():
-        candidates = [root]
-        try:
-            text = (root / "steamapps" / "libraryfolders.vdf").read_text(encoding="utf-8", errors="replace")
-            candidates += [Path(match.replace("\\\\", "\\")) for match in re.findall(r'"path"\s+"([^"]+)"', text)]
-        except OSError:
-            pass
-        for library in candidates:
-            try:
-                resolved = library.resolve()
-            except OSError:
-                continue
-            if (resolved / "steamapps").is_dir() and resolved not in found:
-                found.append(resolved)
-    return found
-
-
 def find_game_dir() -> Path | None:
-    for library in steam_libraries():
+    for library in steam_launch.steam_libraries():
         game = library / "steamapps" / "common" / GAME_FOLDER
         if (game / native_install.EXECUTABLE).is_file():
             return game
@@ -154,6 +115,7 @@ def setup(game: Path, user_data: Path, auth_file: Path) -> None:
     skin_dir = user_data / "skins" / "fmface"
     if is_set_up(game, skin_dir, auth_file):
         print("FM Face is already set up for FM24.", flush=True)
+        _launch_option(game)
         return
     if native_install.game_running():
         raise SystemExit("Close FM24, then run the FM Face setup again.")
@@ -173,6 +135,7 @@ def setup(game: Path, user_data: Path, auth_file: Path) -> None:
     (user_data / "graphics" / "fmface").mkdir(parents=True, exist_ok=True)
     native_install.main(["--game-dir", str(game), "--skin-dir", str(skin_dir),
                          "--auth-file", str(auth_file), "--dll", str(bundled_dll())])
+    _launch_option(game)
     if native_install.MACOS:
         # The macOS build reads the person from the screen's object browser.
         print("\nIn FM24, open Preferences > Interface and choose the \"FM Face\" skin.\n", flush=True)
@@ -180,6 +143,12 @@ def setup(game: Path, user_data: Path, auth_file: Path) -> None:
         print("\nIn FM24, open Preferences > Interface and:\n"
               "  1. choose the \"FM Face\" skin;\n"
               "  2. tick \"Show screen IDs in Title Bar to assist skinning\".\n", flush=True)
+
+
+def _launch_option(game: Path, *, remove: bool = False) -> None:
+    """Steam's launch option for FM24 (macOS and Proton), so Play starts FM Face."""
+    if sys.platform != "win32":
+        print(steam_launch.apply("fm24", game, remove=remove), flush=True)
 
 
 def resolve_dirs(game_dir: Path | None, user_data_dir: Path | None) -> tuple[Path, Path]:
@@ -208,6 +177,7 @@ def main(argv: list[str] | None = None) -> None:
     print(f"FM24: {game}\nFM24 user data: {user_data}", flush=True)
     if args.remove:
         native_install.main(["--game-dir", str(game), "--skin-dir", str(user_data / "skins" / "fmface"), "--remove"])
+        _launch_option(game, remove=True)
         return
     setup(game, user_data, args.auth_file)
 

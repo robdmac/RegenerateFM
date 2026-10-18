@@ -441,15 +441,22 @@ vtable: `db::ACTUAL_PLAYER` or `db::ACTUAL_NON_PLAYER`. Player-coaches
 are refused. The Squad table, its row model and the person handle table are
 read at the same offsets as in fm.exe.
 
-**Without screen IDs.** The screen's `CLIENT_OBJECT_BROWSER` (an ancestor of
-every widget on it) holds a reference to the object it shows at +0x878:
-`type << 24 | index`, `0x01000000 | handle` for a person. When the header
-shows no "(ID:n)", the library walks up from the clicked popup or tab to the
-browser and sends `r<reference>` in the person field of the click and the
-face check. It doesn't call FM24's resolver, which can load and register
-objects. The companion maps handles to people with one memory pass
-(`person_handles.py`; every record carries its handle 4 bytes before it) and
-checks the mapping again before each use; `native_screen.py` uses the same
+**Without screen IDs.** FM24 refers to the object a screen shows as
+`type << 24 | index`, `0x01000000 | handle` for a person. The sidebar menu
+(`side`, `SIDEBAR_MENU_TABLE`) keeps that reference at +0x278 for every
+screen. The screen's `CLIENT_OBJECT_BROWSER` (an ancestor of every widget on
+it) holds it at +0x878, but only until the first skin reload: after one,
+FM24 builds a new browser that no longer tracks the screen, which broke
+every face after the first in a session. So the library reads the sidebar
+first and the browser only as a fallback, and sends `r<reference>` in the
+person field of the click and the face check when the header shows no
+"(ID:n)". It doesn't call FM24's resolver, which can load and register
+objects. The companion looks the handle up in FM24's person table: the
+global at image + 0x5304848 points to the game database, whose vector of
+person pointers at +0x318 is indexed by handle (two reads, about 0.3 ms;
+every record carries its handle 4 bytes before it, which is checked). If
+that read fails it maps handles to people with one memory pass of about
+10 s (`person_handles.py`) and checks the mapping again before each use; `native_screen.py` uses the same
 reference for the open profile. Staff names then come from first/surname
 records, which on the Mac can start at any byte. In fm.exe the browser's
 class is known (vtable RVA `0x56bae48`) but not where it keeps the
@@ -457,6 +464,17 @@ reference: its members match the Mac build's up to +0x568 and are 8 bytes
 lower after that, and the code that reads it is in the protected part.
 `fm24/probe_object_browser.py` finds it on a running game; until then the
 Windows build needs screen IDs.
+
+**Key prompt.** On the Mac, FM24 asks for the OpenAI key itself, like the
+FM26 plugin. When a face command finds no saved key (or one OpenAI rejected),
+the companion sends `FMFACE24K 1 <serial> <token> <base64 text>` to the
+bridge port + 1, and the library shows [key_prompt_macos.m](key_prompt_macos.m)'s
+prompt as a sheet on FM24's window: a secure field (Cmd+V pastes, though
+FM24 has no Edit menu), Save key, Cancel and Get a key…, which opens OpenAI's
+key page. Polling the same serial answers `shown`, `key <base64>` or
+`cancel`; the typed key stays in the library only until the next request.
+The companion checks the key with OpenAI (free), asks again with the reason
+if it fails, and saves it in `~/Library/Application Support/FM Face`.
 
 Checked on 2026-10-17 on an Apple M2 (macOS 26) with a copy of a real save,
 in preview mode: a player (Sly) and a staff member (Terry McPhillips) read

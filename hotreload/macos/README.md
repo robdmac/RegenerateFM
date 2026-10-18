@@ -57,9 +57,14 @@ It clones funchook and Il2CppInterop at their pinned commits, applies the patche
 
 The patched libraries stay under their own licences: funchook is GPL-2.0-or-later with a linking exception, Il2CppInterop is LGPL-3.0. The patches and this build script are their modified source, and the release's `source` folder includes them.
 
+## Graphics reload on macOS
+
+FM26's `ResourcesSubsystem.EnumerateLocalAssetsComplete` takes an `AsyncOperationHandle` struct. Il2CppInterop's Harmony hook passes it with the Windows x64 calling convention, so on macOS (x64 System V, under Rosetta 2) a hook on it hands the game a broken handle: FM26 logs "Attempting to use an invalid operation handle" and never finishes the reload, and the new face appeared only after a restart. On macOS the plugin therefore doesn't hook it. FM26 calls `RegisterResourceLocator`, whose arguments are objects, for each file in the folder as the enumeration completes; when those calls have stopped for 250 ms, the plugin refreshes the panels. Windows and Proton keep the original hook.
+
+Checked on 2026-10-18 through Steam's launch option, with a local stand-in for the image API (`ApiBaseUrl`, nothing billed): Generate new face and then Update face on a player, both shown in the game, with the reload taking 0.6 and 1.0 s.
+
 ## Not done yet
 
-- Saving a key, a billed face, Update face and the squad batch, on macOS.
-- Launching through Steam with the launch option; the tests so far ran the launcher from a terminal with `SteamAppId` set.
+- The squad batch on macOS.
 - The plugin DLL in a release is built once for both systems. The one tested here was built against be.789's macOS interop assemblies; the Windows release has been built against be.760's.
 - Intel Macs (the launcher should work, since x86_64 is native there), other macOS versions and other FM26 builds. On another build the plugin turns its buttons off, but BepInEx and the hooks still load.

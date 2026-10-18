@@ -72,12 +72,14 @@ def _finish(progress, native, text: str, fallback) -> None:
     notify(*(native or (None, "")), text, fallback)
 
 
-def run_native_squad_batch(handler, generate, describe=str, *, pid: int | None = None) -> None:
+def run_native_squad_batch(handler, generate, describe=str, *, pid: int | None = None, key_ready=None) -> None:
     """Native-menu squad command: read the roster, portrait state and every
     prompt from FM24's memory, then generate without opening any profile.
 
     ``generate(person_id, profile)`` returns the companion's result dict.
-    Undrawn rows come from the table's row model, so nothing is scrolled.
+    ``key_ready()``, if given, asks for a missing OpenAI key after the
+    confirmation and returns False when the player cancels. Undrawn rows
+    come from the table's row model, so nothing is scrolled.
     """
     batch_dialog = None
     # FM24's own dialogs through the DLL's authenticated loopback listener.
@@ -97,6 +99,9 @@ def run_native_squad_batch(handler, generate, describe=str, *, pid: int | None =
         # Every prompt is validated before the first billed request.
         for row in missing:
             squad_player_profile(pid, row.record, row.name, club, state.today)
+        if not handler.preview_only and key_ready is not None and not key_ready():
+            print("No OpenAI key was saved; no image request was made.", flush=True)
+            return
         action = "Previewing" if handler.preview_only else "Generating"
         if not native:
             raise ValueError("the squad command needs the FM24 native DLL")
