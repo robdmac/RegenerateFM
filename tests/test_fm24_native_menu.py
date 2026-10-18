@@ -322,6 +322,15 @@ class NativeDllSourceTests(unittest.TestCase):
         self.assertIn('(unsigned long long)bridge_instance, (long)serial', self.source)
         self.assertNotIn("GetCurrentProcessId()", self.source)
 
+    def test_person_lookup_offsets_match_the_companion(self):
+        import re
+        defines = {name: int(value, 16) for name, value in
+                   re.findall(r"#define (\w+)\s+(0x[0-9A-Fa-f]+)\b", self.source)}
+        self.assertEqual((defines["SIDEBAR_VTABLE_RVA"], defines["SIDEBAR_OBJECT"]),
+                         (layout.WINDOWS["sidebar_vtable"], layout.WINDOWS["sidebar_reference"]))
+        self.assertEqual((defines["DATABASE_GLOBAL_RVA"], defines["DATABASE_PEOPLE"]),
+                         layout.WINDOWS["person_table"])
+
     def test_face_check_packets_match_the_listener(self):
         self.assertIn('"FMFACE24F 1 %ld %ld %s", (long)serial, (long)person, bridge_token', self.source)
         self.assertIn('"FMFACE24F %ld yes"', self.source)

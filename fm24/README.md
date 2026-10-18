@@ -18,8 +18,7 @@ From read-only process memory, the companion reads:
 - the first paragraph of the Biography box FM24 is displaying
 
 **Checks before any request**
-- **Person:** the title, the canonical person record and the contract must agree.
-- **Header:** it must show the same `(ID:n)`, so enable **Show screen IDs in Title Bar to assist skinning** in FM24 Preferences.
+- **Person:** the person comes from the screen FM24 has open, in game memory. The header's title, the canonical person record and the contract must agree. If **Show screen IDs in Title Bar** is on, the header's `(ID:n)` must match as well; the setting isn't needed.
 - **Repeat read:** everything is read twice to catch navigation during capture.
 
 If anything can't be verified, the request is refused before any image is requested. If the in-game reload fails after a face is saved, the image is kept; use Preferences > Reload Skin to load it.
@@ -34,7 +33,7 @@ If anything can't be verified, the request is refused before any image is reques
 
 Run it with FM24 closed. Running it again does nothing unless something changed, such as a new DLL in an FM Face update; `--remove` uninstalls the DLL and restores the panels. `--game-dir` and `--user-data-dir` override the search.
 
-Afterwards, in FM24's **Preferences > Interface**, choose the **FM Face** skin and tick **Show screen IDs in Title Bar to assist skinning**.
+Afterwards, in FM24's **Preferences > Interface**, choose the **FM Face** skin.
 
 ## macOS (Apple Silicon, experimental)
 

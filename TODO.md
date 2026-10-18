@@ -161,11 +161,9 @@
   5-10 s before the key prompt or "Generating…" while the companion indexed
   people with a memory pass. It now reads FM24's person table by handle
   (0.3 ms), asks for the key before the lookup, and a click waits for a
-  pass already running instead of starting a second. fm.exe's table isn't
-  mapped yet, so Windows keeps the pass.
-- **FM24 without screen IDs:** done on macOS (2026-10-18). The person comes
-  from the screen's object browser (+0x878 on the Mac) by handle. For fm.exe
-  (Windows and Proton) the browser's offset is unconfirmed: run
-  `python3 fm24/probe_object_browser.py` on Linux with a profile open and
-  screen IDs on, then set `browser_reference` in `fm24/layout.py` and
-  extend `fmface24.c` the same way.
+  pass already running instead of starting a second. fm.exe's table is
+  mapped too, so Windows and Proton read it the same way.
+- **FM24 without screen IDs:** done on macOS and for fm.exe (2026-10-18).
+  The person comes from the sidebar's object reference, looked up by handle
+  in FM24's person table (`fm24/layout.py`). Checked live on Proton with the
+  setting off and on; not yet on Windows itself.

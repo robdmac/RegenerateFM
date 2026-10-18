@@ -136,13 +136,7 @@ def setup(game: Path, user_data: Path, auth_file: Path) -> None:
     native_install.main(["--game-dir", str(game), "--skin-dir", str(skin_dir),
                          "--auth-file", str(auth_file), "--dll", str(bundled_dll())])
     _launch_option(game)
-    if native_install.MACOS:
-        # The macOS build reads the person from the screen's object browser.
-        print("\nIn FM24, open Preferences > Interface and choose the \"FM Face\" skin.\n", flush=True)
-    else:
-        print("\nIn FM24, open Preferences > Interface and:\n"
-              "  1. choose the \"FM Face\" skin;\n"
-              "  2. tick \"Show screen IDs in Title Bar to assist skinning\".\n", flush=True)
+    print("\nIn FM24, open Preferences > Interface and choose the \"FM Face\" skin.\n", flush=True)
 
 
 def _launch_option(game: Path, *, remove: bool = False) -> None:

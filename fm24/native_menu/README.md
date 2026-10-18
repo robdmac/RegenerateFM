@@ -72,9 +72,8 @@ WINEDLLOVERRIDES="winmm=n,b" %command%
 ```
 
 Start the companion after FM24 (`--native-menu` is still accepted, but the
-native menu is the only mode). Keep screen IDs enabled in the title: the
-companion checks the open screen's header ID. For the first test, include
-`--preview-only`:
+native menu is the only mode). FM24's screen IDs setting isn't needed. For the
+first test, include `--preview-only`:
 
 ```sh
 .venv-fm24/bin/python fm24/companion.py \
@@ -157,8 +156,15 @@ In native mode the companion reads the open profile from memory only
 (`fm24/native_screen.py`). The UI manager's root widget (manager+0x58) is the
 open screen; its widget tree is walked through each widget's children vector
 (+0x100), keeping widgets of this manager and treating anything else as a leaf.
-The header (`head`) must contain one subtitle (`subs`) whose text (+0x190)
-ends in "(ID:n)", and n must be the person read from memory. The Biography
+The person is the object of the screen FM24 has navigated to, which the
+sidebar (`side`, class vtable RVA 0x57E3B48) keeps at +0x280:
+0x01000000 | the person's handle. FM24's database object (`*(fm.exe +
+0x6426D90)`) lists every person by handle in a vector at +0x920; the person
+must keep that handle at +8, followed by its canonical record (the ID twice,
+then a `00 xx 58` marker). The header (`head`) must contain one subtitle
+(`subs`, text at +0x190), "Role - Club", which the profile checks against the
+record; with screen IDs enabled it ends in "(ID:n)", and n must then be the
+same person. The Biography
 box's `person_bio_text` widget (`biot`, from `person/person history biography
 no title.xml`) holds the rich-text biography at +0x188; its first paragraph,
 with links reduced to their text, is the headline used in the prompt. The
@@ -214,11 +220,12 @@ memory inside FM24's menu callback, on the game's UI thread, before returning
 to the game. FM24 cannot navigate while that callback runs. It starts from the
 event's source widget, which must be FM Face's `fmnP` (player) or `fmnS`
 (staff) menu button belonging to the UI manager the callback receives. It
-walks up the widget parents to the screen's `head` header, finds the header's
-`subs` subtitle widget, and reads its text. With screen IDs enabled, that text
-ends in "(ID:n)". The layout constants are in `fmface24.c` and are pinned to
-the validated executable. The source and exactly one header and subtitle must
-be found, within bounded searches. All reads use `ReadProcessMemory` on the
+walks up the widget parents until one has the sidebar (`side`, of the
+sidebar's own class) as a child, reads the screen's object from it, and looks
+the person up in FM24's person table, as the companion does. The layout
+constants are in `fmface24.c` and are pinned to the validated executable. The
+source and exactly one sidebar must be found, within bounded searches. All
+reads use `ReadProcessMemory` on the
 game's own process, so a stale pointer cannot crash FM24. If anything does not
 match, the command carries ID 0 and the companion refuses it. `fmface24.log`
 records the ID and the read time for each click.
@@ -231,9 +238,13 @@ command also carries its click time, and one that arrives more than 0.75 s
 late is refused as an extra check.
 
 This replaces protocol 3's first drawing-stack entry, which was a team for
-Theiler and a nation for Tyler Hall. A Python model of the header reader
-matched the on-screen ID on 7 players (including Tyler Hall and Franco Negri)
-and 5 staff (including Theiler) in live FM24.
+Theiler and a nation for Tyler Hall, and the header "(ID:n)" reader after it,
+which needed screen IDs enabled. On 2026-10-18 the sidebar reader gave the
+on-screen person for Tyler Hall, Ian Fray and Jorge Theiler in live FM24, with
+screen IDs off and on, after a skin reload and after the Back button. The
+sidebar's object is set when FM24 navigates and after a skin reload; another
+widget's object field (the screen host's +0x880) was cleared by a reload, so
+it is not used.
 
 After saving a portrait, the companion asks the DLL to reload the skin on the
 loopback port after the bridge port (8770 by default), using the same token.
@@ -458,12 +469,12 @@ every record carries its handle 4 bytes before it, which is checked). If
 that read fails it maps handles to people with one memory pass of about
 10 s (`person_handles.py`) and checks the mapping again before each use; `native_screen.py` uses the same
 reference for the open profile. Staff names then come from first/surname
-records, which on the Mac can start at any byte. In fm.exe the browser's
-class is known (vtable RVA `0x56bae48`) but not where it keeps the
-reference: its members match the Mac build's up to +0x568 and are 8 bytes
-lower after that, and the code that reads it is in the protected part.
-`fm24/probe_object_browser.py` finds it on a running game; until then the
-Windows build needs screen IDs.
+records, which on the Mac can start at any byte. fm.exe (Windows and
+Proton) works the same way at its own offsets: the sidebar's class is
+`0x57e3b48` with the reference at +0x280, the browser (`0x56bae48`) holds it
+at +0x880 until a reload, and the database global at image + 0x6426D90 has
+the person vector at +0x920. There the DLL looks the person up itself and
+sends the ID, so the companion needs no `r<reference>`.
 
 **Key prompt.** On the Mac, FM24 asks for the OpenAI key itself, like the
 FM26 plugin. When a face command finds no saved key (or one OpenAI rejected),

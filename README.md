@@ -53,7 +53,7 @@ FM24 needs a companion program that runs while you play. It reads the open profi
 **Windows**
 1. Copy the release ZIP's `FM24` folder somewhere of your own, such as `Documents\FM Face for FM24`, not into the game folder.
 2. Close FM24 and double-click `fmface-fm24.exe`. The first time, it finds FM24 through Steam, sets it up and asks for your OpenAI key in its window (paste or type it; it is checked for free and saved encrypted in `%APPDATA%\FM Face`, the same file the FM26 plugin uses).
-3. Start FM24. In **Preferences > Interface**, choose the **FM Face** skin and tick **Show screen IDs in Title Bar to assist skinning**.
+3. Start FM24. In **Preferences > Interface**, choose the **FM Face** skin.
 4. Leave the companion's window open while you play. Next time, double-click it again before or after starting FM24.
 
 It needs no Python. If FM24 isn't in a Steam library it can find, run `fmface-fm24.exe setup --game-dir "<path to Football Manager 2024>"` from a command prompt. `fmface-fm24.exe setup --remove` uninstalls the DLL.

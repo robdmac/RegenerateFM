@@ -30,10 +30,10 @@ WINDOWS = {
     "pointer": 4,                  # record and object pointers read (Wine keeps them below 4 GB)
     "person_vtables": None,        # the kind comes from the record type and position ratings
     "object_browser_vtable": 0x56BAE48,  # CLIENT_OBJECT_BROWSER, from fm.exe's RTTI
-    "browser_reference": None,     # not yet confirmed on fm.exe (probe_object_browser.py)
-    "person_table": None,          # not mapped on fm.exe; person_handles scans memory instead
-    "sidebar_vtable": None,        # SIDEBAR_MENU_TABLE; not mapped on fm.exe
-    "sidebar_reference": None,
+    "browser_reference": 0x880,    # cleared by a skin reload, like the Mac build's
+    "person_table": (0x6426D90, 0x920),
+    "sidebar_vtable": 0x57E3B48,   # SIDEBAR_MENU_TABLE, as in the DLL
+    "sidebar_reference": 0x280,
 }
 
 MACOS = {
