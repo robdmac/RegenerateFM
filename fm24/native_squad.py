@@ -138,7 +138,8 @@ def _player_id(pid: int, person: int) -> str:
     number = struct.unpack_from("<I", raw)[0]
     if raw[:8] != struct.pack("<II", number, number) or not 1 <= number <= 2_147_483_647:
         raise MemoryUnavailable("A Squad row does not show a validated FM24 player.")
-    # Marker byte 13 carries flags (0x02, 0x40 seen); 14 is always 0x58. Rows
+    # Marker byte 13 carries flags (0x02, 0x40 seen); 14 is a record kind
+    # (layout "record_kinds": 0x58, 0x50 or 0x78). Rows
     # FM24 lists as "Scouting Required" with no age or ability (players of
     # leagues it hasn't loaded) have other markers (00 02 00 10, 08 02 40 30)
     # and none of the fields a prompt needs.

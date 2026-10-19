@@ -197,9 +197,12 @@ static LONG slot_person_id(unsigned char *database, size_t slot, unsigned int ha
         !read_pointer(range[0] + (size_t)handle * sizeof(void *), &person) || !person ||
         !read_game(person + PERSON_HANDLE, &record, sizeof(record)))
         return 0;
-    /* As in the companion: the ID twice, then a marker of 00 xx 58. */
-    if (record.handle != handle || record.id != record.again || record.marker[0] || record.marker[2] != 0x58 ||
-        record.id < 1 || record.id > 0x7fffffffu)
+    /* As in the companion (layout "record_flags" and "record_kinds"): the ID
+       twice, then a marker of flags below 8, any byte, and a kind of 0x58,
+       0x50 or 0x78. The companion checks the record again before using it. */
+    unsigned char kind = record.marker[2];
+    if (record.handle != handle || record.id != record.again || record.marker[0] >= 8 ||
+        (kind != 0x58 && kind != 0x50 && kind != 0x78) || record.id < 1 || record.id > 0x7fffffffu)
         return 0;
     return (LONG)record.id;
 }

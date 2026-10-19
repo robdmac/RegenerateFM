@@ -27,7 +27,7 @@ PERSON_TYPE = 1
 _INDEX_MASK = 0x7FFFFF
 # Bytes 14-15 of a full person record (live_memory.record_marker): found with
 # bytes.find, which is far faster than a regular expression over the heap.
-_MARKERS = tuple(bytes([kind, last]) for kind in (0x50, 0x58) for last in (0x10, 0x12, 0x18))
+_MARKERS = tuple(bytes([kind, last]) for kind in LAYOUT["record_kinds"] for last in (0x10, 0x12, 0x18))
 _REBUILD_AFTER = 10.0
 DATABASE_SCAN = 0x2000
 _table_slots: dict[int, int] = {}           # pid -> database slot of the person vector

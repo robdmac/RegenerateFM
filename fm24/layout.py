@@ -18,8 +18,10 @@ WINDOWS = {
     "record_year": 0x36,           # u16 current game year
     "record_birth": 0x38,          # u16 day of year, u16 year
     "record_name": 0x3C,           # pointer to {u32 length, UTF-8} full name
-    "record_flags": (0,),          # byte 12 of the record
-    "record_kinds": (0x58,),       # byte 14 of the record
+    "record_flags": tuple(range(8)),     # byte 12 of the record: 0 for most people; 4 seen
+    # Byte 14: 0x58, 0x50 (staff and reserves) and 0x78 (many first-team
+    # players in a 2026-10-19 Reading save, Tom Holmes among them).
+    "record_kinds": (0x58, 0x50, 0x78),
     "name_records_aligned": True,  # first/surname records start on 4-byte boundaries
     "position_ratings": -0x7C,     # 15 bytes, 1-20
     "attributes": -0x6D,           # 54 bytes, 1-100
@@ -43,7 +45,7 @@ MACOS = {
     "record_birth": -0x138,
     "record_name": -0x134,
     "record_flags": tuple(range(8)),  # 0 for most people; 1, 2, 4, 5 and 6 seen
-    "record_kinds": (0x58, 0x50),     # 0x50 seen on staff and reserve records (types 0 and 1)
+    "record_kinds": (0x58, 0x50, 0x78),  # 0x50 on staff and reserve records (types 0 and 1); 0x78 as on Windows
     "name_records_aligned": False,    # first/surname records can start anywhere
     "position_ratings": -0x1B4,
     "attributes": -0x1A5,

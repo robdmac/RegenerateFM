@@ -38,6 +38,14 @@ class MemoryProbeTests(unittest.TestCase):
 
 
 class LiveMemoryTests(unittest.TestCase):
+    def test_record_markers_of_every_seen_kind_are_people(self):
+        # Bytes 12-15 of records read live: 0x78 is Tom Holmes (Reading, 2026-10-19).
+        for marker in ("00025810", "00025010", "00027810", "04027810", "00425810"):
+            self.assertTrue(live_memory.record_marker(bytes(12) + bytes.fromhex(marker)), marker)
+        # Brief "Scouting Required" records and other objects are not.
+        for marker in ("00020010", "08024030", "00027800", "08027810"):
+            self.assertFalse(live_memory.record_marker(bytes(12) + bytes.fromhex(marker)), marker)
+
     def test_record_decodes_name_and_dates(self):
         record = bytearray(64)
         struct.pack_into("<II", record, 0, 14008037, 14008037)
