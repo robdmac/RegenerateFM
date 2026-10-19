@@ -62,9 +62,9 @@ FM24 for Mac is its own program, so FM Face uses a Mac library instead of the DL
 **Linux (Steam/Proton):**
 1. Copy the release ZIP's `FM24` and `source` folders somewhere of your own, side by side, not into the game folder.
 2. Close FM24, **quit Steam** (Steam > Exit), and run `FM24/install-linux.sh`. It needs only `python3`, which Linux systems include, with no extra packages. It installs the DLL, points it at `fmface-fm24.exe`, and sets FM24's Steam launch option to `WINEDLLOVERRIDES="winmm=n,b" %command%`. It refuses while Steam is running, because Steam overwrites launch options changed while it's open.
-3. Start Steam and play FM24. The first time, a small FM Face window asks for your OpenAI key (it may open behind FM24); the key is saved encrypted in FM24's Proton prefix. Without the `zstandard` package the setup can't build the optional FM Face skin, so the companion builds it on this first start; choose it after restarting FM24 if you want the portrait popup.
+3. Start Steam and play FM24. The first time, a small **FM Face: OpenAI key** window asks for your key: paste it with Ctrl+V (or type it; it shows as dots) and choose **Save key**. It is checked with a free OpenAI request and saved encrypted in FM24's Proton prefix. Without the `zstandard` package the setup can't build the optional FM Face skin, so the companion builds it on this first start; choose it after restarting FM24 if you want the portrait popup.
 
-**When a key is needed later** (OpenAI rejects the saved one), choosing a face command opens the key window again, and FM24 says so.
+**When a key is needed later** (none was saved, or OpenAI rejects the saved one), choosing a face command opens the key window again, and FM24 says so. Closing it saves nothing.
 
 **Options:** it reads `.fm24-auth` from its own folder (or the token in `fmface24.ini`) and finds `Documents\Sports Interactive\Football Manager 2024\graphics\fmface` itself. `fmface-fm24.exe setup [--game-dir ...] [--remove]` runs only the setup; `install-linux.sh --remove` uninstalls on Linux (with Steam closed). Double-clicked while FM24 is running, it runs as the companion in its window, as before. The companion options below (`--graphics-dir`, `--preview-only` and so on) still work. If it stops with an error, the window stays open until you press Enter.
 

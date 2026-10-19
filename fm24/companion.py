@@ -78,40 +78,61 @@ def _asks_in_game(handler) -> bool:
 
 def _asks_in_window(handler) -> bool:
     """Started by FM24 on Windows or Proton: no window of its own, so a key is
-    asked for in a separate one (ask_key_in_window)."""
+    asked for in FM Face's key dialog (ask_key_in_window)."""
     return sys.platform == "win32" and bool(getattr(handler, "started_by_fm24", None))
 
 
-KEY_WINDOW = "Type your OpenAI key in the FM Face window that has opened (it may be behind FM24)."
+KEY_WINDOW = "Paste or type your OpenAI key in the FM Face: OpenAI key window."
 
 
 def ask_key_in_window(handler, *, tell_fm24: bool = True) -> bool:
-    """Ask for the key in a new console window: this program again with
-    --ask-key, so closing that window can't stop the companion. True once a
-    key is saved (or set in .env)."""
-    import subprocess
+    """With no key saved (or one OpenAI rejected), ask in FM Face's key
+    dialog (key_dialog: an ordinary Windows edit box, which takes a paste
+    under Wine too), check the key with OpenAI (free) and save it in FM
+    Face's key file. True once a key is saved or set in .env."""
+    import key_dialog
+    import keystore
+    store = keystore.default_path()
     with handler.key_lock:
-        before = load_env().get("OPENAI_API_KEY", "").strip()
-        if _env_key() or (before and not handler.key_rejected):
+        if _env_key() or (load_env().get("OPENAI_API_KEY", "").strip() and not handler.key_rejected):
             return True
         if tell_fm24 and handler.reload_port:
             try:
                 show_dialog(handler.reload_port, handler.token, "message", "FM Face", KEY_WINDOW)
             except (DialogUnavailable, OSError, ValueError):
                 pass
-        command = [sys.executable] + ([] if getattr(sys, "frozen", False) else [str(Path(__file__).resolve())])
-        try:
-            subprocess.run(command + ["--ask-key"] + (["--rejected"] if handler.key_rejected else []),
-                           creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0), check=False)
-        except OSError as exc:
-            print(f"Couldn't open the key window ({exc}).", flush=True)
-            return False
-        after = load_env().get("OPENAI_API_KEY", "").strip()
-        if after and after != before:
+        problem = "OpenAI didn't accept the saved key. Paste a new one." if handler.key_rejected else None
+        while True:
+            text = (problem or "FM Face makes faces with your own OpenAI API key. Each face is one billed "
+                               "request on your OpenAI account, usually a few cents or less.") + \
+                   ("\n\nPaste the key (it starts with sk-) with Ctrl+V or type it, then choose Save key. "
+                    f"Get a key… opens {keystore.KEYS_PAGE}.\n\n"
+                    f"The key is saved encrypted for your Windows user in {store.parent}. "
+                    "Delete that folder to forget it.")
+            try:
+                entered = key_dialog.ask(text, link=keystore.KEYS_PAGE)
+            except OSError as exc:
+                print(f"Couldn't show the key dialog ({exc}).", flush=True)
+                return False
+            if entered is None:
+                print("No OpenAI key was saved; choosing a face command asks again.", flush=True)
+                return False
+            try:
+                key = keystore.clean(entered)
+            except ValueError as exc:
+                problem = str(exc)
+                continue
+            problem = keystore.check(key, base=_api())
+            if problem:
+                continue
+            try:
+                keystore.save(store, key)
+            except (OSError, ValueError) as exc:
+                problem = f"Could not save the key: {exc}"
+                continue
             _handler_class(handler).key_rejected = False
-            print("An OpenAI key was saved in the key window.", flush=True)
+            print(f"OpenAI key checked and saved in {store.parent}.", flush=True)
             return True
-        return bool(after) and not handler.key_rejected
 
 
 def ensure_key(handler) -> bool:
@@ -689,7 +710,7 @@ def main(argv: list[str] | None = None) -> None:
     server.serve_forever()
 
 
-def ask_for_key(*, rejected: bool = False, later: str = "restart the companion") -> None:
+def ask_for_key() -> None:
     """With no key in .env or FM Face's key file, ask for one in this window.
 
     The key is checked with OpenAI (free) and saved in FM Face's key file,
@@ -708,7 +729,7 @@ def ask_for_key(*, rejected: bool = False, later: str = "restart the companion")
     if saved:
         # A saved key can be revoked later; checking it is free. Ask again only
         # when OpenAI says no, not when it can't be reached.
-        if not rejected and keystore.check(saved, base=_api()) != keystore.REJECTED:
+        if keystore.check(saved, base=_api()) != keystore.REJECTED:
             return
         print("OpenAI no longer accepts the saved key.", flush=True)
     print("FM Face makes faces with your own OpenAI API key. Each face is one billed request on your "
@@ -722,7 +743,7 @@ def ask_for_key(*, rejected: bool = False, later: str = "restart the companion")
             print()
             return
         if not entered.strip():
-            print(f"No key saved. Faces can't be made until you {later} and enter one.", flush=True)
+            print("No key saved. Faces can't be made until you restart the companion and enter one.", flush=True)
             return
         try:
             key = keystore.clean(entered)
@@ -788,14 +809,6 @@ def _main_packaged() -> None:
             import setup_fm24
             setup_fm24.main(sys.argv[2:])
             pause()
-            return
-        if sys.argv[1:2] == ["--ask-key"]:
-            # The key window a companion FM24 started opens.
-            if sys.platform == "win32":
-                import ctypes
-                ctypes.windll.kernel32.SetConsoleTitleW("FM Face: OpenAI key")
-            ask_for_key(rejected="--rejected" in sys.argv, later="choose a face command in FM24 again")
-            time.sleep(3)
             return
         if len(sys.argv) == 1:
             game = _setup_if_needed()

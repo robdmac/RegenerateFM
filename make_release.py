@@ -56,6 +56,7 @@ PUBLIC_FILES = (
     "fm24/existing_portrait.py",
     "fm24/game_archive.py",
     "fm24/graphics.py",
+    "fm24/key_dialog.py",
     "fm24/layout.py",
     "fm24/live_memory.py",
     "fm24/memory_probe.py",

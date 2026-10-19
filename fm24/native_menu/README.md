@@ -75,9 +75,10 @@ hooks are in, the DLL starts that program on a thread of its own with
 `FMFACE24_COMPANION_STARTED`, `_MISSING`, `_NOT_CONFIGURED` or
 `_START_FAILED error=<n>`. The companion logs to `fmface-fm24.log` beside
 itself, waits on FM24's process handle and exits with it, and exits at once
-if another companion holds its port. With no key saved it runs itself again
-with `--ask-key` in a new console window, so closing that window can't stop
-it. Under Proton, Wine ends the companion with FM24's session anyway. The
+if another companion holds its port. With no key saved it shows FM Face's
+key dialog ([key_dialog.py](../key_dialog.py), a Win32 window with a password
+edit box; a Wine console can't take a paste from the desktop clipboard, but
+an edit box can). Under Proton, Wine ends the companion with FM24's session anyway. The
 skin is optional: with its panels missing the installer installs the DLL
 alone, and panels that already carry the popup (built by the companion when
 the setup had no `zstandard`) are adopted as created files. The macOS library
