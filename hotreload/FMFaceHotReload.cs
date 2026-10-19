@@ -438,8 +438,15 @@ namespace FMFaceHotReload
                     profile.JobTitle = bannerTexts[nameIndex + 1];
             }
             profile.JobTitle = FirstText(FindNamed(banner, "Frame 1000003901")) ?? profile.JobTitle;
-            profile.Club = FirstText(FindNamed(header, "PlayingTeam"));
-            profile.Nationality = FirstText(FindNamed(header, "Frame 1000003766"));
+            // A staff header has no PlayingTeam: the club is the contract box's first text.
+            profile.Club = FirstText(FindNamed(header, "PlayingTeam")) ?? FirstText(FindNamed(header, "Frame 1000003767"));
+            // Its nation is shown twice, as a code by the age ("ENG") and in full ("England").
+            foreach (var nation in NamedElements(header, "Frame 1000003766"))
+            {
+                var name = FirstText(nation);
+                if (!string.IsNullOrWhiteSpace(name) && (profile.Nationality == null || name.Length > profile.Nationality.Length))
+                    profile.Nationality = name;
+            }
             foreach (var value in bannerTexts)
             {
                 var match = AgePattern.Match(value);

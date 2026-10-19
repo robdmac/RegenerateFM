@@ -545,21 +545,33 @@ namespace FMFaceHotReload
             return value;
         }
 
+        private static HashSet<string> Targets(string personId) =>
+            new HashSet<string> { "graphics/pictures/person/" + personId + "/portrait",
+                                  "graphics/pictures/person/r-" + personId + "/portrait" };
+
+        // A file FM Face saved for this person: "<id>" (before faces were
+        // versioned, and from the FM26 web page) or "<id>-<16 hex>".
+        private static bool IsPortraitStem(string stem, string personId) =>
+            stem == personId || Regex.IsMatch(stem ?? "", "^" + personId + "-[0-9a-f]{16}$");
+
         // FM Face's saved portrait for this ID, if config.xml still maps it.
         public static byte[] CurrentPortrait(string directory, string personId)
         {
             ValidateId(personId);
-            string path = Path.Combine(directory, personId + ".png");
-            if (!File.Exists(path))
-                return null;
             var (_, maps) = LoadMaps(directory);
-            var targets = new HashSet<string> { "graphics/pictures/person/" + personId + "/portrait",
-                                                "graphics/pictures/person/r-" + personId + "/portrait" };
-            if (!maps.Elements("record").Any(record => (string)record.Attribute("from") == personId &&
-                                                       targets.Contains((string)record.Attribute("to"))))
-                return null;
-            var png = File.ReadAllBytes(path);
-            return Png.IsPng(png) && png.Length <= MaxReference ? png : null;
+            var targets = Targets(personId);
+            foreach (var record in maps.Elements("record"))
+            {
+                string stem = (string)record.Attribute("from");
+                if (!IsPortraitStem(stem, personId) || !targets.Contains((string)record.Attribute("to")))
+                    continue;
+                string path = Path.Combine(directory, stem + ".png");
+                if (!File.Exists(path))
+                    continue;
+                var png = File.ReadAllBytes(path);
+                return Png.IsPng(png) && png.Length <= MaxReference ? png : null;
+            }
+            return null;
         }
 
         public static void CheckGraphicsConfig(string directory)
@@ -590,8 +602,12 @@ namespace FMFaceHotReload
             return (document, found);
         }
 
-        // Saves the portrait and maps it to the person's ordinary and
-        // generated-player IDs. The image is rolled back if config.xml fails.
+        // Saves the portrait under a new name, "<id>-<16 hex>.png", and maps it
+        // to the person's ordinary and generated-player IDs, as the FM24
+        // companion does: FM26 keeps a staff portrait it has drawn and doesn't
+        // load the same file again, so a face saved over the old file would
+        // not appear until a restart. The person's earlier files are removed
+        // once config.xml maps the new one; if config.xml fails, the new file is.
         public static string SavePortrait(string directory, string personId, byte[] png)
         {
             ValidateId(personId);
@@ -600,13 +616,16 @@ namespace FMFaceHotReload
             lock (SaveLock)
             {
                 Directory.CreateDirectory(directory);
-                string imagePath = Path.Combine(directory, personId + ".png");
+                string stem = personId + "-" + Convert.ToHexString(RandomNumberGenerator.GetBytes(8)).ToLowerInvariant();
+                string imagePath = Path.Combine(directory, stem + ".png");
                 string configPath = Path.Combine(directory, "config.xml");
                 var (document, maps) = LoadMaps(directory);
-                foreach (var record in maps.Elements("record").Where(record => (string)record.Attribute("from") == personId).ToList())
+                var targets = Targets(personId);
+                foreach (var record in maps.Elements("record").Where(record => (string)record.Attribute("from") == personId ||
+                                                                                targets.Contains((string)record.Attribute("to"))).ToList())
                     record.Remove();
                 foreach (var prefix in new[] { "", "r-" })
-                    maps.Add(new XElement("record", new XAttribute("from", personId),
+                    maps.Add(new XElement("record", new XAttribute("from", stem),
                                           new XAttribute("to", "graphics/pictures/person/" + prefix + personId + "/portrait")));
                 byte[] xml;
                 using (var buffer = new MemoryStream())
@@ -615,7 +634,6 @@ namespace FMFaceHotReload
                         document.Save(writer);
                     xml = buffer.ToArray();
                 }
-                byte[] previous = File.Exists(imagePath) ? File.ReadAllBytes(imagePath) : null;
                 AtomicWrite(imagePath, png);
                 try
                 {
@@ -625,16 +643,25 @@ namespace FMFaceHotReload
                 {
                     try
                     {
-                        if (previous == null)
-                            File.Delete(imagePath);
-                        else
-                            AtomicWrite(imagePath, previous);
+                        File.Delete(imagePath);
                     }
                     catch (Exception rollback)
                     {
-                        throw new InvalidOperationException("Could not save config.xml or restore the previous portrait: " + rollback.Message);
+                        throw new InvalidOperationException("Could not save config.xml or remove the new portrait: " + rollback.Message);
                     }
                     throw;
+                }
+                // Earlier files of this person that config.xml no longer maps; one
+                // that can't be removed now is removed after the next face.
+                foreach (var old in Directory.EnumerateFiles(directory, personId + "*.png"))
+                {
+                    string oldStem = Path.GetFileNameWithoutExtension(old);
+                    if (oldStem != stem && IsPortraitStem(oldStem, personId))
+                    {
+                        try { File.Delete(old); }
+                        catch (IOException) { }
+                        catch (UnauthorizedAccessException) { }
+                    }
                 }
                 return imagePath;
             }
