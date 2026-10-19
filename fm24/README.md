@@ -1,7 +1,7 @@
 # FM24 player, staff and squad faces (experimental)
 
 FM Face for FM24 works inside the game through the [native DLL](native_menu/README.md), which is pinned to the tested FM24 24.4.2 executable on Steam/Proton.
-- Click a player or staff portrait on their Overview to get FM24's own popup with **Generate new face** and **Update face**. The same two items are at the end of the profile's **Overview** tab menu.
+- A player or staff profile's **Overview** tab menu ends with **Generate new face** and **Update face**, with any skin. With the optional FM Face skin, clicking the portrait gives FM24's own popup with the same two items.
 - The Squad screen's **Overview** menu ends with **Generate missing squad faces…**. A reserve or youth team's tab menu in the Development Center (and another club's Players menu) ends with it too.
 
 The companion reads everything from FM24's memory: the open profile, the biography FM24 is showing, and every Squad row. It makes the image request, writes a versioned portrait and reloads the skin inside the game. Progress, the squad confirmation, results and errors appear in FM24's own dialogs. There is no X11 code, no screenshots or OCR, and no browser.
@@ -27,23 +27,23 @@ If anything can't be verified, the request is refused before any image is reques
 
 `setup_fm24.py` does the one-time setup, and the packaged companion runs it by itself:
 - **Finds FM24** in your Steam libraries (`libraryfolders.vdf`), and its **user-data** folder (`Documents/Sports Interactive/Football Manager 2024`; under Proton, inside the game's `compatdata/2252570` prefix). That's the folder with `skins` and `graphics`, not the game folder.
-- **Builds the FM Face skin** from the player and staff panels in FM24's own `data/game/panels.fmf`, read directly, so there's no Resource Archiver step. This repository does not include Sports Interactive's panels.
+- **Builds the optional FM Face skin** from the player and staff panels in FM24's own `data/game/panels.fmf`, read directly, so there's no Resource Archiver step. This repository does not include Sports Interactive's panels.
 - **Creates the private token** the DLL and companion share (`.fm24-auth` beside FM Face). If FM24 already has an FM Face token, for example after moving the companion to a new folder, it reuses that one.
-- **Installs the [native DLL](native_menu/README.md)** and adds the portrait popups to the skin's panels.
+- **Installs the [native DLL](native_menu/README.md)** and adds the portrait popups to the FM Face skin's panels.
 
 Run it with FM24 closed. Running it again does nothing unless something changed, such as a new DLL in an FM Face update; `--remove` uninstalls the DLL and restores the panels. `--game-dir` and `--user-data-dir` override the search.
 
-Afterwards, in FM24's **Preferences > Interface**, choose the **FM Face** skin.
+Afterwards FM Face works with whatever skin you use. For the portrait popup too, choose the **FM Face** skin in FM24's **Preferences > Interface**. It is FM24's default skin plus that popup, so it can't be combined with another custom skin. Without it, single-face progress appears in an FM Face dialog instead of on the portrait; closing that dialog doesn't stop the face.
 
 ## macOS (Apple Silicon, experimental)
 
-FM24 for Mac is its own program, so FM Face uses a Mac library instead of the DLL: `libfmface24.dylib`, from [native_menu/fmface24_macos.c](native_menu/fmface24_macos.c), pinned to FM24 24.4.2's arm64 build. Its in-game features are the same: the portrait popup, the Overview tab rows, the Squad menu item, FM24's dialogs and the skin reload. macOS doesn't let another program read FM24's memory, so the library also serves the companion's reads.
+FM24 for Mac is its own program, so FM Face uses a Mac library instead of the DLL: `libfmface24.dylib`, from [native_menu/fmface24_macos.c](native_menu/fmface24_macos.c), pinned to FM24 24.4.2's arm64 build. Its in-game features are the same: the Overview tab rows, the portrait popup, the Squad menu item, FM24's dialogs and the skin reload. macOS doesn't let another program read FM24's memory, so the library also serves the companion's reads.
 
 1. Install Xcode's command-line tools (`xcode-select --install`) and the companion's Python packages (`pip install -r fm24/requirements.txt`).
 2. Build the library: `python3 fm24/native_menu/build_macos.py`.
 3. Close FM24 and run `python3 fm24/setup_fm24.py`. It finds FM24 in `~/Library/Application Support/Steam`, builds the skin in `~/Library/Application Support/Sports Interactive/Football Manager 2024/skins/fmface`, and puts `libfmface24.dylib`, `run_fmface24.sh` and `fmface24.ini` beside `fm.app`.
 4. Set FM24's Steam launch option to the line it prints: `"<the game folder>/run_fmface24.sh" %command%`.
-5. Start the companion, `python3 fm24/companion.py`. The first time you choose a face command, FM24 asks for your OpenAI key in a prompt on its window (paste with Cmd+V; the key isn't shown). The companion checks it with a free OpenAI request, keeps it in `~/Library/Application Support/FM Face`, readable only by you, and asks again in the game if OpenAI later rejects it. Then choose the FM Face skin in FM24's **Preferences > Interface**. On the Mac, **Show screen IDs in Title Bar** isn't needed: the library reports the person from the screen's object browser, and the companion finds them by their handle in FM24's person table.
+5. Start the companion, `python3 fm24/companion.py`. The first time you choose a face command, FM24 asks for your OpenAI key in a prompt on its window (paste with Cmd+V; the key isn't shown). The companion checks it with a free OpenAI request, keeps it in `~/Library/Application Support/FM Face`, readable only by you, and asks again in the game if OpenAI later rejects it. Optionally, choose the FM Face skin in FM24's **Preferences > Interface** for the portrait popup. On the Mac, **Show screen IDs in Title Bar** isn't needed: the library reports the person from the screen's object browser, and the companion finds them by their handle in FM24's person table.
 
 `fm.app` is never changed. `python3 fm24/setup_fm24.py --remove` removes the library and launcher and restores the panels; then clear the launch option. On an Intel Mac, `run_fmface24.sh` starts FM24 without FM Face. The memory layouts are in [layout.py](layout.py) and described in [native_menu/README.md](native_menu/README.md#macos).
 
@@ -55,7 +55,7 @@ FM24 for Mac is its own program, so FM Face uses a Mac library instead of the DL
 1. Copy the `FM24` folder somewhere of your own, not into the game folder.
 2. Close FM24 and double-click `fmface-fm24.exe`. The first time (and after an FM Face update) it runs the setup above.
 3. It asks for your OpenAI key in its window. Paste it (right-click or Ctrl+V) or type it; it isn't shown. It checks the key with a free OpenAI request and saves it encrypted for your Windows user in `%APPDATA%\FM Face\openai-key`, the same file the FM26 plugin uses. Delete that folder to forget the key. On later starts it checks the saved key the same free way and asks again only if OpenAI rejects it. A `.env` beside the exe with `OPENAI_API_KEY` takes priority.
-4. Start FM24 and choose the skin as above. Keep the window open while you play.
+4. Start FM24 (choosing the FM Face skin is optional, as above). Keep the window open while you play.
 
 **Defaults:** it reads `.fm24-auth` from its own folder and finds `Documents\Sports Interactive\Football Manager 2024\graphics\fmface` itself. `fmface-fm24.exe setup [--game-dir ...] [--remove]` runs only the setup. The companion options below (`--graphics-dir`, `--preview-only` and so on) still work. If it stops with an error, the window stays open until you press Enter.
 
@@ -97,7 +97,7 @@ The output is the folder `dist/fmface-fm24/`, about 30 MB, which `make_release.p
 
 Leave the companion running while you play; the menus work only while it runs.
 
-- **Generate new face:** open a player or staff Overview, click the portrait and choose it from FM24's popup, or choose it from the profile's **Overview** tab menu (below **Follow**). The new face loads automatically, and choosing it again replaces the portrait.
+- **Generate new face:** open a player or staff profile and choose it from the **Overview** tab menu (below **Follow**), or, with the FM Face skin, click the portrait and choose it from FM24's popup. The new face loads automatically, and choosing it again replaces the portrait.
 - **Update face:** refreshes the face the person already has, asking for the same person at their current age in their current club's kit. The starting face can be:
   - FM Face's own portrait
   - a facepack picture from your graphics folder

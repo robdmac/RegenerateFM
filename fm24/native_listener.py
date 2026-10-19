@@ -75,7 +75,9 @@ def start_native_listener(port, bridge_port, token, handler, *,
             result = request_generation(port, token, handler, expected_id=bound_id,
                                         mode="update" if action == "update" else "generate")
             print(describe_result(result), flush=True)
-            if not result.get("ok") and not result.get("cancelled"):
+            if result.get("shown"):
+                pass  # Already in FM24's progress dialog.
+            elif not result.get("ok") and not result.get("cancelled"):
                 notify(result.get("error", "FM Face could not generate this portrait."))
             elif not result.get("preview") and not result.get("refreshed"):
                 notify(result.get("warning", "The portrait was saved, but FM24 did not reload it."))

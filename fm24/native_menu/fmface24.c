@@ -491,7 +491,7 @@ static BOOL show_dialog(void *manager)
 enum { PROGRESS_NONE, PROGRESS_REQUESTED, PROGRESS_DONE, PROGRESS_FAILED };
 static volatile LONG progress_state;
 static int progress_target;  /* 1 portrait popup, 2 open dialog, 3 open dialog becomes an OK message */
-static char progress_text[256];
+static char progress_text[1024];
 #define SCREEN_ROOT 0x58
 #define MAX_VISIT   16384
 typedef void (*apply_function)(void *, void *);
@@ -1231,9 +1231,9 @@ static DWORD WINAPI reload_listener(LPVOID unused)
             sendto(socket_fd, reply, count, 0, (struct sockaddr *)&peer, sizeof(peer));
             continue;
         }
-        if (sscanf(packet, "FMFACE24P 1 %lld %159s %15s %399s %c", &serial, token, kind, title_b64, &extra) == 4) {
+        if (sscanf(packet, "FMFACE24P 1 %lld %159s %15s %1499s %c", &serial, token, kind, text_b64, &extra) == 4) {
             if (serial <= 0 || strcmp(token, bridge_token) || (strcmp(kind, "portrait") && strcmp(kind, "dialog") && strcmp(kind, "finish")) ||
-                (strcmp(title_b64, "-") && !base64_text(title_b64, title, sizeof(title))))
+                (strcmp(text_b64, "-") && !base64_text(text_b64, text, sizeof(text))))
                 continue;
             LONG state = progress_state;
             if (serial > last_progress) {
@@ -1242,7 +1242,7 @@ static DWORD WINAPI reload_listener(LPVOID unused)
                 } else {
                     last_progress = serial;
                     progress_target = !strcmp(kind, "portrait") ? 1 : !strcmp(kind, "dialog") ? 2 : 3;
-                    snprintf(progress_text, sizeof(progress_text), "%s", strcmp(title_b64, "-") ? title : "");
+                    snprintf(progress_text, sizeof(progress_text), "%s", strcmp(text_b64, "-") ? text : "");
                     InterlockedExchange(&progress_state, PROGRESS_REQUESTED);
                     status = "queued";
                 }

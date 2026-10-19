@@ -83,7 +83,7 @@ def set_progress(port: int, token: str, target: str, text: str, *, clock=time.mo
     if target not in ("portrait", "dialog", "finish"):
         raise ValueError("Unknown FM24 progress target.")
     data = " ".join(text.split()).encode("utf-8")
-    if len(data) > MAX_TITLE or b"\0" in data:
+    if len(data) > MAX_TEXT or b"\0" in data:
         raise ValueError("FM24 progress text is too long.")
     encoded = base64.b64encode(data).decode("ascii") if data else "-"
     serial = serial or time.time_ns() // 1_000_000
@@ -161,14 +161,14 @@ def notify(port: int | None, token: str, text: str, fallback) -> None:
     """Show text in an FM24 OK dialog, or call ``fallback(text)`` if FM24 can't."""
     if port:
         try:
-            show_dialog(port, token, "message", "FM Face", _clip(text))
+            show_dialog(port, token, "message", "FM Face", clip_text(text))
             return
         except (DialogUnavailable, ValueError, OSError):
             pass
     fallback(text)
 
 
-def _clip(text: str) -> str:
+def clip_text(text: str) -> str:
     data = " ".join(text.split()).encode("utf-8")
     return text if len(data) <= MAX_TEXT else data[:MAX_TEXT - 3].decode("utf-8", "ignore") + "…"
 
@@ -204,7 +204,7 @@ class NativeProgress:
 
     def _show(self, text: str) -> None:
         serial = time.time_ns() // 1_000_000
-        packet = _packet(serial, self.token, "progress", self.title, _clip(text))
+        packet = _packet(serial, self.token, "progress", self.title, clip_text(text))
         prefix = f"FMFACE24D {serial} "
         deadline = time.monotonic() + 15
         while time.monotonic() < deadline:
@@ -250,7 +250,7 @@ class NativeProgress:
             try:
                 if self.stopped.is_set():
                     raise DialogUnavailable("the progress dialog was answered")
-                set_progress(self.port, self.token, "finish", _clip(text))
+                set_progress(self.port, self.token, "finish", clip_text(text))
             except (DialogUnavailable, ValueError):
                 notify(self.port, self.token, text, fallback)
 

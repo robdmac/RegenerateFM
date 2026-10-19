@@ -29,7 +29,7 @@ from graphics import save_versioned_portrait
 from layout import LAYOUT
 from live_memory import MemoryUnavailable, find_game_pid
 from native_profile import read_open_profile, reread_profile
-from native_dialog import DialogUnavailable, ask_key, set_progress
+from native_dialog import DialogUnavailable, ask_key, clip_text, set_progress, show_dialog
 from native_reload import request_native_reload
 from native_screen import read_open_screen
 from person_handles import build_in_background, person_for_reference
@@ -157,18 +157,62 @@ class NativePortraitProgress:
         except (DialogUnavailable, ValueError, OSError):
             pass
 
-    def fail(self) -> None:
+    def fail(self, message: str) -> bool:
+        """Mark the popup failed; the caller still reports ``message``."""
+        del message
         self.failed = True
         self._set("Failed")
+        return False
 
     def close(self) -> None:
         self._set("")
 
 
-def start_progress(handler, text: str):
-    """Progress text on the FM Face portrait popup, or None if FM24 can't show it."""
+class NativeDialogProgress:
+    """Progress in an FM Face OK dialog, for skins without FM Face's portrait
+    popup. The skin reload after a new face closes it; a failure turns it
+    into the error message. Closing it early doesn't stop the face.
+
+    Raises DialogUnavailable from the constructor if FM24 cannot show it.
+    """
+
+    def __init__(self, port: int, token: str, text: str):
+        self.port, self.token = port, token
+        self.failed = False
+        show_dialog(port, token, "message", "FM Face", text)
+
+    def send(self, command: str) -> None:
+        if command == "reload":
+            try:
+                set_progress(self.port, self.token, "dialog", "Loading the new face…")
+            except (DialogUnavailable, ValueError, OSError):
+                pass
+
+    def fail(self, message: str) -> bool:
+        """Show ``message`` in the dialog; False if it was closed, so the
+        caller must report it."""
+        self.failed = True
+        try:
+            set_progress(self.port, self.token, "finish", clip_text(message))
+            return True
+        except (DialogUnavailable, ValueError, OSError):
+            return False
+
+    def close(self) -> None:
+        pass
+
+
+def start_progress(handler, mode: str):
+    """In-game progress: on the FM Face portrait popup, else in an FM Face
+    dialog (another skin), else None."""
     try:
-        return NativePortraitProgress(handler.reload_port, handler.token, text)
+        return NativePortraitProgress(handler.reload_port, handler.token,
+                                      "Updating…" if mode == "update" else "Generating…")
+    except (DialogUnavailable, ValueError, OSError):
+        pass
+    try:
+        return NativeDialogProgress(handler.reload_port, handler.token,
+                                    "Updating this face…" if mode == "update" else "Generating a new face…")
     except (DialogUnavailable, ValueError, OSError) as exc:
         print(f"FM24 in-game progress unavailable ({exc}); continuing without it.", flush=True)
         return None
@@ -406,7 +450,7 @@ again.onclick=()=>{{sessionStorage.removeItem('fmface-fm24-ran');location.reload
                 self._json(200, {"ok": False, "cancelled": True, "error": NO_KEY_SAVED})
                 return
             if not self.preview_only:
-                progress = start_progress(self, "Updating…" if mode == "update" else "Generating…")
+                progress = start_progress(self, mode)
             player_id, profile = read_native_profile(identity_only=mode == "update")
             if expected_id is not None and expected_id != player_id:
                 raise ValueError(f"The open FM24 profile is now person {player_id}, not the requested person "
@@ -433,18 +477,17 @@ again.onclick=()=>{{sessionStorage.removeItem('fmface-fm24-ran');location.reload
             try:
                 reload_portrait(self)
             except (ValueError, OSError, RuntimeError, TimeoutError) as exc:
-                if progress:
-                    progress.fail()
-                self._json(200, {"ok": True, "playerId": player_id, "refreshed": False,
-                                 "warning": f"Portrait saved, but FM24 reload failed: {exc}. Use Preferences > Reload Skin."})
+                warning = f"Portrait saved, but FM24 reload failed: {exc}. Use Preferences > Reload Skin."
+                # "shown": the progress dialog now says so; nothing else needs to.
+                self._json(200, {"ok": True, "playerId": player_id, "refreshed": False, "warning": warning,
+                                 "shown": bool(progress and progress.fail(warning))})
                 return
             for old in previous:
                 old.unlink(missing_ok=True)
             self._json(200, {"ok": True, "playerId": player_id, "refreshed": True})
         except (ValueError, OSError, RuntimeError, ParseError) as exc:
-            if progress:
-                progress.fail()
-            self._json(422, {"ok": False, "error": error_text(exc, self)})
+            error = error_text(exc, self)
+            self._json(422, {"ok": False, "error": error, "shown": bool(progress and progress.fail(error))})
         finally:
             if progress and not progress.failed:
                 progress.close()

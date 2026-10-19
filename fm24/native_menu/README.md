@@ -201,7 +201,11 @@ its own `FMDY`/`FMDN` events, which the hook consumes.
   next face. At the end the dialog becomes the result message.
 - **Portrait progress:** the text of FM Face's portrait popup (`fmnP`/`fmnS`)
   is set the same way: Generating…, Updating…, Loading…, Failed. The reload
-  that loads the new face rebuilds the popup, which clears it.
+  that loads the new face rebuilds the popup, which clears it. With another
+  skin there is no popup, so the companion opens an OK dialog ("Generating a
+  new face…"), sets its text to "Loading the new face…", and on an error
+  turns it into the error message (`finish`); the reload closes it. Progress
+  and `finish` texts take up to 1,000 bytes, as dialog texts do.
 
 Widgets are found afresh every time by a bounded search under the screen's
 root widget (`manager + 0x58`), so the DLL never uses a widget pointer after

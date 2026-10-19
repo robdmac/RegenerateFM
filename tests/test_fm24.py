@@ -150,6 +150,37 @@ class NativeReloadTests(unittest.TestCase):
         native.assert_called_once_with(8770, "t" * 43)
 
 
+class InGameProgressTests(unittest.TestCase):
+    HANDLER = SimpleNamespace(reload_port=8770, token="t" * 43)
+
+    def test_progress_is_on_the_fm_face_portrait_popup(self):
+        with patch.object(companion, "set_progress") as progress, patch.object(companion, "show_dialog") as dialog:
+            self.assertIsInstance(companion.start_progress(self.HANDLER, "update"), companion.NativePortraitProgress)
+        progress.assert_called_once_with(8770, "t" * 43, "portrait", "Updating…")
+        dialog.assert_not_called()
+
+    def test_without_the_popup_progress_and_errors_are_in_a_dialog(self):
+        def portrait_missing(port, token, target, text):
+            if target == "portrait":
+                raise companion.DialogUnavailable("FM24 could not set the progress text (failed).")
+        with patch.object(companion, "set_progress", side_effect=portrait_missing) as progress, \
+             patch.object(companion, "show_dialog") as dialog:
+            shown = companion.start_progress(self.HANDLER, "generate")
+            self.assertIsInstance(shown, companion.NativeDialogProgress)
+            dialog.assert_called_once_with(8770, "t" * 43, "message", "FM Face", "Generating a new face…")
+            shown.send("reload")
+            self.assertTrue(shown.fail("OpenAI image API returned HTTP 500."))
+        self.assertEqual([call.args[2:] for call in progress.call_args_list[1:]],
+                         [("dialog", "Loading the new face…"), ("finish", "OpenAI image API returned HTTP 500.")])
+
+    def test_an_error_after_the_dialog_was_closed_is_reported_by_the_caller(self):
+        with patch.object(companion, "show_dialog"):
+            shown = companion.NativeDialogProgress(8770, "t" * 43, "Generating a new face…")
+        with patch.object(companion, "set_progress", side_effect=companion.DialogUnavailable("closed")):
+            self.assertFalse(shown.fail("OpenAI image API returned HTTP 500."))
+        self.assertTrue(shown.failed)
+
+
 class CompanionHttpTests(unittest.TestCase):
     PLAYER = {"type": "player", "name": "Test Player", "age": 25, "club": "Test Club"}
 

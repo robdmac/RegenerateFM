@@ -81,7 +81,13 @@
   exports of Wine's DLL, which it was built against; check FM24 starts with
   it on Windows.
 - **FM24 popup progress text:** after the first use in a session the DLL logs
-  `FMFACE24_PROGRESS_NOT_SET` and the popup shows no progress. Cosmetic.
+  `FMFACE24_PROGRESS_NOT_SET` and the popup shows no progress. The companion
+  now shows progress in an FM Face dialog instead, as it does with skins
+  other than FM Face's (2026-10-19). Cosmetic.
+- **FM24 portrait popup in other skins:** FM Face works with any skin through
+  the Overview tab menu (checked on the default skin, 2026-10-19). The setup
+  could also add the portrait popup to the skin in use when its panels keep
+  FM24's `ppdp`/`ppic` widgets; untested with third-party skins.
 - **FM26 reserve and youth squads:** the Generate faces… item depends on the
   Squad screen's player table; check it on the Under 21s and Under 18s tabs.
 - **FM26 biography:** needs a visit to the Career tab first; FM24 reads it
