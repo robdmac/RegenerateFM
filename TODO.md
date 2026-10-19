@@ -84,6 +84,14 @@
   `FMFACE24_PROGRESS_NOT_SET` and the popup shows no progress. The companion
   now shows progress in an FM Face dialog instead, as it does with skins
   other than FM Face's (2026-10-19). Cosmetic.
+- **FM24 companion starts with FM24:** done (2026-10-19). The DLL starts the
+  packaged `fmface-fm24.exe` (Windows, and inside the Proton prefix on Linux)
+  and it stops with FM24; Linux installs with `FM24/install-linux.sh` and
+  plain `python3`, refusing while Steam runs. Checked under Proton through
+  Steam's Play; real Windows is untested.
+- **macOS companion start:** the Mac library and `run_fmface24.sh` don't
+  start the companion, and it isn't packaged for macOS (it needs building on
+  a Mac). `run_fmface24.sh` could start it before FM24.
 - **FM24 portrait popup in other skins:** FM Face works with any skin through
   the Overview tab menu (checked on the default skin, 2026-10-19). The setup
   could also add the portrait popup to the skin in use when its panels keep

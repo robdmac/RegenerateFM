@@ -170,6 +170,29 @@ class CompanionInGameKeyTests(unittest.TestCase):
         self.assertEqual(self.ensure(store, [], saved_key=KEY)[1].call_count, 0)
         self.assertEqual(self.ensure(store, [], platform="win32")[1].call_count, 0)
 
+    def test_a_companion_fm24_started_asks_in_its_own_window(self):
+        self.handler.started_by_fm24 = 4242
+        saved = {}
+
+        def key_window(command, **options):
+            self.assertEqual(command[-1], "--ask-key")
+            saved["OPENAI_API_KEY"] = KEY  # what the player typed there
+        with mock.patch.object(keystore, "default_path", return_value=Path("unused")), \
+                mock.patch.object(self.companion, "load_env", side_effect=lambda use_key_file=True: dict(saved)), \
+                mock.patch.object(sys, "platform", "win32"), \
+                mock.patch.object(self.companion, "show_dialog") as told, \
+                mock.patch("subprocess.run", side_effect=key_window) as window, \
+                mock.patch("builtins.print"):
+            self.assertTrue(self.companion.ensure_key(self.handler))
+            # FM24 says where to look; with a key saved, no second window opens.
+            self.assertIn("FM Face window", told.call_args.args[4])
+            self.assertTrue(self.companion.ensure_key(self.handler))
+        self.assertEqual(window.call_count, 1)
+        with mock.patch.object(sys, "platform", "win32"), \
+                mock.patch.object(self.companion, "load_env", return_value={}):
+            message = self.companion.error_text(RuntimeError("OpenAI image API returned HTTP 401: x"), self.handler)
+        self.assertIn("face command again", message)
+
     def test_a_rejected_saved_key_is_asked_for_again(self):
         with mock.patch.object(sys, "platform", "darwin"), \
                 mock.patch.object(self.companion, "load_env", return_value={}):

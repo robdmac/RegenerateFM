@@ -65,6 +65,24 @@ No installation paths are compiled into the DLL. Configuration and logging
 paths are derived from the DLL's own location; the network destination is always
 loopback. `--port` changes the native bridge port, default 8769.
 
+**Starting the companion.** `--companion '<path>'` (the packaged
+`fmface-fm24.exe`, as Windows sees it: `Z:\...` under Proton) adds a
+`companion=` line; `fmface24.ini` is then written as UTF-16 with a byte-order
+mark, which `GetPrivateProfileStringW` reads, so any path works. Once its
+hooks are in, the DLL starts that program on a thread of its own with
+`CreateProcessW` (`DETACHED_PROCESS`, so no window), passing
+`--started-by-fm24 <FM24's process ID> --game-dir "<FM24's folder>"`, and logs
+`FMFACE24_COMPANION_STARTED`, `_MISSING`, `_NOT_CONFIGURED` or
+`_START_FAILED error=<n>`. The companion logs to `fmface-fm24.log` beside
+itself, waits on FM24's process handle and exits with it, and exits at once
+if another companion holds its port. With no key saved it runs itself again
+with `--ask-key` in a new console window, so closing that window can't stop
+it. Under Proton, Wine ends the companion with FM24's session anyway. The
+skin is optional: with its panels missing the installer installs the DLL
+alone, and panels that already carry the popup (built by the companion when
+the setup had no `zstandard`) are adopted as created files. The macOS library
+doesn't start a companion yet.
+
 For Steam/Proton, use this game launch option:
 
 ```text

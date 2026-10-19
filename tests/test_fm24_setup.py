@@ -19,6 +19,11 @@ class SetupTests(unittest.TestCase):
         platform = mock.patch.object(setup_fm24.sys, "platform", "linux")
         platform.start()
         self.addCleanup(platform.stop)
+        # Never this computer's Steam: no real launch option is read or written.
+        for name, value in (("steam_running", False), ("steam_roots", [])):
+            patcher = mock.patch.object(setup_fm24.steam_launch, name, return_value=value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
 
@@ -76,6 +81,39 @@ class SetupTests(unittest.TestCase):
         build.assert_called_once_with(game, user_data / "skins" / "fmface")
         self.assertIn(str(auth), install.call_args.args[0])
         self.assertTrue((user_data / "graphics" / "fmface").is_dir())
+
+    def test_refuses_while_steam_runs_until_the_launch_option_is_set(self):
+        with mock.patch.object(setup_fm24.steam_launch, "steam_running", return_value=True), \
+                mock.patch.object(setup_fm24.steam_launch, "needs_change", return_value=True), \
+                mock.patch.object(setup_fm24.native_install, "main") as install:
+            with self.assertRaisesRegex(SystemExit, "Quit Steam first"):
+                setup_fm24.setup(self.root, self.root, self.root / "auth")
+            install.assert_not_called()
+        # Already set: Steam may stay open.
+        with mock.patch.object(setup_fm24.steam_launch, "steam_running", return_value=True), \
+                mock.patch.object(setup_fm24.steam_launch, "needs_change", return_value=False), \
+                mock.patch.object(setup_fm24, "is_set_up", return_value=True), \
+                mock.patch("builtins.print"):
+            setup_fm24.setup(self.root, self.root, self.root / "auth")
+
+    def test_linux_setup_names_the_packaged_companion_as_wine_sees_it(self):
+        companion = self.root / "FM Face" / "FM24" / "fmface-fm24.exe"
+        dll = companion.parent / "_internal" / "fm24-dll" / "winmm.dll"
+        dll.parent.mkdir(parents=True)
+        dll.write_bytes(b"MZ")
+        companion.write_bytes(b"MZ")
+        game, user_data = self.root / "game", self.root / "user"
+        game.mkdir()
+        user_data.mkdir()
+        with mock.patch.object(setup_fm24.native_install, "game_running", return_value=False), \
+                mock.patch.object(setup_fm24, "build_skin_from_game", side_effect=ImportError("zstandard")), \
+                mock.patch.object(setup_fm24.native_install, "main") as install, \
+                mock.patch("builtins.print"):
+            setup_fm24.setup(game, user_data, companion.parent / ".fm24-auth", companion)
+        command = install.call_args.args[0]
+        self.assertEqual(command[command.index("--dll") + 1], str(dll))
+        self.assertEqual(command[command.index("--companion") + 1], "Z:" + str(companion).replace("/", "\\"))
+        self.assertTrue((companion.parent / ".fm24-auth").is_file())
 
     def test_refuses_while_fm24_runs(self):
         with mock.patch.object(setup_fm24, "is_set_up", return_value=False), \

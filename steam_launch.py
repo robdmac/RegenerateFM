@@ -219,12 +219,33 @@ def find_game_dir(game: str) -> Path | None:
     return None
 
 
+def needs_change(game: str, game_dir: Path, *, remove: bool = False,
+                 roots: list[Path] | None = None) -> bool:
+    """True if some account's launch option for the game isn't as FM Face wants it yet."""
+    prefix = fm_face_option(game, game_dir)
+    if prefix is None:
+        return False
+    for root in roots if roots is not None else steam_roots():
+        for config in (root / "userdata").glob("*/config/localconfig.vdf"):
+            try:
+                text = config.read_text(encoding="utf-8")
+                updated = set_launch_option(text, GAMES[game]["app"], prefix, remove=remove)
+            except (OSError, UnicodeError, ValueError):
+                return True
+            if updated is not None and updated != text:
+                return True
+    return False
+
+
 def apply(game: str, game_dir: Path, *, remove: bool = False) -> str:
     """Set or remove FM Face's launch option; returns a message for the player."""
     prefix = fm_face_option(game, game_dir)
     if prefix is None:
         return "On Windows FM Face needs no Steam launch option."
     manual = f"set it yourself in Steam (Properties > General > Launch Options): {prefix} {COMMAND}"
+    if not needs_change(game, game_dir, remove=remove):
+        return (f"{GAMES[game]['folder']}'s Steam launch option is already set for FM Face." if not remove else
+                "No Steam account had FM Face's launch option.")
     if steam_running():
         return ("Steam is running, so FM Face didn't change its launch option. Quit Steam and run "
                 f"the setup again, or {manual}" if not remove else
