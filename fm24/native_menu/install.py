@@ -139,8 +139,9 @@ def load_manifest(path: Path) -> dict | None:
     return metadata
 
 
-def game_running() -> bool:
-    suffix = "/" + EXECUTABLE.lower()
+def game_running(game: Path) -> bool:
+    """FM24 from this folder is running (not FM26, whose executable is fm.exe too)."""
+    suffix = f"/{game.name}/{EXECUTABLE}".lower()
     for _, executable in running_executables():
         if executable.replace("\\", "/").lower().endswith(suffix):
             return True
@@ -185,7 +186,7 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
     game = args.game_dir.expanduser().resolve()
     skin = args.skin_dir.expanduser().resolve()
-    if game_running():
+    if game_running(game):
         parser.error("Close FM24 before installing or removing its native DLL.")
     target = game / LIBRARY
     launcher = game / LAUNCHER if LAUNCHER else None

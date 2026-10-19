@@ -48,21 +48,21 @@ Faces are saved in FM26's user-data folder, `Documents/Sports Interactive/Footba
 
 ## 3. Set up FM24 (experimental)
 
-FM24 needs a companion program that runs while you play. It reads the open profile from FM24's memory and makes the image requests. It also sets FM24 up the first time: a small FM Face skin built from FM24's own files, and a small DLL in the game folder that adds FM Face's menu items.
+FM24 needs a companion program that runs while you play. It reads the open profile from FM24's memory and makes the image requests. It also sets FM24 up the first time: a small DLL in the game folder that adds FM Face's menu items, and an optional FM Face skin built from FM24's own files.
 
 **Windows**
 1. Copy the release ZIP's `FM24` folder somewhere of your own, such as `Documents\FM Face for FM24`, not into the game folder.
 2. Close FM24 and double-click `fmface-fm24.exe`. The first time, it finds FM24 through Steam, sets it up and asks for your OpenAI key in its window (paste or type it; it is checked for free and saved encrypted in `%APPDATA%\FM Face`, the same file the FM26 plugin uses).
-3. Start FM24. In **Preferences > Interface**, choose the **FM Face** skin and tick **Show screen IDs in Title Bar to assist skinning**.
+3. Start FM24. Any skin works; to also get the menu on the portrait, choose the **FM Face** skin in **Preferences > Interface**.
 4. Leave the companion's window open while you play. Next time, double-click it again before or after starting FM24.
 
 It needs no Python. If FM24 isn't in a Steam library it can find, run `fmface-fm24.exe setup --game-dir "<path to Football Manager 2024>"` from a command prompt. `fmface-fm24.exe setup --remove` uninstalls the DLL.
 
 **Linux (Steam/Proton)** runs the companion with Python from this source: `python3 fm24/setup_fm24.py` does the same setup, then add FM24's launch option `WINEDLLOVERRIDES="winmm=n,b" %command%`. The full steps are in [fm24/README.md](fm24/README.md).
 
-**macOS (Apple Silicon, experimental)** also runs the companion with Python from this source. Build the Mac library with `python3 fm24/native_menu/build_macos.py` (it needs Xcode's command-line tools), then run `python3 fm24/setup_fm24.py` with FM24 closed. It installs `libfmface24.dylib` and `run_fmface24.sh` beside `fm.app` and, if Steam is closed, sets FM24's Steam launch option to `"<that folder>/run_fmface24.sh" %command%` (otherwise it prints it to set yourself). `fm.app` itself is never changed. FM24 asks for your key in the game the first time you choose a face command, like FM26, and the companion saves it in `~/Library/Application Support/FM Face`, the file the FM26 plugin uses too. On the Mac, choose the FM Face skin; **Show screen IDs in Title Bar** isn't needed. See [fm24/README.md](fm24/README.md).
+**macOS (Apple Silicon, experimental)** also runs the companion with Python from this source. Build the Mac library with `python3 fm24/native_menu/build_macos.py` (it needs Xcode's command-line tools), then run `python3 fm24/setup_fm24.py` with FM24 closed. It installs `libfmface24.dylib` and `run_fmface24.sh` beside `fm.app` and, if Steam is closed, sets FM24's Steam launch option to `"<that folder>/run_fmface24.sh" %command%` (otherwise it prints it to set yourself). `fm.app` itself is never changed. FM24 asks for your key in the game the first time you choose a face command, like FM26, and the companion saves it in `~/Library/Application Support/FM Face`, the file the FM26 plugin uses too. On the Mac, **Show screen IDs in Title Bar** isn't needed. See [fm24/README.md](fm24/README.md).
 
-In FM24, the portrait popup and the profile's **Overview** tab menu have **Generate new face** and **Update face**. The Squad screen's **Overview** menu has **Generate missing squad faces…**. Progress, confirmations and errors appear in FM24's own dialogs.
+In FM24, the profile's **Overview** tab menu has **Generate new face** and **Update face**, with any skin; with the FM Face skin, so does a popup on the portrait. The Squad screen's **Overview** menu has **Generate missing squad faces…**. Progress, confirmations and errors appear in FM24's own dialogs.
 
 ## Settings
 

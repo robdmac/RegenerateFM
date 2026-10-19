@@ -171,7 +171,9 @@ class CompanionInGameKeyTests(unittest.TestCase):
         self.assertEqual(self.ensure(store, [], platform="win32")[1].call_count, 0)
 
     def test_a_rejected_saved_key_is_asked_for_again(self):
-        message = self.companion.error_text(RuntimeError("OpenAI image API returned HTTP 401: x"), self.handler)
+        with mock.patch.object(sys, "platform", "darwin"), \
+                mock.patch.object(self.companion, "load_env", return_value={}):
+            message = self.companion.error_text(RuntimeError("OpenAI image API returned HTTP 401: x"), self.handler)
         self.assertIn("face command again", message)
         self.assertTrue(self.handler.key_rejected)
         with tempfile.TemporaryDirectory() as tmp:

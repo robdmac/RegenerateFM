@@ -187,6 +187,22 @@ class NativeBridgeTests(unittest.TestCase):
         self.assertIn("did not report which person", failures[0])
         self.assertEqual(request.call_args.kwargs["expected_id"], "123")
 
+    def test_an_error_already_in_the_progress_dialog_is_not_shown_again(self):
+        notices = []
+        for result in ({"ok": False, "error": "HTTP 500", "shown": True},
+                       {"ok": True, "refreshed": False, "warning": "reload failed", "shown": True},
+                       {"ok": False, "error": "HTTP 500"}):
+            done = threading.Event()
+            with patch.object(native_listener, "request_generation", return_value=result), \
+                 patch.object(native_listener, "describe_result", side_effect=lambda value: done.set() or ""):
+                bridge = Bridge(self, notify=notices.append)
+                bridge.send(1)
+                self.assertEqual(bridge.reply(), b"FMFACE24 ACK 1 accepted")
+                self.assertTrue(done.wait(2))
+                time.sleep(.1)
+                bridge.close()
+        self.assertEqual(notices, ["HTTP 500"])
+
     def test_delayed_command_is_refused(self):
         with patch.object(native_listener, "request_generation") as request:
             bridge = Bridge(self)
@@ -321,6 +337,15 @@ class NativeDllSourceTests(unittest.TestCase):
     def test_clicks_name_the_game_run_not_the_reused_process_id(self):
         self.assertIn('(unsigned long long)bridge_instance, (long)serial', self.source)
         self.assertNotIn("GetCurrentProcessId()", self.source)
+
+    def test_person_lookup_offsets_match_the_companion(self):
+        import re
+        defines = {name: int(value, 16) for name, value in
+                   re.findall(r"#define (\w+)\s+(0x[0-9A-Fa-f]+)\b", self.source)}
+        self.assertEqual((defines["SIDEBAR_VTABLE_RVA"], defines["SIDEBAR_OBJECT"]),
+                         (layout.WINDOWS["sidebar_vtable"], layout.WINDOWS["sidebar_reference"]))
+        self.assertEqual((defines["DATABASE_GLOBAL_RVA"], defines["DATABASE_PEOPLE"]),
+                         layout.WINDOWS["person_table"])
 
     def test_face_check_packets_match_the_listener(self):
         self.assertIn('"FMFACE24F 1 %ld %ld %s", (long)serial, (long)person, bridge_token', self.source)
@@ -506,6 +531,18 @@ class NativeInstallerTests(unittest.TestCase):
             with patch("sys.stderr"), self.assertRaises(SystemExit):
                 self.run_installer(*extra)
 
+
+
+class GameRunningTests(unittest.TestCase):
+    def test_a_running_fm26_is_not_taken_for_fm24(self):
+        game = Path("/games/steamapps/common/Football Manager 2024")
+        fm26 = [(1, r"Z:\games\steamapps\common\Football Manager 26\fm.exe")]
+        fm24 = [(2, r"Z:\games\steamapps\common\Football Manager 2024\fm.exe")]
+        with patch.object(install, "EXECUTABLE", "fm.exe"):
+            with patch.object(install, "running_executables", return_value=fm26):
+                self.assertFalse(install.game_running(game))
+            with patch.object(install, "running_executables", return_value=fm26 + fm24):
+                self.assertTrue(install.game_running(game))
 
 
 class FindGamePidTests(unittest.TestCase):

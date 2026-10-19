@@ -213,19 +213,29 @@ class GeneratorParityTests(unittest.TestCase):
                 {"action": "current", "directory": str(graphics), "personId": "7"},
                 {"action": "save", "directory": str(graphics), "personId": "8", "input": str(source.with_name("missing.png"))},
             ])
-            self.assertEqual(results[0], {"path": str(graphics / "5.png")})
+            # Each face gets a new file name, so FM26 loads it instead of the one it drew before.
+            first, second = (Path(result["path"]) for result in results[:2])
+            for path in (first, second):
+                self.assertEqual(path.parent, graphics)
+                self.assertRegex(path.name, r"^5-[0-9a-f]{16}\.png$")
+            self.assertNotEqual(first, second)
+            self.assertFalse(first.exists())  # replaced by the second
             self.assertEqual(results[2:4], [{"found": True}, {"found": True}])
             self.assertIn("error", results[4])
             _, maps = fmface.load_graphics_maps(graphics)
             self.assertEqual(sorted((r.get("from"), r.get("to")) for r in maps), [
-                ("5", "graphics/pictures/person/5/portrait"), ("5", "graphics/pictures/person/r-5/portrait"),
+                (second.stem, "graphics/pictures/person/5/portrait"), (second.stem, "graphics/pictures/person/r-5/portrait"),
                 ("7", "graphics/pictures/person/7/portrait"), ("7", "graphics/pictures/person/r-7/portrait"),
             ])
-            self.assertEqual((graphics / "5.png").read_bytes(), fitted.read_bytes())
+            self.assertEqual(second.read_bytes(), fitted.read_bytes())
+            # A face saved under the old name ("7.png", here by Python) is replaced and removed.
+            again = self.run_cases([{"action": "save", "directory": str(graphics), "personId": "7", "input": str(fitted)}])
+            self.assertRegex(Path(again[0]["path"]).name, r"^7-[0-9a-f]{16}\.png$")
+            self.assertFalse((graphics / "7.png").exists())
             (graphics / "config.xml").write_text("<record><list id='other'/></record>")
             refused = self.run_cases([{"action": "save", "directory": str(graphics), "personId": "9", "input": str(fitted)}])
             self.assertEqual(refused, [{"error": "Existing config.xml has no maps list; refusing to alter it."}])
-            self.assertFalse((graphics / "9.png").exists())
+            self.assertEqual(list(graphics.glob("9*.png")), [])
 
     def test_image_requests_match_python(self):
         requests, image, base = self.requests, self.image, self.base
@@ -304,16 +314,18 @@ class GeneratorParityTests(unittest.TestCase):
                 dict(ok, action="portrait", mode="update", personId="7458500", profile=player, input=str(shown)),
                 dict(ok, action="portrait", personId="5118334", profile=staff),
             ])
-            saved = (graphics / "7458500.png").read_bytes()
-            staff_before = (graphics / "5118334.png").read_bytes()
+            saved = Path(results[2]["path"]).read_bytes()
+            staff_path = Path(results[3]["path"])
+            staff_before = staff_path.read_bytes()
             failed = self.run_cases([
                 dict(ok, action="portrait", personId="5118334", profile=staff, apiKey="sk-bad-key"),
                 dict(ok, action="portrait", personId="5118334", profile=dict(staff, age=3)),
             ])
-            self.assertEqual((graphics / "5118334.png").read_bytes(), staff_before)
+            self.assertEqual(staff_path.read_bytes(), staff_before)
+            self.assertEqual(sorted(graphics.glob("*.png")), sorted([Path(results[2]["path"]), staff_path]))
         self.assertEqual(results[0], {"error": "This person has no face to update yet. Use Generate face instead."})
-        self.assertEqual(results[1:], [{"path": str(graphics / "7458500.png")}, {"path": str(graphics / "7458500.png")},
-                                       {"path": str(graphics / "5118334.png")}])
+        for result, person in zip(results[1:], ("7458500", "7458500", "5118334")):
+            self.assertRegex(Path(result["path"]).name, rf"^{person}-[0-9a-f]{{16}}\.png$")
         self.assertIn("401", failed[0]["error"])
         self.assertEqual(failed[1], {"error": "Staff age is missing or invalid."})
         paths = [request[0] for request in self.requests]

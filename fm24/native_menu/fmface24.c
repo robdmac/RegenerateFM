@@ -132,19 +132,31 @@ static BOOL read_game(const void *address, void *buffer, SIZE_T size)
 
 /* Widget layout of the pinned FM24 build, from live inspection. Container
    objects embed a widget part (+0x38) holding the UI manager, the parent
-   object, and the skin ID; children are a vector of object pointers at +0x100.
-   The header's subtitle ("Role - Club (ID:n)" with screen IDs enabled) is the
-   text of the 'subs' widget. */
+   object, and the skin ID; children are a vector of object pointers at +0x100. */
 #define EVENT_SOURCE      0x20
 #define WIDGET_PART       0x38
 #define WIDGET_MANAGER    (WIDGET_PART + 0x10)
 #define WIDGET_PARENT     (WIDGET_PART + 0x18)
 #define WIDGET_ID         (WIDGET_PART + 0x24)
 #define WIDGET_CHILDREN   0x100
-#define WIDGET_TEXT       (WIDGET_PART + 0x158)
 #define SKIN_ID(a, b, c, d) (((unsigned int)(a) << 24) | ((unsigned int)(b) << 16) | ((c) << 8) | (d))
 #define MAX_CHILDREN      4096
 #define MAX_SEARCH        4096
+
+/* The sidebar ('side', a class of its own) keeps the object of the screen FM24
+   has navigated to at +0x280: 0x01000000 | the person's handle for a person.
+   It is a child of an ancestor of every widget on the screen, and a skin
+   reload sets it again. FM24's database object, a global in fm.exe, lists
+   every person at their handle; a person keeps its handle at +8 and its
+   canonical record at +12, which starts with the person ID twice. */
+#define SIDEBAR_VTABLE_RVA     0x57E3B48
+#define SIDEBAR_OBJECT         0x280
+#define DATABASE_GLOBAL_RVA    0x6426D90
+#define DATABASE_PEOPLE        0x920   /* the people's slot seen first; see object_person_id */
+#define DATABASE_SCAN          0x2000
+#define PERSON_OBJECT          0x01000000u
+#define PERSON_HANDLE          8
+#define MAX_DEPTH              64
 
 static BOOL read_pointer(const unsigned char *address, unsigned char **value)
 {
@@ -175,66 +187,74 @@ static int widget_children(const unsigned char *object, unsigned char **children
 static unsigned char *search_children[MAX_CHILDREN];
 static unsigned char *search_stack[MAX_SEARCH];
 
-/* Reads the person ID shown in the open screen's header, starting from FM
-   Face's portrait popup (the clicked menu's source widget). Runs on FM24's UI thread inside the menu
-   callback, so the header cannot change to another screen while it is read.
-   Every read is guarded, and any surprise (wrong source widget, no unique
-   header or subtitle, no "(ID:n)") returns 0, which the companion refuses. */
+/* The person ID at this handle in the database's vector at slot, or 0. */
+static LONG slot_person_id(unsigned char *database, size_t slot, unsigned int handle)
+{
+    unsigned char *range[2], *person;
+    struct { unsigned int handle, id, again, zero; unsigned char marker[4]; } record;
+    if (!read_game(database + slot, range, sizeof(range)) || !range[0] || range[1] <= range[0] ||
+        (range[1] - range[0]) % sizeof(void *) || handle >= (size_t)(range[1] - range[0]) / sizeof(void *) ||
+        !read_pointer(range[0] + (size_t)handle * sizeof(void *), &person) || !person ||
+        !read_game(person + PERSON_HANDLE, &record, sizeof(record)))
+        return 0;
+    /* As in the companion: the ID twice, then a marker of 00 xx 58. */
+    if (record.handle != handle || record.id != record.again || record.marker[0] || record.marker[2] != 0x58 ||
+        record.id < 1 || record.id > 0x7fffffffu)
+        return 0;
+    return (LONG)record.id;
+}
+
+/* The person ID of a person object ID, through FM24's person table, or 0.
+   The database keeps one vector per kind of object, indexed by handle, and
+   which slot holds people changes from one run of FM24 to the next: the last
+   slot found is tried first, then every slot in the first DATABASE_SCAN
+   bytes, which must all agree on the person. UI thread only. */
+static size_t people_slot = DATABASE_PEOPLE;
+
+static LONG object_person_id(unsigned int object_id)
+{
+    unsigned char *database;
+    unsigned int handle = object_id & 0xFFFFFFu;
+    LONG id, found = 0;
+    size_t found_slot = 0;
+    if ((object_id & 0xFF000000u) != PERSON_OBJECT || !read_pointer(game_base + DATABASE_GLOBAL_RVA, &database))
+        return 0;
+    if ((id = slot_person_id(database, people_slot, handle))) return id;
+    for (size_t slot = 0; slot < DATABASE_SCAN; slot += sizeof(void *)) {
+        if (slot == people_slot || !(id = slot_person_id(database, slot, handle))) continue;
+        if (found && id != found) return 0;
+        if (!found) { found = id; found_slot = slot; }
+    }
+    if (found) people_slot = found_slot;
+    return found;
+}
+
+/* Reads the person the open screen shows, starting from FM Face's portrait
+   popup (the clicked menu's source widget). Runs on FM24's UI thread inside
+   the menu callback, so the screen cannot change while it is read. Every read
+   is guarded, and any surprise (wrong source widget, no single sidebar, not a
+   person) returns 0, which the companion refuses. */
 static LONG popup_person_id(void *manager, unsigned char *popup)
 {
-    unsigned char *object, *head = NULL, *subs = NULL;
-    unsigned int skin_id;
+    unsigned char *object = popup, *sidebar = NULL, *vtable;
+    unsigned int skin_id, object_id;
     if (!widget_id(popup, manager, &skin_id) ||
         (skin_id != SKIN_ID('f','m','n','P') && skin_id != SKIN_ID('f','m','n','S') &&
          skin_id != SKIN_ID('P','p','r','f')))
         return 0;
-    object = popup;
-    for (int depth = 0; depth < 64 && !head && widget_id(object, manager, &skin_id); ++depth) {
+    for (int depth = 0; depth < MAX_DEPTH && !sidebar && widget_id(object, manager, &skin_id); ++depth) {
         int count = widget_children(object, search_children, MAX_CHILDREN);
         for (int i = 0; i < count; ++i) {
-            if (!widget_id(search_children[i], manager, &skin_id) || skin_id != SKIN_ID('h','e','a','d'))
+            if (!widget_id(search_children[i], manager, &skin_id) || skin_id != SKIN_ID('s','i','d','e') ||
+                !read_pointer(search_children[i], &vtable) || vtable != game_base + SIDEBAR_VTABLE_RVA)
                 continue;
-            if (head) return 0;  /* More than one header: refuse. */
-            head = search_children[i];
+            if (sidebar) return 0;  /* More than one sidebar: refuse. */
+            sidebar = search_children[i];
         }
         if (!read_pointer(object + WIDGET_PARENT, &object)) return 0;
     }
-    if (!head) return 0;
-    int top = 0, visited = 0;
-    search_stack[top++] = head;
-    while (top) {
-        unsigned char *node = search_stack[--top];
-        if (++visited > MAX_SEARCH) return 0;
-        if (widget_id(node, manager, &skin_id) && skin_id == SKIN_ID('s','u','b','s')) {
-            if (subs) return 0;  /* More than one subtitle: refuse. */
-            subs = node;
-        }
-        int count = widget_children(node, search_children, MAX_CHILDREN);
-        for (int i = 0; i < count; ++i) {
-            if (top == MAX_SEARCH) return 0;
-            if (widget_id(search_children[i], manager, &skin_id)) search_stack[top++] = search_children[i];
-        }
-    }
-    unsigned char *text;
-    unsigned int length;
-    char title[256];
-    if (!subs || !read_pointer(subs + WIDGET_TEXT, &text) ||
-        !read_game(text, &length, sizeof(length)) || length < 7 || length >= sizeof(title) ||
-        !read_game(text + 4, title, length))
-        return 0;
-    title[length] = 0;
-    /* The subtitle must end in "(ID:<1-10 digits, no leading zero>)". */
-    char *open = strrchr(title, '(');
-    if (!open || strncmp(open, "(ID:", 4) || title[length - 1] != ')') return 0;
-    char *digits = open + 4;
-    size_t count = (size_t)(title + length - 1 - digits);
-    if (count < 1 || count > 10 || digits[0] == '0') return 0;
-    unsigned long long value = 0;
-    for (size_t i = 0; i < count; ++i) {
-        if (digits[i] < '0' || digits[i] > '9') return 0;
-        value = value * 10 + (unsigned)(digits[i] - '0');
-    }
-    return value <= 0x7fffffffu ? (LONG)value : 0;
+    if (!sidebar || !read_game(sidebar + SIDEBAR_OBJECT, &object_id, sizeof(object_id))) return 0;
+    return object_person_id(object_id);
 }
 
 static LONG clicked_person_id(void *manager, void *event)
@@ -471,7 +491,7 @@ static BOOL show_dialog(void *manager)
 enum { PROGRESS_NONE, PROGRESS_REQUESTED, PROGRESS_DONE, PROGRESS_FAILED };
 static volatile LONG progress_state;
 static int progress_target;  /* 1 portrait popup, 2 open dialog, 3 open dialog becomes an OK message */
-static char progress_text[256];
+static char progress_text[1024];
 #define SCREEN_ROOT 0x58
 #define MAX_VISIT   16384
 typedef void (*apply_function)(void *, void *);
@@ -538,7 +558,12 @@ static BOOL make_ok_dialog(void *manager, const char *label);
 
 static BOOL apply_progress(void *manager)
 {
-    if (progress_target == 3 && !make_ok_dialog(manager, "OK")) return FALSE;
+    if (progress_target == 3) {
+        if (!make_ok_dialog(manager, "OK")) return FALSE;
+        /* Now an OK message: a pending relabel must not bring back "Stop after this face". */
+        dialog_kind = 2;
+        ok_dialog_tries = 0;
+    }
     unsigned char *widget = progress_target == 1 ?
         find_widget(manager, SKIN_ID('f','m','n','P'), SKIN_ID('f','m','n','S'), NULL) :
         dialog_state == DIALOG_SHOWN && dialog_object ? find_widget(manager, 0, 0, dialog_object) : NULL;
@@ -1206,9 +1231,9 @@ static DWORD WINAPI reload_listener(LPVOID unused)
             sendto(socket_fd, reply, count, 0, (struct sockaddr *)&peer, sizeof(peer));
             continue;
         }
-        if (sscanf(packet, "FMFACE24P 1 %lld %159s %15s %399s %c", &serial, token, kind, title_b64, &extra) == 4) {
+        if (sscanf(packet, "FMFACE24P 1 %lld %159s %15s %1499s %c", &serial, token, kind, text_b64, &extra) == 4) {
             if (serial <= 0 || strcmp(token, bridge_token) || (strcmp(kind, "portrait") && strcmp(kind, "dialog") && strcmp(kind, "finish")) ||
-                (strcmp(title_b64, "-") && !base64_text(title_b64, title, sizeof(title))))
+                (strcmp(text_b64, "-") && !base64_text(text_b64, text, sizeof(text))))
                 continue;
             LONG state = progress_state;
             if (serial > last_progress) {
@@ -1217,7 +1242,7 @@ static DWORD WINAPI reload_listener(LPVOID unused)
                 } else {
                     last_progress = serial;
                     progress_target = !strcmp(kind, "portrait") ? 1 : !strcmp(kind, "dialog") ? 2 : 3;
-                    snprintf(progress_text, sizeof(progress_text), "%s", strcmp(title_b64, "-") ? title : "");
+                    snprintf(progress_text, sizeof(progress_text), "%s", strcmp(text_b64, "-") ? text : "");
                     InterlockedExchange(&progress_state, PROGRESS_REQUESTED);
                     status = "queued";
                 }

@@ -150,6 +150,37 @@ class NativeReloadTests(unittest.TestCase):
         native.assert_called_once_with(8770, "t" * 43)
 
 
+class InGameProgressTests(unittest.TestCase):
+    HANDLER = SimpleNamespace(reload_port=8770, token="t" * 43)
+
+    def test_progress_is_on_the_fm_face_portrait_popup(self):
+        with patch.object(companion, "set_progress") as progress, patch.object(companion, "show_dialog") as dialog:
+            self.assertIsInstance(companion.start_progress(self.HANDLER, "update"), companion.NativePortraitProgress)
+        progress.assert_called_once_with(8770, "t" * 43, "portrait", "Updating…")
+        dialog.assert_not_called()
+
+    def test_without_the_popup_progress_and_errors_are_in_a_dialog(self):
+        def portrait_missing(port, token, target, text):
+            if target == "portrait":
+                raise companion.DialogUnavailable("FM24 could not set the progress text (failed).")
+        with patch.object(companion, "set_progress", side_effect=portrait_missing) as progress, \
+             patch.object(companion, "show_dialog") as dialog:
+            shown = companion.start_progress(self.HANDLER, "generate")
+            self.assertIsInstance(shown, companion.NativeDialogProgress)
+            dialog.assert_called_once_with(8770, "t" * 43, "message", "FM Face", "Generating a new face…")
+            shown.send("reload")
+            self.assertTrue(shown.fail("OpenAI image API returned HTTP 500."))
+        self.assertEqual([call.args[2:] for call in progress.call_args_list[1:]],
+                         [("dialog", "Loading the new face…"), ("finish", "OpenAI image API returned HTTP 500.")])
+
+    def test_an_error_after_the_dialog_was_closed_is_reported_by_the_caller(self):
+        with patch.object(companion, "show_dialog"):
+            shown = companion.NativeDialogProgress(8770, "t" * 43, "Generating a new face…")
+        with patch.object(companion, "set_progress", side_effect=companion.DialogUnavailable("closed")):
+            self.assertFalse(shown.fail("OpenAI image API returned HTTP 500."))
+        self.assertTrue(shown.failed)
+
+
 class CompanionHttpTests(unittest.TestCase):
     PLAYER = {"type": "player", "name": "Test Player", "age": 25, "club": "Test Club"}
 
@@ -358,6 +389,32 @@ class PersonReferenceTests(unittest.TestCase):
             # Outside the table, or an empty slot: the lookup falls back to the index.
             for reference in (0x01000040, 0x0100000F):
                 self.assertIsNone(person_handles._from_table(1, reference & 0x7FFFFF))
+
+    def test_person_table_is_found_in_another_database_slot(self):
+        import person_handles
+        image, database, decoy, table, other, person = 0x100000000, 0x7000, 0x8000, 0x9000, 0xB000, 0xA000
+        memory = {
+            image + 0x50: struct.pack("<Q", database),
+            # The layout's slot now holds another kind of object, also indexed by handle.
+            database + 0x18: struct.pack("<QQ", decoy, decoy + 8 * 0x20),
+            decoy + 8 * 0x0E: struct.pack("<Q", other),
+            other + 8: struct.pack("<III", 0x0E, 77, 1234),
+            database + 0x98: struct.pack("<QQ", table, table + 8 * 0x20),
+            table + 8 * 0x0E: struct.pack("<Q", person),
+            person + 8: struct.pack("<III", 0x0E, 4000829, 4000829) + bytes(4) + bytes([0, 0, 0x58, 0x10]),
+        }
+
+        def read(pid, address, size):
+            for start, data in memory.items():
+                if start <= address and address + size <= start + len(data):
+                    return data[address - start:address - start + size]
+            return bytes(size)
+        with patch.dict(person_handles.LAYOUT, {"person_table": (0x50, 0x18), "browser_reference": 0x878}), \
+                patch.dict(person_handles._table_slots, clear=True), \
+                patch.object(person_handles, "read_process_bytes", side_effect=read), \
+                patch.object(person_handles, "fm24_image_base", return_value=image):
+            self.assertEqual(person_handles._from_table(1, 0x0E), "4000829")
+            self.assertEqual(person_handles._table_slots[1], 0x98)
 
     def test_screen_reference_prefers_the_sidebar_which_survives_a_skin_reload(self):
         import person_handles
