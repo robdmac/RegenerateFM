@@ -141,16 +141,14 @@ def _parse_record(pid: int, address: int, person_id: int) -> PersonIdentity | No
         if not 1900 <= birth_date.year <= game_year - 14:
             return None
         name_ptr = read_pointer(pid, address + LAYOUT["record_name"], raw, address)
-        if name_ptr:
-            name = _string(pid, name_ptr)
-        elif LAYOUT["record_name_parts"] is not None:
-            # No full name: "first surname" from the record's name objects. A
-            # person with one name (Nur'alim) has only the surname.
+        name = _string(pid, name_ptr) if name_ptr else None
+        if (name is None or len(name) < 3) and LAYOUT["record_name_parts"] is not None:
+            # No full name, or an unusable one (one save's Hugo Videla: "v"):
+            # "first surname" from the record's name objects. A person with
+            # one name (Nur'alim) has only the surname.
             first, surname = (_string(pid, read_pointer(pid, pointer)) if (pointer := read_pointer(
                 pid, address + offset)) else None for offset in LAYOUT["record_name_parts"])
             name = " ".join(part for part in (first, surname) if part) if surname else None
-        else:
-            return None
         if not name or not re.fullmatch(r"[^\x00-\x1f\x7f]{3,80}", name):
             return None
         return PersonIdentity(person_id, name, birth_date, game_year, kind)

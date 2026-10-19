@@ -92,6 +92,18 @@
 - **macOS companion start:** the Mac library and `run_fmface24.sh` don't
   start the companion, and it isn't packaged for macOS (it needs building on
   a Mac). `run_fmface24.sh` could start it before FM24.
+- **FM24 people found by class:** done (2026-10-20). Person records,
+  teams, club details and nations are recognised by their object's class
+  (MSVC RTTI), not by marker bytes or ID copies, which varied from person to
+  person; every one of the 29,330 players and staff in a Reading save reads
+  (see native_menu/README.md, "Person records"). Mac players-coaches are
+  still refused (their class isn't mapped there).
+- **FM24 squad scan speed:** on the Reading Under 21s the scan took 16 s
+  before its confirmation, about 6 s of it two passes over memory (today's
+  date and the Squad table). Caching the date per game day would halve it.
+- **FM24 squad dialog names the club, not the team:** a youth squad's
+  confirmation says "20 of 21 Reading players"; FM doesn't store "Reading
+  Under 21s", so it would come from the screen's header.
 - **FM24 portrait popup in other skins:** FM Face works with any skin through
   the Overview tab menu (checked on the default skin, 2026-10-19). The setup
   could also add the portrait popup to the skin in use when its panels keep

@@ -116,6 +116,11 @@ class LiveMemoryTests(unittest.TestCase):
         string[4:4 + len(name) + 1] = "Immanuel\u00a0Ajibode".encode().ljust(len(name) + 1, b"\0")
         struct.pack_into("<I", string, 0, len("Immanuel\u00a0Ajibode".encode()))
         self.assertEqual(parse().name, "Immanuel Ajibode")
+        # An unusable full name (Hugo Videla's pointed at "v"): the name objects.
+        struct.pack_into("<I", string, 0, 1)
+        struct.pack_into("<II", record, 0x4c, 0x2000, 0)
+        struct.pack_into("<I", record, 0x54, 0x3000)
+        self.assertEqual(parse().name, "Toni Micevski")
 
     def test_without_mapped_classes_the_record_marker_decides(self):
         for marker in ("00025810", "00025010", "00027810", "00425810"):
