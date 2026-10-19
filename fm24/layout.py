@@ -17,11 +17,17 @@ WINDOWS = {
     "name_cell_vtable": 0x56807C8,
     "record_year": 0x36,           # u16 current game year
     "record_birth": 0x38,          # u16 day of year, u16 year
-    "record_name": 0x3C,           # pointer to {u32 length, UTF-8} full name
-    "record_flags": tuple(range(8)),     # byte 12 of the record: 0 for most people; 4 seen
-    # Byte 14: 0x58, 0x50 (staff and reserves) and 0x78 (many first-team
-    # players in a 2026-10-19 Reading save, Tom Holmes among them).
-    "record_kinds": (0x58, 0x50, 0x78),
+    "record_name": 0x3C,           # pointer to {u32 length, UTF-8} full name, if the person has one
+    # Pointers to the first-name and surname objects, which point to their
+    # text: the name of the many people (60% of players in a 2026-10-19 Reading
+    # save) whose full-name pointer is empty.
+    "record_name_parts": (0x4C, 0x54),
+    # Bytes 12-15 of a record are flags, not a kind: a survey of every person
+    # in a 2026-10-19 Reading save found players with 0x78, 0x58, 0x60, 0x18,
+    # 0x40 and 0x00 in byte 14 and many values in 13 and 15. With
+    # person_vtables these are used only to find candidate records quickly.
+    "record_flags": tuple(range(8)),     # byte 12 of the record
+    "record_kinds": (0x58, 0x50, 0x78),  # byte 14
     "name_records_aligned": True,  # first/surname records start on 4-byte boundaries
     "position_ratings": -0x7C,     # 15 bytes, 1-20
     "attributes": -0x6D,           # 54 bytes, 1-100
@@ -30,7 +36,18 @@ WINDOWS = {
     "playing_club": -0x154,        # pointer to the club played for now
     "contract": 0xBC,              # pointer to the contract
     "pointer": 4,                  # record and object pointers read (Wine keeps them below 4 GB)
-    "person_vtables": None,        # the kind comes from the record type and position ratings
+    # The person object's class, from its vtable 12 bytes before the record
+    # (MSVC RTTI names). Player-coaches keep no player ratings or attributes
+    # in the record, so they are made as staff.
+    "person_vtables": {0x5A4EE78: "player",   # db::ACTUAL_PLAYER
+                       0x5A4C358: "staff",    # db::ACTUAL_NON_PLAYER
+                       0x5C7ECB8: "staff"},   # db::ACTUAL_PLAYER_AND_NON_PLAYER
+    # Squad rows of players FM24 keeps only briefly ("Scouting Required").
+    "brief_vtables": {0x5C7D4F8},             # db::VIRTUAL_PLAYER
+    # db::TEAM, db::CLUB (a team's club details) and db::NATION.
+    "team_vtable": 0x5A78848,
+    "club_vtable": 0x5A51F38,
+    "nation_vtable": 0x5A6C858,
     "object_browser_vtable": 0x56BAE48,  # CLIENT_OBJECT_BROWSER, from fm.exe's RTTI
     "browser_reference": 0x880,    # cleared by a skin reload, like the Mac build's
     "person_table": (0x6426D90, 0x920),  # database global, first slot tried (person_handles)
@@ -44,6 +61,7 @@ MACOS = {
     "record_year": -0x13A,
     "record_birth": -0x138,
     "record_name": -0x134,
+    "record_name_parts": None,  # not mapped: their names come from FM24's first/surname records
     "record_flags": tuple(range(8)),  # 0 for most people; 1, 2, 4, 5 and 6 seen
     "record_kinds": (0x58, 0x50, 0x78),  # 0x50 on staff and reserve records (types 0 and 1); 0x78 as on Windows
     "name_records_aligned": False,    # first/surname records can start anywhere
@@ -60,6 +78,10 @@ MACOS = {
     # and are refused. The bytes where a player's ratings are hold other data
     # for staff, so they can't tell staff apart as they do on Windows.
     "person_vtables": {0x51E6FD0: "player", 0x51E1150: "staff"},
+    "brief_vtables": None,  # not mapped: brief squad rows are told by their record marker
+    "team_vtable": None,    # not mapped: teams and nations are checked by their IDs
+    "club_vtable": None,
+    "nation_vtable": None,
     # The open screen's CLIENT_OBJECT_BROWSER and its reference to the object
     # shown: type << 24 | index, 0x01000000 | handle for a person.
     "object_browser_vtable": 0x4F77650,

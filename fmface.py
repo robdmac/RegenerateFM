@@ -188,8 +188,12 @@ def _appearance_prompt(name: str, age: int, person_id: str | None,
     return instruction
 
 
+def _no_club(club: str) -> bool:
+    return club.casefold() in ("free agent", "unattached", "no club")
+
+
 def _kit_text(club: str) -> str:
-    if club.casefold() in ("free agent", "unattached", "no club"):
+    if _no_club(club):
         return "The player has no club; use a plain unbranded football shirt. "
     return (
         f"Make sure the player is wearing the home kit and colours of {club}, "
@@ -287,10 +291,11 @@ def profile_prompt(profile: dict, *, person_id: str | None = None,
     fmt = lambda items: ", ".join(f"{section} {stat} {score}/20" for section, stat, score in items)
     first_name = name.split()[0]
     kit_text = _kit_text(club)
+    plays = "who is a free agent" if _no_club(club) else f"who plays for {club}"
     appearance = _appearance_prompt(name, age, person_id, appearance_dir)
     return (
         f"Football Manager profile picture for {name}, a {age}-year-old {position} "
-        f"who plays for {club}. Nationality: {nationality}. {first_name} is {height} tall.{biography_text} "
+        f"{plays}. Nationality: {nationality}. {first_name} is {height} tall.{biography_text} "
         "Physical stats: " + ", ".join(f"{stat} {physical[stat]}/20" for stat in PHYSICAL_STATS) + ". "
         f"Best non-physical stats: {fmt(best)}. Weakest non-physical stats: {fmt(worst)}. "
         "Create one plausible, original footballer portrait for a sports management game. "

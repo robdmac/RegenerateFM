@@ -348,6 +348,10 @@ class NativeDllSourceTests(unittest.TestCase):
                          (layout.WINDOWS["sidebar_vtable"], layout.WINDOWS["sidebar_reference"]))
         self.assertEqual((defines["DATABASE_GLOBAL_RVA"], defines["DATABASE_PEOPLE"]),
                          layout.WINDOWS["person_table"])
+        # The DLL accepts exactly the person classes the companion does.
+        self.assertEqual({defines[name] for name in ("PLAYER_VTABLE_RVA", "NON_PLAYER_VTABLE_RVA",
+                                                     "PLAYER_COACH_VTABLE_RVA")},
+                         set(layout.WINDOWS["person_vtables"]))
 
     def test_face_check_packets_match_the_listener(self):
         self.assertIn('"FMFACE24F 1 %ld %ld %s", (long)serial, (long)person, bridge_token', self.source)

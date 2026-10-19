@@ -15,6 +15,8 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "fm24"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import fmface  # noqa: E402
 import layout  # noqa: E402  The fixtures are records from the Windows fm.exe.
 layout.LAYOUT.update(layout.WINDOWS)
 import native_profile
@@ -23,6 +25,9 @@ import native_screen
 import native_squad
 import squad_batch
 from live_memory import MemoryUnavailable
+
+IMAGE = 0x140000000
+PLAYER_VTABLE = next(vtable for vtable, kind in layout.WINDOWS["person_vtables"].items() if kind == "player")
 
 TODAY = dt.date(2023, 1, 2)
 
@@ -55,33 +60,76 @@ class ScreenTextTests(unittest.TestCase):
 
 
 class PlayingClubTests(unittest.TestCase):
+    def test_a_free_agent_is_made_in_a_plain_shirt(self):
+        record = 0x1000
+        identity = live_memory.PersonIdentity(28004396, "Gylfi Thor Sigurdsson", dt.date(1989, 9, 8), 2023, "player")
+        words = {record + layout.WINDOWS["contract"]: 0}  # no contract
+        fields = {"_nation": "Icelandic", "_position": "Attacking Midfielder (Center)", "_height": "6'1\""}
+        with patch.object(native_profile, "_u32", side_effect=lambda pid, address: words.get(address, 0)), \
+                patch.object(native_profile, "read_process_bytes", side_effect=lambda pid, address, size: bytes(
+                    [60] * size)), \
+                patch.multiple(native_profile, **{name: lambda *args, value=value: value
+                                                  for name, value in fields.items()}):
+            with self.assertRaises(native_profile.NoContract):
+                native_profile._club(1, record)
+            # His header names his national team, not a club.
+            profile = native_profile._profile(1, record, identity, ["Attacking Midfielder (Center) - Iceland"],
+                                              33, False)
+        self.assertEqual((profile["club"], profile["position"]), ("Free agent", "Attacking Midfielder (Center)"))
+        self.assertIn("who is a free agent", fmface.profile_prompt(profile))
+        self.assertIn("plain unbranded football shirt", fmface.profile_prompt(profile))
+
+    TEAM, CLUB = layout.WINDOWS["team_vtable"], layout.WINDOWS["club_vtable"]
+
+    def playing_club(self, words, classes, names, fallback="Inter Miami"):
+        with patch.object(native_profile, "_u32", side_effect=lambda pid, address: words.get(address, 0)), \
+                patch.object(native_profile, "_pointer_full",
+                             side_effect=lambda pid, address: IMAGE + classes.get(address, 0)), \
+                patch.object(native_profile, "fm24_image_base", return_value=IMAGE), \
+                patch.object(native_profile, "_text", side_effect=lambda pid, address, limit=80: names[address]):
+            return native_profile._playing_club(1, 0x1000, fallback)
+
     def test_loaned_player_uses_the_loan_club(self):
         record = 0x1000
-        # Club objects: ID twice at +12/+16, details at +0x30 with the same ID and a name at +0xc8.
+        # A db::TEAM: its ID at +12, club details (db::CLUB, same ID, name at +0xc8) at +0x30.
         words = {record + native_profile.PLAYING_CLUB: 0x5000,
                  0x5000 + 12: 77, 0x5000 + 16: 77, 0x5000 + 0x30: 0x6000, 0x6000 + 12: 77, 0x6000 + 0xc8: 0x7000}
+        classes = {0x5000: self.TEAM, 0x6000: self.CLUB}
         names = {0x7000: "Las Vegas"}
-        with patch.object(native_profile, "_u32", side_effect=lambda pid, address: words.get(address, 0)), \
-                patch.object(native_profile, "_text", side_effect=lambda pid, address, limit=80: names[address]):
-            self.assertEqual(native_profile._playing_club(1, record, "Inter Miami"), "Las Vegas")
-            words[record + native_profile.PLAYING_CLUB] = 0  # staff, or no current club
-            self.assertEqual(native_profile._playing_club(1, record, "Inter Miami"), "Inter Miami")
-            words[record + native_profile.PLAYING_CLUB] = 0x5000
-            words[0x6000 + 12] = 78  # details of another club
+        self.assertEqual(self.playing_club(words, classes, names), "Las Vegas")
+        words[record + native_profile.PLAYING_CLUB] = 0  # staff, or no current club
+        self.assertEqual(self.playing_club(words, classes, names), "Inter Miami")
+        words[record + native_profile.PLAYING_CLUB] = 0x5000
+        for broken in ({0x5000: self.CLUB, 0x6000: self.CLUB}, {0x5000: self.TEAM, 0x6000: self.TEAM}):
             with self.assertRaises(MemoryUnavailable):
-                native_profile._playing_club(1, record, "Inter Miami")
+                self.playing_club(words, broken, names)
 
-    def test_reserve_team_ids_above_two_billion_are_accepted(self):
-        record, reserve = 0x1000, 2_000_016_224  # Inter Miami II
-        words = {record + native_profile.PLAYING_CLUB: 0x5000, 0x5000 + 12: reserve, 0x5000 + 16: reserve,
-                 0x5000 + 0x30: 0x6000, 0x6000 + 12: reserve, 0x6000 + 0xc8: 0x7000}
-        with patch.object(native_profile, "_u32", side_effect=lambda pid, address: words.get(address, 0)), \
-                patch.object(native_profile, "_text", side_effect=lambda pid, address, limit=80: "Inter Miami II"):
-            self.assertEqual(native_profile._playing_club(1, record, "Inter Miami"), "Inter Miami II")
-            words[0x5000 + 16] = reserve + 1  # the ID's copy must still match
-            with self.assertRaises(MemoryUnavailable):
-                native_profile._playing_club(1, record, "Inter Miami")
+    def test_a_clubs_other_teams_are_named_by_themselves_or_their_club(self):
+        record = 0x1000
+        # Reading Under 21s (2026-10-19): an FM-made ID, a squad index (not
+        # the ID) at +16, no name of its own, and Reading's club details.
+        words = {record + native_profile.PLAYING_CLUB: 0x5000, 0x5000 + 12: 2_000_339_974, 0x5000 + 16: 18120,
+                 0x5000 + 0x30: 0x6000, 0x6000 + 12: 702, 0x6000 + 0xc8: 0x7000}
+        classes = {0x5000: self.TEAM, 0x6000: self.CLUB}
+        names = {0x7000: "Reading", 0x7100: "Jong Sparta Rotterdam"}
+        self.assertEqual(self.playing_club(words, classes, names), "Reading")
+        # Jong Sparta Rotterdam: its own name at +0x18, Sparta's club details.
+        words.update({0x5000 + 12: 37_060_577, 0x5000 + 16: 37_060_577, 0x5000 + 0x18: 0x7100})
+        self.assertEqual(self.playing_club(words, classes, names), "Jong Sparta Rotterdam")
 
+    def test_a_youth_team_is_named_as_its_header_names_it(self):
+        identity = live_memory.PersonIdentity(2000104361, "John Clarke", dt.date(2004, 4, 24), 2023, "player")
+        fields = {"_nation": "English", "_club": "Reading", "_playing_club": "Reading",
+                  "_position": "Defender (Left)", "_height": "5'10\""}
+        with patch.object(native_profile, "read_process_bytes", side_effect=lambda pid, address, size: bytes(
+                    [60] * size)), \
+                patch.multiple(native_profile, **{name: lambda *args, value=value: value
+                                                  for name, value in fields.items()}):
+            profile = native_profile._profile(1, 0x1000, identity, ["Defender/Wing Back (Left) - Reading Under 21s"],
+                                              19, False)
+            self.assertEqual(profile["club"], "Reading Under 21s")
+            with self.assertRaises(MemoryUnavailable):  # another club's team
+                native_profile._profile(1, 0x1000, identity, ["Defender (Left) - Readingham Under 21s"], 19, False)
 
 class RecordCacheTests(unittest.TestCase):
     def test_record_address_is_reused_until_its_header_changes(self):
@@ -181,6 +229,7 @@ class RowModelTests(unittest.TestCase):
         people = {}
         for index, (person_id, handle) in enumerate(players):
             person = 0x30000 + 0x100 * index
+            memory.q(person, IMAGE + PLAYER_VTABLE)  # a db::ACTUAL_PLAYER object
             memory.put(person + 8, struct.pack("<I", handle))
             # A validated player record: ID twice, then the 00 xx 58 10 marker and type 4.
             memory.put(person + 12, struct.pack("<II", person_id, person_id) + bytes(4) +
@@ -195,6 +244,8 @@ class RowModelTests(unittest.TestCase):
 
     def read(self, memory, state, names=None):
         with patch.object(native_squad, "read_process_bytes", memory.read), \
+                patch.object(live_memory, "read_process_bytes", memory.read), \
+                patch.object(live_memory, "fm24_image_base", return_value=IMAGE), \
                 patch.object(native_squad, "MemoryScan", memory.scan), \
                 patch.object(native_squad, "read_squad", return_value=state), \
                 patch.object(native_squad, "_undrawn_names",
@@ -354,16 +405,32 @@ class RatingTests(unittest.TestCase):
 
 
 class BriefRecordTests(unittest.TestCase):
+    def player_id(self, vtable, marker=(0, 2, 0x58, 0x10), ids=(2002070373, 2002070373), brief_vtables=True):
+        record = struct.pack("<II", *ids) + bytes(4) + bytes(marker) + bytes([4, 0, 0, 0])
+
+        def read(pid, address, size):
+            return struct.pack("<Q", IMAGE + vtable)[:size] if address == 0x1000 else record[:size]
+        layout_patch = {} if brief_vtables else {"brief_vtables": None}
+        with patch.object(native_squad, "read_process_bytes", side_effect=read), \
+                patch.object(live_memory, "read_process_bytes", side_effect=read), \
+                patch.object(live_memory, "fm24_image_base", return_value=IMAGE), \
+                patch.dict(native_squad.LAYOUT, layout_patch):
+            return native_squad._player_id(1, 0x1000)
+
     def test_brief_records_are_told_apart_from_unknown_ones(self):
-        def record(marker):
-            return struct.pack("<II", 2002070373, 2002070373) + bytes(4) + bytes(marker) + bytes(4)
-        for marker in ((0, 2, 0, 0x10), (8, 2, 0x40, 0x30)):  # seen on Inter Miami II and its academy
-            with patch.object(native_squad, "read_process_bytes", return_value=record(marker)):
-                with self.assertRaises(native_squad.BriefRecord) as raised:
-                    native_squad._player_id(1, 0x1000)
+        # "Scouting Required" rows (seen on Inter Miami II and its academy) are db::VIRTUAL_PLAYER.
+        for marker in ((0, 2, 0, 0x10), (8, 2, 0x40, 0x30), (0, 2, 0x58, 0x10)):
+            with self.assertRaises(native_squad.BriefRecord) as raised:
+                self.player_id(next(iter(layout.WINDOWS["brief_vtables"])), marker)
             self.assertEqual(raised.exception.person_id, "2002070373")
-        bad = struct.pack("<II", 5, 6) + bytes(12)  # not a person record at all
-        with patch.object(native_squad, "read_process_bytes", return_value=bad):
+        # A full player, whatever its flag bytes.
+        for marker in ((0, 0, 0x78, 0), (0, 0, 0x60, 0), (0x80, 0, 0, 0)):
+            self.assertEqual(self.player_id(PLAYER_VTABLE, marker), "2002070373")
+        # Not a person record at all, or not a player's.
+        for vtable, ids in ((PLAYER_VTABLE, (5, 6)), (0x5A6D858, (7, 7))):
             with self.assertRaises(MemoryUnavailable) as raised:
-                native_squad._player_id(1, 0x1000)
-        self.assertNotIsInstance(raised.exception, native_squad.BriefRecord)
+                self.player_id(vtable, ids=ids)
+            self.assertNotIsInstance(raised.exception, native_squad.BriefRecord)
+        # Without a mapped brief class (the macOS layout), the marker tells.
+        with self.assertRaises(native_squad.BriefRecord):
+            self.player_id(PLAYER_VTABLE, (8, 2, 0x40, 0x30), brief_vtables=False)

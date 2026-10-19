@@ -136,11 +136,12 @@ opens no profiles and reads no screenshots:
   there is one, so another list on the screen can't make the first team's
   command ambiguous; otherwise the one `PnmP` list.
 - **Brief records:** players FM24 lists as Scouting Required, without an age
-  or ability, have person records whose ID matches but whose marker bytes
-  12–15 aren't `00 xx 58 10/12/18` (`00 02 00 10` on Inter Miami II, `08 02 40
-  30` on its academy). Such records have no birth date, name pointer or
-  attributes at the usual offsets, so those rows are left out and counted in
-  the confirmation; a list of only such players is refused.
+  or ability (players of leagues the save doesn't run), are `db::VIRTUAL_PLAYER`
+  objects (checked on Valur, 2026-10-19: 12 of 17 rows), not
+  `db::ACTUAL_PLAYER`. They have no birth date, name pointer or attributes at
+  the usual offsets, so those rows are left out and counted in the
+  confirmation; a list of only such players is refused. On macOS, where that
+  class isn't mapped, the record's marker bytes still tell them apart.
 - **Roster:** the Squad table attached to the live UI tree. Drawn rows have a
   player-name cell holding the person and display name. The table draws only
   visible rows, so the rest come from its row model: table+0x6e8 points to an
@@ -182,9 +183,10 @@ sidebar (`side`, class vtable RVA 0x57E3B48) keeps at +0x280:
 in slots of {begin, end, capacity, allocator}. Which slot holds people changes
 between runs of FM24 (+0x920 in one, +0x9C0 in the next), so the DLL and the
 companion try the last slot found and otherwise every slot in the object's
-first 0x2000 bytes; the entry at the handle must be a person that keeps that
-handle at +8, followed by its canonical record (the ID twice,
-then a `00 xx 58` marker). The header (`head`) must contain one subtitle
+first 0x2000 bytes; the entry at the handle must be a person object (its
+class, from its vtable: `db::ACTUAL_PLAYER`, `db::ACTUAL_NON_PLAYER` or
+`db::ACTUAL_PLAYER_AND_NON_PLAYER`) that keeps that handle at +8, followed
+by its canonical record (the ID twice). The header (`head`) must contain one subtitle
 (`subs`, text at +0x190), "Role - Club", which the profile checks against the
 record; with screen IDs enabled it ends in "(ID:n)", and n must then be the
 same person. The Biography
@@ -522,3 +524,57 @@ an in-game skin reload. On 2026-10-18, with screen IDs turned off: player and
 staff previews from the portrait popup and the Overview tab menu, and Update
 face greyed for a person without a face. No billed face has been made on macOS
 yet.
+
+## Person records (survey, 2026-10-19)
+
+FM24's people vector holds every kind of person, and a person's class is the
+only reliable way to tell what an entry is. A read-only survey of all 57,144
+entries in a Reading save, each object's class taken from its vtable's MSVC
+RTTI name:
+
+| Class | Entries | Made faces for |
+|---|---|---|
+| `db::ACTUAL_PLAYER` | 19,716 | players |
+| `db::ACTUAL_NON_PLAYER` | 9,462 | staff |
+| `db::ACTUAL_PLAYER_AND_NON_PLAYER` | 152 | staff (player-coaches: no player ratings or attributes in the record) |
+| `db::RETIRED_PERSON_NAME_STRINGS`, `_POINTERS` | 23,576 | no |
+| `db::SUPPORT_STAFF`, `OFFICIAL`, `AGENT`, `JOURNALIST` | 3,475 | no |
+| `db::VIRTUAL_PLAYER` | 761 | no (Scouting Required) |
+| `db::HUMAN_NON_PLAYER` | 2 | no (the human managers) |
+
+Bytes 12–15 of a record, once read as a "marker" (`00 xx 58 10`), are flags:
+real players carry 0x78, 0x58, 0x60, 0x18, 0x40 and 0x00 in byte 14 and many
+values in bytes 13 and 15 (Erling Haaland `00 00 00 0a`, Cristiano Ronaldo
+`00 00 00 08`, Tom Holmes `00 02 78 10`). Only 87 of the 19,716 players had the old
+marker's last byte, so the old check refused most players outside the
+human's own club. The class is checked instead: the companion
+(`live_memory.is_person_record`, layout `person_vtables`) and the DLL
+(`slot_person_id`) both read the vtable 12 bytes before the record. A copy of
+a record elsewhere in memory has no object around it, so the memory search
+by ID still finds one canonical record.
+
+About one player in six has no contract (a free agent). Their header names
+their national team, if any, instead of a club; the companion makes them in
+a plain shirt ("who is a free agent").
+
+The same survey found three more things the companion had assumed:
+
+- **Names.** 60% of players and staff have no full-name string (the record's
+  +0x3C is 0). The record's +0x4C and +0x54 point to first-name and surname
+  objects, which point to their text ("Toni" "Micevski"), so the companion
+  reads "first surname" there instead of searching memory for a separate
+  name record.
+- **Teams.** A club's youth and reserve teams are `db::TEAM` objects that
+  share their club's details (`db::CLUB`, +0x30): Reading Under 21s has an
+  FM-made ID at +12, a squad index (not the ID again) at +16 and no name of
+  its own, which FM composes on screen; "Jong Sparta Rotterdam" has its own
+  name at +0x18. Teams, club details and nations are checked by their class
+  (`team_vtable`, `club_vtable`, `nation_vtable`), not by those IDs. A
+  profile whose header names "<club> <something>" (Reading Under 21s) is
+  accepted for a player of that club and named so in the prompt.
+- **Nations.** The u32 at a nation's +8 is 0 for some (Algeria), so it isn't
+  checked.
+
+With the people vector's own index as reference, the companion's handle
+index (person objects found by their vtables, 29,329 people in 6 s) agreed
+on 2,000 of 2,000 sampled handles.

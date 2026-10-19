@@ -156,6 +156,11 @@ static BOOL read_game(const void *address, void *buffer, SIZE_T size)
 #define DATABASE_SCAN          0x2000
 #define PERSON_OBJECT          0x01000000u
 #define PERSON_HANDLE          8
+/* Person objects' vtables (MSVC RTTI): db::ACTUAL_PLAYER, db::ACTUAL_NON_PLAYER
+   and db::ACTUAL_PLAYER_AND_NON_PLAYER, as in layout.py's person_vtables. */
+#define PLAYER_VTABLE_RVA        0x5A4EE78
+#define NON_PLAYER_VTABLE_RVA    0x5A4C358
+#define PLAYER_COACH_VTABLE_RVA  0x5C7ECB8
 #define MAX_DEPTH              64
 
 static BOOL read_pointer(const unsigned char *address, unsigned char **value)
@@ -191,18 +196,19 @@ static unsigned char *search_stack[MAX_SEARCH];
 static LONG slot_person_id(unsigned char *database, size_t slot, unsigned int handle)
 {
     unsigned char *range[2], *person;
-    struct { unsigned int handle, id, again, zero; unsigned char marker[4]; } record;
+    struct { unsigned char *vtable; unsigned int handle, id, again; } record;
     if (!read_game(database + slot, range, sizeof(range)) || !range[0] || range[1] <= range[0] ||
         (range[1] - range[0]) % sizeof(void *) || handle >= (size_t)(range[1] - range[0]) / sizeof(void *) ||
         !read_pointer(range[0] + (size_t)handle * sizeof(void *), &person) || !person ||
-        !read_game(person + PERSON_HANDLE, &record, sizeof(record)))
+        !read_game(person, &record, sizeof(record)))
         return 0;
-    /* As in the companion (layout "record_flags" and "record_kinds"): the ID
-       twice, then a marker of flags below 8, any byte, and a kind of 0x58,
-       0x50 or 0x78. The companion checks the record again before using it. */
-    unsigned char kind = record.marker[2];
-    if (record.handle != handle || record.id != record.again || record.marker[0] >= 8 ||
-        (kind != 0x58 && kind != 0x50 && kind != 0x78) || record.id < 1 || record.id > 0x7fffffffu)
+    /* As in the companion: a person object (its class, from its vtable) with
+       this handle and the ID twice. The record's marker bytes are flags that
+       vary from person to person, so they aren't checked. The companion
+       checks the record again before using it. */
+    if ((record.vtable != game_base + PLAYER_VTABLE_RVA && record.vtable != game_base + NON_PLAYER_VTABLE_RVA &&
+         record.vtable != game_base + PLAYER_COACH_VTABLE_RVA) ||
+        record.handle != handle || record.id != record.again || record.id < 1 || record.id > 0x7fffffffu)
         return 0;
     return (LONG)record.id;
 }

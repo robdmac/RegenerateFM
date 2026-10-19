@@ -37,52 +37,91 @@ class MemoryProbeTests(unittest.TestCase):
         self.assertEqual(process_memory.read_process_bytes(os.getpid(), address, 10), b"FM24 probe")
 
 
-class LiveMemoryTests(unittest.TestCase):
-    def test_record_markers_of_every_seen_kind_are_people(self):
-        # Bytes 12-15 of records read live: 0x78 is Tom Holmes (Reading, 2026-10-19).
-        for marker in ("00025810", "00025010", "00027810", "04027810", "00425810"):
-            self.assertTrue(live_memory.record_marker(bytes(12) + bytes.fromhex(marker)), marker)
-        # Brief "Scouting Required" records and other objects are not.
-        for marker in ("00020010", "08024030", "00027800", "08027810"):
-            self.assertFalse(live_memory.record_marker(bytes(12) + bytes.fromhex(marker)), marker)
+PLAYER_VTABLE = next(vtable for vtable, kind in layout.WINDOWS["person_vtables"].items() if kind == "player")
 
+
+class LiveMemoryTests(unittest.TestCase):
     def test_record_decodes_name_and_dates(self):
-        record = bytearray(64)
+        image = 0x140000000
+        player, staff = (next(v for v, k in layout.WINDOWS["person_vtables"].items() if k == kind)
+                         for kind in ("player", "staff"))
+        record = bytearray(0x60)  # through the name objects' pointers at +0x4c/+0x54
         struct.pack_into("<II", record, 0, 14008037, 14008037)
-        record[12:16] = live_memory._MARKERS[0]
+        record[12:16] = bytes.fromhex("00025810")
         struct.pack_into("<I", record, 16, 0)
         struct.pack_into("<BBH", record, 0x34, 2, 26, 2023)
         struct.pack_into("<HH", record, 0x38, 133, 1964)
         struct.pack_into("<I", record, 0x3c, 0x1234)
         name = "Jorge Walter Theiler".encode()
-        string = struct.pack("<I", len(name)) + name + b"\0" + bytes(75)
+        string = bytearray(struct.pack("<I", len(name)) + name + b"\0" + bytes(75))
         ratings = bytes(15)  # staff records hold no position ratings
+        memory = {"vtable": staff}
 
         def read(pid, address, size):
-            return {0x1000: bytes(record), 0x1000 + live_memory.POSITION_RATINGS: ratings,
-                    0x1234: string}[address][:size]
+            if address == 0x1000 - 12:  # the person object's vtable pointer
+                return struct.pack("<Q", image + memory["vtable"])[:size]
+            blocks = {0x1000: bytes(record), 0x1000 + live_memory.POSITION_RATINGS: ratings, 0x1234: string,
+                      0x2000: struct.pack("<I", 0x2100), 0x2100: struct.pack("<I", 4) + b"Toni\0",
+                      0x3000: struct.pack("<I", 0x3100), 0x3100: struct.pack("<I", 8) + b"Micevski\0"}
+            for start, data in blocks.items():
+                if start <= address and address + size <= start + len(data):
+                    return data[address - start:address - start + size]
+            raise OSError(14, "Bad address")
 
-        with patch.object(live_memory, "read_process_bytes", side_effect=read):
-            identity = live_memory._parse_record(123, 0x1000, 14008037)
+        def parse():
+            with patch.object(live_memory, "read_process_bytes", side_effect=read), \
+                    patch.object(live_memory, "fm24_image_base", return_value=image), \
+                    patch.dict(live_memory.LAYOUT, person_vtables=layout.WINDOWS["person_vtables"]):
+                return live_memory._parse_record(123, 0x1000, 14008037)
+
+        identity = parse()
         self.assertEqual(identity.name, "Jorge Walter Theiler")
         self.assertEqual(identity.birth_date, dt.date(1964, 5, 12))
         self.assertEqual(identity.possible_ages, (58, 59))
         self.assertEqual(identity.kind, "staff")
 
-        for marker in live_memory._MARKERS[1:]:
-            record[12:16] = marker
-            with patch.object(live_memory, "read_process_bytes", side_effect=read):
-                self.assertEqual(live_memory._parse_record(123, 0x1000, 14008037), identity)
+        # Bytes 12-15 are flags that vary from person to person (all seen live).
+        for marker in ("00025010", "00027810", "04027810", "00000000", "00006000", "80000000", "0000000a"):
+            record[12:16] = bytes.fromhex(marker)
+            self.assertEqual(parse(), identity, marker)
 
-        # Reserve and youth players also use types 0 and 1; their position ratings say so.
+        # The same bytes outside a person object (a copy, a retired person,
+        # an official) are not a person.
+        for other in (0x5A6EC38, 0x5A6D858, 0x5C7D4F8, 0):
+            memory["vtable"] = other
+            self.assertIsNone(parse())
+
+        # Players, including reserve and youth players of types 0 and 1.
+        memory["vtable"] = player
         ratings = bytes([1, 1, 15, 1, 1, 1, 1, 20, 1, 1, 1, 1, 1, 1, 1])
-        for record_type in (0, 1):
+        for record_type in (0, 1, 4):
             struct.pack_into("<I", record, 16, record_type)
-            with patch.object(live_memory, "read_process_bytes", side_effect=read):
-                self.assertEqual(live_memory._parse_record(123, 0x1000, 14008037).kind, "player")
+            self.assertEqual(parse().kind, "player")
         ratings = bytes(15)
-        with patch.object(live_memory, "read_process_bytes", side_effect=read):
-            self.assertIsNone(live_memory._parse_record(123, 0x1000, 14008037))  # type 1 without ratings
+        struct.pack_into("<I", record, 16, 1)
+        self.assertIsNone(parse())  # a type 1 player without ratings
+
+        # No full name (60% of players): "first surname" from the name objects.
+        struct.pack_into("<I", record, 16, 4)
+        struct.pack_into("<I", record, 0x3c, 0)
+        struct.pack_into("<I", record, 0x4c, 0x2000)
+        struct.pack_into("<I", record, 0x54, 0x3000)
+        self.assertEqual(parse().name, "Toni Micevski")
+        struct.pack_into("<I", record, 0x4c, 0)  # one name only (Nur'alim): the surname
+        self.assertEqual(parse().name, "Micevski")
+        struct.pack_into("<I", record, 0x54, 0)
+        self.assertIsNone(parse())
+        # A full name with a non-breaking space (Oluwagbemileke Immanuel\u00a0Ajibode).
+        struct.pack_into("<I", record, 0x3c, 0x1234)
+        string[4:4 + len(name) + 1] = "Immanuel\u00a0Ajibode".encode().ljust(len(name) + 1, b"\0")
+        struct.pack_into("<I", string, 0, len("Immanuel\u00a0Ajibode".encode()))
+        self.assertEqual(parse().name, "Immanuel Ajibode")
+
+    def test_without_mapped_classes_the_record_marker_decides(self):
+        for marker in ("00025810", "00025010", "00027810", "00425810"):
+            self.assertTrue(live_memory.record_marker(bytes(12) + bytes.fromhex(marker)), marker)
+        for marker in ("00020010", "08024030", "00027800", "08027810"):
+            self.assertFalse(live_memory.record_marker(bytes(12) + bytes.fromhex(marker)), marker)
 
     def test_native_rating_offsets_match_two_live_profile_snapshots(self):
         # These bytes came from two FM24 24.4.2 game records. Expected values
@@ -380,8 +419,8 @@ class PersonReferenceTests(unittest.TestCase):
             image + 0x50: struct.pack("<Q", database),
             database + 0x18: struct.pack("<QQ", table, table + 8 * 0x20),
             table + 8 * 0x0E: struct.pack("<Q", person),
-            # The handle, then the record: the ID twice and, at byte 12, a full-record marker.
-            person + 8: struct.pack("<III", 0x0E, 4000829, 4000829) + bytes(4) + bytes([0, 0, 0x58, 0x10]),
+            # A player object: its vtable, the handle, then the record (the ID twice).
+            person: struct.pack("<QIII", image + PLAYER_VTABLE, 0x0E, 4000829, 4000829) + bytes(8),
         }
 
         def read(pid, address, size):
@@ -391,12 +430,27 @@ class PersonReferenceTests(unittest.TestCase):
             return bytes(size)
         with patch.dict(person_handles.LAYOUT, {"person_table": (0x50, 0x18), "browser_reference": 0x878}), \
                 patch.object(person_handles, "read_process_bytes", side_effect=read), \
+                patch.object(live_memory, "read_process_bytes", side_effect=read), \
                 patch.object(person_handles, "fm24_image_base", return_value=image), \
+                patch.object(live_memory, "fm24_image_base", return_value=image), \
                 patch.object(person_handles, "_scan", side_effect=AssertionError("no memory pass")):
             self.assertEqual(person_handles.person_for_reference(1, 0x0100000E, wait=False), "4000829")
             # Outside the table, or an empty slot: the lookup falls back to the index.
             for reference in (0x01000040, 0x0100000F):
                 self.assertIsNone(person_handles._from_table(1, reference & 0x7FFFFF))
+
+    def test_the_handle_index_finds_person_objects_by_class(self):
+        import person_handles
+        image, base = 0x140000000, 0x30000000
+        heap = bytearray(0x400)
+        objects = ((0x000, PLAYER_VTABLE, 0x0E, 4000829), (0x100, 0x5A6D858, 0x0F, 77),  # an official
+                   (0x200, PLAYER_VTABLE, 0x10, 0), (0x304, PLAYER_VTABLE, 0x11, 5))   # empty, misaligned
+        for offset, vtable, handle, person in objects:
+            struct.pack_into("<QIII", heap, offset, image + vtable, handle, person, person)
+        with patch.dict(person_handles.LAYOUT, person_vtables=layout.WINDOWS["person_vtables"]), \
+                patch.object(person_handles, "fm24_image_base", return_value=image), \
+                patch.object(person_handles, "MemoryScan", return_value=[(base, bytes(heap))]):
+            self.assertEqual(person_handles._scan(1), {0x0E: base + 12})
 
     def test_person_table_is_found_in_another_database_slot(self):
         import person_handles
@@ -406,10 +460,11 @@ class PersonReferenceTests(unittest.TestCase):
             # The layout's slot now holds another kind of object, also indexed by handle.
             database + 0x18: struct.pack("<QQ", decoy, decoy + 8 * 0x20),
             decoy + 8 * 0x0E: struct.pack("<Q", other),
-            other + 8: struct.pack("<III", 0x0E, 77, 1234),
+            # An official: the handle and an ID twice, but not a person FM Face makes faces for.
+            other: struct.pack("<QIII", image + 0x5A6D858, 0x0E, 1234, 1234) + bytes(8),
             database + 0x98: struct.pack("<QQ", table, table + 8 * 0x20),
             table + 8 * 0x0E: struct.pack("<Q", person),
-            person + 8: struct.pack("<III", 0x0E, 4000829, 4000829) + bytes(4) + bytes([0, 0, 0x58, 0x10]),
+            person: struct.pack("<QIII", image + PLAYER_VTABLE, 0x0E, 4000829, 4000829) + bytes(8),
         }
 
         def read(pid, address, size):
@@ -420,7 +475,9 @@ class PersonReferenceTests(unittest.TestCase):
         with patch.dict(person_handles.LAYOUT, {"person_table": (0x50, 0x18), "browser_reference": 0x878}), \
                 patch.dict(person_handles._table_slots, clear=True), \
                 patch.object(person_handles, "read_process_bytes", side_effect=read), \
-                patch.object(person_handles, "fm24_image_base", return_value=image):
+                patch.object(live_memory, "read_process_bytes", side_effect=read), \
+                patch.object(person_handles, "fm24_image_base", return_value=image), \
+                patch.object(live_memory, "fm24_image_base", return_value=image):
             self.assertEqual(person_handles._from_table(1, 0x0E), "4000829")
             self.assertEqual(person_handles._table_slots[1], 0x98)
 

@@ -60,11 +60,27 @@ POSITION_RATINGS = LAYOUT["position_ratings"]  # for tests; person_kind reads th
 POSITION_COUNT = 15
 
 
+def object_class(pid: int, address: int) -> int:
+    """The vtable (from the image header) of the object whose record is at ``address``."""
+    return struct.unpack("<Q", read_process_bytes(pid, address - 12, 8))[0] - fm24_image_base(pid)
+
+
+def is_person_record(pid: int, address: int, raw: bytes) -> bool:
+    """A person's canonical record: the person object's class where the layout
+    maps it (copies of the record elsewhere have no object around them), else
+    the record's marker bytes. ``raw`` is the record's first 16 bytes or more."""
+    if LAYOUT["person_vtables"] is None:
+        return record_marker(raw)
+    try:
+        return object_class(pid, address) in LAYOUT["person_vtables"]
+    except (OSError, ValueError, struct.error):
+        return False
+
+
 def person_kind(pid: int, address: int, record_type: int) -> str | None:
     """"player", "staff", or None when the record cannot be classified."""
     if LAYOUT["person_vtables"] is not None:
-        vtable = struct.unpack("<Q", read_process_bytes(pid, address - 12, 8))[0] - fm24_image_base(pid)
-        kind = LAYOUT["person_vtables"].get(vtable)
+        kind = LAYOUT["person_vtables"].get(object_class(pid, address))
         if kind != "player" or record_type in (4, 5):
             return kind
         ratings = read_process_bytes(pid, address + LAYOUT["position_ratings"], POSITION_COUNT)
@@ -116,7 +132,7 @@ def _parse_record(pid: int, address: int, person_id: int) -> PersonIdentity | No
         if raw[:8] != struct.pack("<II", person_id, person_id):
             return None
         # Type 5 is a player too.
-        if not record_marker(raw):
+        if not is_person_record(pid, address, raw):
             return None
         kind = person_kind(pid, address, struct.unpack_from("<I", raw, 16)[0])
         if kind is None:
@@ -125,16 +141,37 @@ def _parse_record(pid: int, address: int, person_id: int) -> PersonIdentity | No
         if not 1900 <= birth_date.year <= game_year - 14:
             return None
         name_ptr = read_pointer(pid, address + LAYOUT["record_name"], raw, address)
-        name_raw = read_process_bytes(pid, name_ptr, 100)
-        length = struct.unpack_from("<I", name_raw)[0]
-        if not 3 <= length <= 80 or name_raw[4 + length] != 0:
+        if name_ptr:
+            name = _string(pid, name_ptr)
+        elif LAYOUT["record_name_parts"] is not None:
+            # No full name: "first surname" from the record's name objects. A
+            # person with one name (Nur'alim) has only the surname.
+            first, surname = (_string(pid, read_pointer(pid, pointer)) if (pointer := read_pointer(
+                pid, address + offset)) else None for offset in LAYOUT["record_name_parts"])
+            name = " ".join(part for part in (first, surname) if part) if surname else None
+        else:
             return None
-        name = name_raw[4:4 + length].decode("utf-8")
-        if not re.fullmatch(r"[^\x00-\x1f\x7f]{3,80}", name):
+        if not name or not re.fullmatch(r"[^\x00-\x1f\x7f]{3,80}", name):
             return None
         return PersonIdentity(person_id, name, birth_date, game_year, kind)
     except (OSError, ValueError, UnicodeDecodeError, struct.error, OverflowError):
         return None
+
+
+def _string(pid: int, address: int) -> str | None:
+    """An FM {u32 length, UTF-8, 0} string of 1-80 bytes, or None."""
+    if not address:
+        return None
+    raw = read_process_bytes(pid, address, 4)
+    length = struct.unpack("<I", raw)[0]
+    if not 1 <= length <= 80:
+        return None
+    text = read_process_bytes(pid, address + 4, length + 1)
+    if text[-1] != 0:
+        return None
+    # Names can hold non-breaking spaces ("Immanuel\u00a0Ajibode"): plain spaces in the prompt.
+    value = text[:-1].decode("utf-8").replace("\u00a0", " ")
+    return value if re.fullmatch(r"[^\x00-\x1f\x7f]+", value) and value == value.strip() else None
 
 
 def find_game_pid() -> int:
