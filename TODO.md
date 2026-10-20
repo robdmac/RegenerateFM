@@ -99,8 +99,19 @@
   (see native_menu/README.md, "Person records"). Mac players-coaches are
   still refused (their class isn't mapped there).
 - **FM24 squad scan speed:** on the Reading Under 21s the scan took 16 s
-  before its confirmation, about 6 s of it two passes over memory (today's
-  date and the Squad table). Caching the date per game day would halve it.
+  before its confirmation (2026-10-19); time each step before changing it.
+  Full passes over FM24's memory (each a few seconds):
+  - `_scan`: always, and does three jobs at once (the Squad table's name
+    cells, FM24's portrait index, today's date), so caching only the date
+    saves nothing. Removing the pass needs a direct route for all three:
+    the cells by walking the widget tree from the UI manager (`_children`),
+    the date from a game global, and the portrait index by finding FM24's
+    picture table once per session and caching its address, checked on
+    each use like the person table.
+  - `_find_handle_table`: the first scan per FM24 run only (cached per pid).
+  - `_undrawn_names`: only for players with no name in their record, now
+    rare since names come from the first-name and surname objects.
+  The rest (per-row record checks, team and club reads) is unmeasured.
 - **FM24 squad dialog names the club, not the team:** a youth squad's
   confirmation says "20 of 21 Reading players"; FM doesn't store "Reading
   Under 21s", so it would come from the screen's header.
@@ -151,8 +162,9 @@
   key, a face command shows a key prompt on FM24's window
   (`key_prompt_macos.m`), checked live with a fake key: paste, OpenAI's
   rejection and the second prompt, Cancel. A real key and a billed face are
-  still to check. Windows and Linux still ask in the companion's window;
-  `fmface24.c` could show a Win32 prompt the same way.
+  still to check. Windows and Linux ask in a Win32 dialog the companion
+  opens above FM24 (`key_dialog.py`, takes a paste under Proton; 2026-10-19);
+  `fmface24.c` could show it on FM24's window instead.
 - **FM26 face not appearing on macOS:** fixed (2026-10-18). A billed face
   (Lucas Hoyos) was saved, but the graphics reload failed with FM26's
   "invalid operation handle" and the popup waited 30 s before giving up:
