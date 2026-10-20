@@ -21,7 +21,8 @@ import struct
 from dataclasses import dataclass
 
 from layout import LAYOUT
-from live_memory import MemoryUnavailable, _parse_record, find_game_pid, person_kind, record_marker
+from live_memory import (MemoryUnavailable, _parse_record, find_game_pid, is_person_record, object_class,
+                         person_kind, record_marker)
 from native_profile import collect_object_names, _alternate_name
 from process_memory import MemoryScan, fm24_image_base, read_process_bytes
 
@@ -138,11 +139,16 @@ def _player_id(pid: int, person: int) -> str:
     number = struct.unpack_from("<I", raw)[0]
     if raw[:8] != struct.pack("<II", number, number) or not 1 <= number <= 2_147_483_647:
         raise MemoryUnavailable("A Squad row does not show a validated FM24 player.")
-    # Marker byte 13 carries flags (0x02, 0x40 seen); 14 is always 0x58. Rows
-    # FM24 lists as "Scouting Required" with no age or ability (players of
-    # leagues it hasn't loaded) have other markers (00 02 00 10, 08 02 40 30)
-    # and none of the fields a prompt needs.
-    if not record_marker(raw):
+    # Rows FM24 lists as "Scouting Required" with no age or ability (players
+    # of leagues it hasn't loaded) are brief objects (db::VIRTUAL_PLAYER)
+    # with none of the fields a prompt needs. Where the layout doesn't map
+    # that class, their record markers tell (00 02 00 10, 08 02 40 30).
+    if LAYOUT["brief_vtables"] is not None:
+        if object_class(pid, record) in LAYOUT["brief_vtables"]:
+            raise BriefRecord(str(number))
+        if not is_person_record(pid, record, raw):
+            raise MemoryUnavailable("A Squad row does not show a validated FM24 player.")
+    elif not record_marker(raw):
         raise BriefRecord(str(number))
     if person_kind(pid, record, raw[16]) != "player":
         raise MemoryUnavailable("A Squad row does not show a validated FM24 player.")

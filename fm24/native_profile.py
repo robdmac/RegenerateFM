@@ -14,9 +14,9 @@ import struct
 
 from layout import LAYOUT
 from live_memory import (RECORD_TYPES, MemoryUnavailable, PersonIdentity, _record_addresses,
-                         find_game_pid, person_kind, read_person_record, record_dates,
-                         record_marker)
-from process_memory import MemoryScan, read_process_bytes
+                         find_game_pid, is_person_record, person_kind, read_person_record,
+                         record_dates)
+from process_memory import MemoryScan, fm24_image_base, read_process_bytes
 
 
 PHYSICAL = {"Acceleration": 34, "Agility": 46, "Balance": 42,
@@ -103,7 +103,8 @@ def _record_with_alternate_name(pid: int, person_id: str) -> tuple[int, PersonId
         try:
             raw = read_process_bytes(pid, address, 128)
             # Type 5 is a player too.
-            if (address % 4 == 0 and raw[:8] == struct.pack("<II", number, number) and record_marker(raw) and
+            if (address % 4 == 0 and raw[:8] == struct.pack("<II", number, number) and
+                    is_person_record(pid, address, raw) and
                     raw[16] in RECORD_TYPES and raw[17:20] == b"\0\0\0"):
                 if _pointer(pid, address + LAYOUT["record_name"]) == 0:
                     year, birth = record_dates(pid, address, raw)
@@ -251,9 +252,22 @@ def _height(raw_cm: int) -> str:
     return f"{inches // 12}'{inches % 12}\""
 
 
+def _is(pid: int, address: int, vtable_key: str) -> bool:
+    """The object at ``address`` has the layout's class ``vtable_key``."""
+    return _pointer_full(pid, address) == fm24_image_base(pid) + LAYOUT[vtable_key]
+
+
+def _pointer_full(pid: int, address: int) -> int:
+    return struct.unpack("<Q", read_process_bytes(pid, address, 8))[0]
+
+
 def _nation(pid: int, record: int) -> str:
     nation = _pointer(pid, record + LAYOUT["nation"])
-    if not 1 <= _u32(pid, nation + 8) <= 500:
+    if LAYOUT["nation_vtable"] is not None:
+        # The u32 at +8 is 0 for some nations (Algeria), so only the class tells.
+        if not _is(pid, nation, "nation_vtable"):
+            raise MemoryUnavailable("Invalid FM24 nation object.")
+    elif not 1 <= _u32(pid, nation + 8) <= 500:
         raise MemoryUnavailable("Invalid FM24 nation object.")
     return _text(pid, _pointer(pid, nation + 0x30), limit=40)
 
@@ -265,6 +279,9 @@ PLAYING_CLUB = LAYOUT["playing_club"]
 
 
 def _club_name(pid: int, club: int) -> str:
+    """The name of a team: its club's, or its own for a club's second team."""
+    if LAYOUT["team_vtable"] is not None:
+        return _team_name(pid, club)
     # Reserve and youth teams added by FM have IDs from 2,000,000,000 up
     # (Inter Miami II is 2,000,016,224), so the ID is only checked against its
     # copy at +16 and the club details' own.
@@ -277,9 +294,37 @@ def _club_name(pid: int, club: int) -> str:
     return _text(pid, _pointer(pid, details + 0xc8), limit=80)
 
 
+class NoContract(MemoryUnavailable):
+    """The person has no contract: a free agent, or unemployed staff."""
+
+
+# What the prompt calls a player with no club (fmface._kit_text: a plain shirt).
+FREE_AGENT = "Free agent"
+
+
+def _team_name(pid: int, team: int) -> str:
+    """A db::TEAM's name. A first team is named by its club details (db::CLUB,
+    at +0x30, with the same ID). A club's other teams point at the same club
+    details: some carry their own name (+0x18: "Jong Sparta Rotterdam"); youth
+    and reserve teams FM names on screen ("Reading Under 21s") have none, and
+    their club's name is used, since they wear its kit."""
+    if not _is(pid, team, "team_vtable"):
+        raise MemoryUnavailable("Invalid FM24 club object.")
+    details = _pointer(pid, team + 0x30)
+    if not _is(pid, details, "club_vtable"):
+        raise MemoryUnavailable("FM24 club details do not match the club.")
+    own = _pointer(pid, team + 0x18)
+    if own and _u32(pid, details + 12) != _u32(pid, team + 12):
+        return _text(pid, own, limit=80)
+    return _text(pid, _pointer(pid, details + 0xc8), limit=80)
+
+
 def _club(pid: int, record: int) -> str:
     """The club holding the person's contract (the parent club during a loan)."""
     contract = _pointer(pid, record + LAYOUT["contract"])
+    if not contract:
+        # About one player in six in a 2026-10-19 Reading save.
+        raise NoContract("This FM24 person has no contract.")
     if _pointer(pid, contract + 8) != record - 12:
         raise MemoryUnavailable("FM24 contract points to another person.")
     return _club_name(pid, _pointer(pid, contract + 0x10))
@@ -350,10 +395,27 @@ def reread_profile(pid: int, person_id: str, title: str, age: int, *,
 def _profile(pid: int, record: int, identity: PersonIdentity, names: list[str], age: int,
              identity_only: bool) -> dict:
     nation = _nation(pid, record)
-    club = _club(pid, record)
-    playing = _playing_club(pid, record, club) if identity.kind == "player" else club
-    # The header names the contract club, or for a reserve player the team they play in.
-    shown = [title for title in names if title.endswith((" - " + club, " - " + playing))]
+    try:
+        club = _club(pid, record)
+    except NoContract:
+        club = None
+    if club is None:
+        # A free agent's header names their national team, if any, instead
+        # of a club, so there is no club to check it against.
+        playing = _playing_club(pid, record, FREE_AGENT) if identity.kind == "player" else ""
+        club, shown = playing, list(names)
+    else:
+        playing = _playing_club(pid, record, club) if identity.kind == "player" else club
+        # The header names the contract club, or for a reserve player the team they play in.
+        shown = [title for title in names if title.endswith((" - " + club, " - " + playing))]
+        if not shown:
+            # A club's youth or reserve team that FM names only on screen:
+            # "Reading Under 21s" for a player of Reading's.
+            teams = {title.rsplit(" - ", 1)[1] for title in names if " - " in title}
+            named = {team for team in teams if team.startswith(playing + " ")}
+            if len(named) == 1:
+                playing = named.pop()
+                shown = [title for title in names if title.endswith(" - " + playing)]
     if not shown:
         raise MemoryUnavailable("FM24 title and live contract club disagree.")
     if identity.kind == "staff":

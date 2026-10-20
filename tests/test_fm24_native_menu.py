@@ -336,7 +336,9 @@ class NativeDllSourceTests(unittest.TestCase):
 
     def test_clicks_name_the_game_run_not_the_reused_process_id(self):
         self.assertIn('(unsigned long long)bridge_instance, (long)serial', self.source)
-        self.assertNotIn("GetCurrentProcessId()", self.source)
+        # FM24's process ID only tells the companion it starts when to stop.
+        self.assertEqual(self.source.count("GetCurrentProcessId()"), 1)
+        self.assertIn('--started-by-fm24 %lu', self.source)
 
     def test_person_lookup_offsets_match_the_companion(self):
         import re
@@ -346,6 +348,10 @@ class NativeDllSourceTests(unittest.TestCase):
                          (layout.WINDOWS["sidebar_vtable"], layout.WINDOWS["sidebar_reference"]))
         self.assertEqual((defines["DATABASE_GLOBAL_RVA"], defines["DATABASE_PEOPLE"]),
                          layout.WINDOWS["person_table"])
+        # The DLL accepts exactly the person classes the companion does.
+        self.assertEqual({defines[name] for name in ("PLAYER_VTABLE_RVA", "NON_PLAYER_VTABLE_RVA",
+                                                     "PLAYER_COACH_VTABLE_RVA")},
+                         set(layout.WINDOWS["person_vtables"]))
 
     def test_face_check_packets_match_the_listener(self):
         self.assertIn('"FMFACE24F 1 %ld %ld %s", (long)serial, (long)person, bridge_token', self.source)
@@ -438,6 +444,32 @@ class NativeInstallerTests(unittest.TestCase):
         self.assertFalse((self.skin / install.LEGACY_SQUAD_PANEL).exists())
         self.run_installer("--remove")
         self.assertEqual(self.snapshot(), before)
+
+    def test_the_companion_fm24_starts_is_in_a_utf16_config(self):
+        companion = r"C:\Users\Zoë\FM Face\fmface-fm24.exe"
+        self.run_installer("--auth-file", str(self.auth), "--companion", companion)
+        data = (self.game / "fmface24.ini").read_bytes()
+        self.assertEqual(data[:2], b"\xff\xfe")  # GetPrivateProfileStringW needs the byte-order mark.
+        self.assertEqual(install.read_config(self.game / "fmface24.ini"),
+                         {"enabled": "1", "port": "8769", "token": KEY, "companion": companion})
+        # Without --companion (FM Face from source) there is nothing for FM24 to start.
+        self.run_installer("--auth-file", str(self.auth))
+        self.assertNotIn("companion", install.read_config(self.game / "fmface24.ini"))
+
+    def test_the_skin_is_optional_and_a_companion_built_one_is_adopted(self):
+        for kind in ("player", "staff"):
+            (self.skin / install.PANEL_FILES[kind]).unlink()
+        self.run_installer("--auth-file", str(self.auth))
+        self.assertEqual(json.loads((self.game / "fmface24-install.json").read_text())["panels"], {})
+        self.assertTrue((self.game / "winmm.dll").is_file())
+        # The companion FM24 started then built the skin with its popups.
+        for kind, text in (("player", PLAYER_PANEL), ("staff", STAFF_PANEL)):
+            (self.skin / install.PANEL_FILES[kind]).write_text(skin.modify_panel(text, kind))
+        self.run_installer("--auth-file", str(self.auth))
+        panels = json.loads((self.game / "fmface24-install.json").read_text())["panels"]
+        self.assertEqual({entry["created"] for entry in panels.values()}, {True})
+        self.run_installer("--remove")
+        self.assertFalse((self.skin / install.PANEL_FILES["player"]).exists())
 
     def _legacy_squad_install(self, existing_panel):
         """Reproduce a version 2 install that added the Squad Faces button."""

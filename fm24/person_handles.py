@@ -18,7 +18,7 @@ import threading
 import time
 
 from layout import LAYOUT
-from live_memory import MemoryUnavailable, record_marker
+from live_memory import MemoryUnavailable, is_person_record, record_marker
 from process_memory import MemoryScan, fm24_image_base, read_process_bytes
 
 PERSON_HANDLE = 8
@@ -27,7 +27,7 @@ PERSON_TYPE = 1
 _INDEX_MASK = 0x7FFFFF
 # Bytes 14-15 of a full person record (live_memory.record_marker): found with
 # bytes.find, which is far faster than a regular expression over the heap.
-_MARKERS = tuple(bytes([kind, last]) for kind in (0x50, 0x58) for last in (0x10, 0x12, 0x18))
+_MARKERS = tuple(bytes([kind, last]) for kind in LAYOUT["record_kinds"] for last in (0x10, 0x12, 0x18))
 _REBUILD_AFTER = 10.0
 DATABASE_SCAN = 0x2000
 _table_slots: dict[int, int] = {}           # pid -> database slot of the person vector
@@ -47,6 +47,8 @@ def person_handle(reference: int) -> int:
 
 
 def _scan(pid: int) -> dict[int, int]:
+    if LAYOUT["person_vtables"] is not None:
+        return _scan_objects(pid)
     found: dict[int, int] = {}
     for base, data in MemoryScan(pid, 24):
         for marker in _MARKERS:
@@ -62,6 +64,23 @@ def _scan(pid: int) -> dict[int, int]:
     return found
 
 
+def _scan_objects(pid: int) -> dict[int, int]:
+    """Person objects found by their vtable pointer: {vtable}{handle}{record}."""
+    image = fm24_image_base(pid)
+    needles = [struct.pack("<Q", image + vtable) for vtable in LAYOUT["person_vtables"]]
+    found: dict[int, int] = {}
+    for base, data in MemoryScan(pid, 24):
+        for needle in needles:
+            offset = data.find(needle)
+            while offset >= 0:
+                if (base + offset) % 8 == 0 and offset + 24 <= len(data):
+                    handle, number, again = struct.unpack_from("<III", data, offset + 8)
+                    if number == again and number and 0 < handle < _INDEX_MASK:
+                        found.setdefault(handle, base + offset + 12)
+                offset = data.find(needle, offset + 1)
+    return found
+
+
 def _check(pid: int, handle: int, record: int) -> str | None:
     """The person ID if the record at this address still carries this handle."""
     try:
@@ -70,7 +89,7 @@ def _check(pid: int, handle: int, record: int) -> str | None:
         return None
     number = struct.unpack_from("<I", raw, 4)[0]
     if (struct.unpack_from("<I", raw)[0] != handle or raw[4:8] != raw[8:12] or
-            not 1 <= number <= 2_147_483_647 or not record_marker(raw[4:])):
+            not 1 <= number <= 2_147_483_647 or not is_person_record(pid, record, raw[4:])):
         return None
     return str(number)
 

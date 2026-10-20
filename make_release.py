@@ -48,6 +48,7 @@ PUBLIC_FILES = (
     "fm24/requirements.txt",
     "fm24/build_skin.py",
     "fm24/setup_fm24.py",
+    "fm24/install-linux.sh",
     "fm24/build_exe.py",
     "fm24/requirements-exe.txt",
     "fm24/companion.py",
@@ -55,6 +56,7 @@ PUBLIC_FILES = (
     "fm24/existing_portrait.py",
     "fm24/game_archive.py",
     "fm24/graphics.py",
+    "fm24/key_dialog.py",
     "fm24/layout.py",
     "fm24/live_memory.py",
     "fm24/memory_probe.py",
@@ -212,6 +214,8 @@ def main() -> None:
             archive.write(ROOT / PLUGIN_DLL, f"{top}/FM26-macOS/BepInEx/plugins/FMFaceHotReload/FMFaceHotReload.dll")
         for path in packaged:
             archive.write(path, f"{top}/FM24/{path.relative_to(companion).as_posix()}")
+        if packaged:
+            write(archive, f"{top}/FM24/install-linux.sh", (ROOT / "fm24/install-linux.sh").read_bytes(), 0o755)
         for name in PUBLIC_FILES:
             archive.write(ROOT / name, f"{top}/source/{name}")
     note = f"the {len(packaged)}-file FM24 companion" if packaged else "no FM24 companion (not built)"

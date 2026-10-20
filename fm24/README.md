@@ -47,17 +47,26 @@ FM24 for Mac is its own program, so FM Face uses a Mac library instead of the DL
 
 `fm.app` is never changed. `python3 fm24/setup_fm24.py --remove` removes the library and launcher and restores the panels; then clear the launch option. On an Intel Mac, `run_fmface24.sh` starts FM24 without FM Face. The memory layouts are in [layout.py](layout.py) and described in [native_menu/README.md](native_menu/README.md#macos).
 
-## Packaged companion for Windows
+## Packaged companion (Windows and Linux)
 
-`fmface-fm24.exe` (the release ZIP's `FM24` folder) is the companion packaged with Python, Pillow, zstandard and the FM24 DLL, so players need no Python or compiler.
+`fmface-fm24.exe` (the release ZIP's `FM24` folder) is the companion packaged with Python, Pillow, zstandard and the FM24 DLL, so players need no Python or compiler. It is a Windows program; on Linux it runs inside FM24's Proton prefix, so the same file serves both.
 
-**Using it:**
+**FM24 starts it.** Once FM Face is set up, the DLL starts `fmface-fm24.exe` whenever FM24 starts (its path is in `fmface24.ini` beside `fm.exe`), and it stops when FM24 does. It has no window: it writes to `fmface-fm24.log` beside itself. There is nothing to start or keep open.
+
+**Windows:**
 1. Copy the `FM24` folder somewhere of your own, not into the game folder.
-2. Close FM24 and double-click `fmface-fm24.exe`. The first time (and after an FM Face update) it runs the setup above.
-3. It asks for your OpenAI key in its window. Paste it (right-click or Ctrl+V) or type it; it isn't shown. It checks the key with a free OpenAI request and saves it encrypted for your Windows user in `%APPDATA%\FM Face\openai-key`, the same file the FM26 plugin uses. Delete that folder to forget the key. On later starts it checks the saved key the same free way and asks again only if OpenAI rejects it. A `.env` beside the exe with `OPENAI_API_KEY` takes priority.
-4. Start FM24 (choosing the FM Face skin is optional, as above). Keep the window open while you play.
+2. Close FM24 and double-click `fmface-fm24.exe`. The first time (and after an FM Face update, or after moving the folder) it runs the setup above.
+3. It asks for your OpenAI key in its window. Paste it (right-click or Ctrl+V) or type it; it isn't shown. It checks the key with a free OpenAI request and saves it encrypted for your Windows user in `%APPDATA%\FM Face\openai-key`, the same file the FM26 plugin uses. Delete that folder to forget the key. A `.env` beside the exe with `OPENAI_API_KEY` takes priority.
+4. Start FM24 (choosing the FM Face skin is optional, as above).
 
-**Defaults:** it reads `.fm24-auth` from its own folder and finds `Documents\Sports Interactive\Football Manager 2024\graphics\fmface` itself. `fmface-fm24.exe setup [--game-dir ...] [--remove]` runs only the setup. The companion options below (`--graphics-dir`, `--preview-only` and so on) still work. If it stops with an error, the window stays open until you press Enter.
+**Linux (Steam/Proton):**
+1. Copy the release ZIP's `FM24` and `source` folders somewhere of your own, side by side, not into the game folder.
+2. Close FM24, **quit Steam** (Steam > Exit), and run `FM24/install-linux.sh`. It needs only `python3`, which Linux systems include, with no extra packages. It installs the DLL, points it at `fmface-fm24.exe`, and sets FM24's Steam launch option to `WINEDLLOVERRIDES="winmm=n,b" %command%`. It refuses while Steam is running, because Steam overwrites launch options changed while it's open.
+3. Start Steam and play FM24. The first time, a small **FM Face: OpenAI key** window asks for your key: paste it with Ctrl+V (or type it; it shows as dots) and choose **Save key**. It is checked with a free OpenAI request and saved encrypted in FM24's Proton prefix. Without the `zstandard` package the setup can't build the optional FM Face skin, so the companion builds it on this first start; choose it after restarting FM24 if you want the portrait popup.
+
+**When a key is needed later** (none was saved, or OpenAI rejects the saved one), choosing a face command opens the key window again, and FM24 says so. Closing it saves nothing.
+
+**Options:** it reads `.fm24-auth` from its own folder (or the token in `fmface24.ini`) and finds `Documents\Sports Interactive\Football Manager 2024\graphics\fmface` itself. `fmface-fm24.exe setup [--game-dir ...] [--remove]` runs only the setup; `install-linux.sh --remove` uninstalls on Linux (with Steam closed). Double-clicked while FM24 is running, it runs as the companion in its window, as before. The companion options below (`--graphics-dir`, `--preview-only` and so on) still work. If it stops with an error, the window stays open until you press Enter.
 
 **Building it:** build the DLL first (see [native_menu/README.md](native_menu/README.md); it needs MinGW), then run `fm24/build_exe.py` with a Windows Python 3.11 that has `fm24/requirements-exe.txt` installed. On Linux, a Windows Python under Wine works:
 
@@ -70,9 +79,11 @@ The output is the folder `dist/fmface-fm24/`, about 30 MB, which `make_release.p
 
 **Note on antivirus:** a program that reads another program's memory can still be flagged. Signing the exe would reduce that.
 
-**Testing it under Proton:** the exe has been run under Wine in FM24's Proton prefix. Start it with `WINEFSYNC=1` (Proton's wineserver uses fsync) and pipe its output (`| cat`); under Wine, redirecting it straight to a file fails to set up its output streams.
+**Testing it under Proton:** checked on 2026-10-19: `install-linux.sh` with Steam open (refused) and closed, then Play in Steam: the DLL started the companion, the key window saved a key, and a face was generated and loaded; the companion stopped with FM24. To start the exe by hand in FM24's prefix, use `WINEFSYNC=1` (Proton's wineserver uses fsync) and pipe its output (`| cat`); under Wine, redirecting it straight to a file fails to set up its output streams.
 
 ## Running from source (Linux)
+
+The packaged companion above is simpler. From source, the companion isn't started by FM24 (unless you pass the setup `--companion` with a built `fmface-fm24.exe`); start it yourself:
 
 1. Create a virtual environment and install the companion's dependencies:
 
@@ -95,7 +106,7 @@ The output is the folder `dist/fmface-fm24/`, about 30 MB, which `make_release.p
 
 ## Use
 
-Leave the companion running while you play; the menus work only while it runs.
+The packaged companion runs whenever FM24 does. From source, leave the companion running while you play; the menus work only while it runs.
 
 - **Generate new face:** open a player or staff profile and choose it from the **Overview** tab menu (below **Follow**), or, with the FM Face skin, click the portrait and choose it from FM24's popup. The new face loads automatically, and choosing it again replaces the portrait.
 - **Update face:** refreshes the face the person already has, asking for the same person at their current age in their current club's kit. The starting face can be:

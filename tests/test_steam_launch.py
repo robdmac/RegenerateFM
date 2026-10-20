@@ -85,10 +85,27 @@ class LaunchOptionTests(unittest.TestCase):
             self.assertEqual(other.read_text(), '"UserLocalConfigStore"\n{\n}\n')
             game = Path("/Games/Football Manager 26")
             with mock.patch.object(steam_launch, "steam_running", return_value=True), \
+                    mock.patch.object(steam_launch, "needs_change", return_value=True), \
                     mock.patch.object(steam_launch, "update_accounts") as update, \
                     mock.patch.object(sys, "platform", "darwin"):
                 self.assertIn("Quit Steam", steam_launch.apply("fm26", game))
             update.assert_not_called()
+
+    @unittest.skipIf(sys.platform == "win32", "Windows needs no launch option")
+    def test_an_option_already_set_needs_no_change_even_with_steam_running(self):
+        with tempfile.TemporaryDirectory() as name:
+            root = Path(name)
+            config = root / "userdata" / "1" / "config" / "localconfig.vdf"
+            config.parent.mkdir(parents=True)
+            config.write_text(CONFIG)
+            game = Path("/Games/Football Manager 26")
+            prefix = steam_launch.fm_face_option("fm26", game)
+            self.assertTrue(steam_launch.needs_change("fm26", game, roots=[root]))
+            steam_launch.update_accounts("3551340", prefix, roots=[root])
+            self.assertFalse(steam_launch.needs_change("fm26", game, roots=[root]))
+            with mock.patch.object(steam_launch, "steam_roots", return_value=[root]), \
+                    mock.patch.object(steam_launch, "steam_running", return_value=True):
+                self.assertIn("already set", steam_launch.apply("fm26", game))
 
     def test_options_per_platform(self):
         game = Path("/Games/Football Manager 2024")

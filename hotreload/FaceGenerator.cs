@@ -144,7 +144,7 @@ namespace FMFaceHotReload
             string firstName = Whitespace.Split(name)[0];
             string appearance = AppearancePrompt(name, age, personId, appearanceDir);
             return "Football Manager profile picture for " + name + ", a " + age + "-year-old " + position + " " +
-                   "who plays for " + club + ". Nationality: " + nationality + ". " + firstName + " is " + height + " tall." + biographyText + " " +
+                   (NoClub(club) ? "who is a free agent" : "who plays for " + club) + ". Nationality: " + nationality + ". " + firstName + " is " + height + " tall." + biographyText + " " +
                    "Physical stats: " + string.Join(", ", PhysicalStats.Select(stat => stat + " " + physical[stat].Text + "/20")) + ". " +
                    "Best non-physical stats: " + format(best) + ". Weakest non-physical stats: " + format(worst) + ". " +
                    "Create one plausible, original footballer portrait for a sports management game. " +
@@ -227,10 +227,15 @@ namespace FMFaceHotReload
             return result;
         }
 
-        private static string KitText(string club)
+        private static bool NoClub(string club)
         {
             string folded = club.ToLowerInvariant();
-            if (folded == "free agent" || folded == "unattached" || folded == "no club")
+            return folded == "free agent" || folded == "unattached" || folded == "no club";
+        }
+
+        private static string KitText(string club)
+        {
+            if (NoClub(club))
                 return "The player has no club; use a plain unbranded football shirt. ";
             return "Make sure the player is wearing the home kit and colours of " + club + ", " +
                    "with the club's recognisable shirt colours and kit pattern. " +

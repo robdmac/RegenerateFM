@@ -84,6 +84,53 @@
   `FMFACE24_PROGRESS_NOT_SET` and the popup shows no progress. The companion
   now shows progress in an FM Face dialog instead, as it does with skins
   other than FM Face's (2026-10-19). Cosmetic.
+- **FM24 companion starts with FM24:** done (2026-10-19). The DLL starts the
+  packaged `fmface-fm24.exe` (Windows, and inside the Proton prefix on Linux)
+  and it stops with FM24; Linux installs with `FM24/install-linux.sh` and
+  plain `python3`, refusing while Steam runs. Checked under Proton through
+  Steam's Play; real Windows is untested.
+- **macOS companion start:** the Mac library and `run_fmface24.sh` don't
+  start the companion, and it isn't packaged for macOS (it needs building on
+  a Mac). `run_fmface24.sh` could start it before FM24.
+- **FM24 people found by class:** done (2026-10-20). Person records,
+  teams, club details and nations are recognised by their object's class
+  (MSVC RTTI), not by marker bytes or ID copies, which varied from person to
+  person; every one of the 29,330 players and staff in a Reading save reads
+  (see native_menu/README.md, "Person records"). Mac players-coaches are
+  still refused (their class isn't mapped there).
+- **FM24 squad scan speed:** measured 2026-10-20 on the Inter Miami test
+  save under Proton: 8 s from the menu click to the confirmation on the first
+  team, 6.6 s on Inter Miami II. Of the companion's 5.3 s, 5.0 s is the one
+  full pass over FM24's memory (`_scan`); the person-table pass (1.4 s) runs
+  only on the first scan of a session, and the rest is under 0.3 s. Natively
+  on Linux the pass takes 3.3 s. The pass does three jobs; to remove it, all
+  three need a direct route:
+  - **Name cells:** done in a test script, not in FM Face. Walk the widget
+    tree from the UI manager's root at `manager+0x58`, following only
+    children whose parent link points back. It found the same cells as the
+    pass in 0.01 s, after visiting 737 widgets.
+  - **Today's date:** the top-bar widget `dtam` (vtable RVA 0x5824808)
+    points at the "3 Jan 2023" string at +0x188, so the tree walk can read
+    it. Check it against the year in the player records. The only value
+    elsewhere that moved by exactly one game day is in `TRANSFER_MANAGER`
+    (+0x7dc), whose meaning is unknown.
+  - **Portrait index:** don't cache it. FM24 keeps it as 32-byte nodes
+    ({key string, u32 hash, 'NULL', value, 0}) in 8192-node pools. A skin
+    reload with no new files left every node in place, but a new portrait's
+    node landed outside the pools seen before, so cached pools would miss
+    it. The hash isn't CRC32, CRC32C, FNV, djb2, sdbm, Murmur3 or Jenkins,
+    and no bucket array showed up. Next: find the map's owner from FM24's
+    code that looks up `graphics/pictures/person/...` (the code that reads
+    the record's portrait key).
+- **FM24 squad scan counts a removed face as present:** after a test portrait
+  was added, reloaded, removed and reloaded again (2026-10-20, Bryan Destin),
+  FM24 drew a silhouette, but the pass still found the old key string in
+  freed memory, so the squad command would skip him until FM24 restarts.
+  Reading the live index (above) fixes it too. It only happens after a face
+  is removed during a session.
+- **FM24 squad dialog names the club, not the team:** a youth squad's
+  confirmation says "20 of 21 Reading players"; FM doesn't store "Reading
+  Under 21s", so it would come from the screen's header.
 - **FM24 portrait popup in other skins:** FM Face works with any skin through
   the Overview tab menu (checked on the default skin, 2026-10-19). The setup
   could also add the portrait popup to the skin in use when its panels keep
@@ -131,8 +178,9 @@
   key, a face command shows a key prompt on FM24's window
   (`key_prompt_macos.m`), checked live with a fake key: paste, OpenAI's
   rejection and the second prompt, Cancel. A real key and a billed face are
-  still to check. Windows and Linux still ask in the companion's window;
-  `fmface24.c` could show a Win32 prompt the same way.
+  still to check. Windows and Linux ask in a Win32 dialog the companion
+  opens above FM24 (`key_dialog.py`, takes a paste under Proton; 2026-10-19);
+  `fmface24.c` could show it on FM24's window instead.
 - **FM26 face not appearing on macOS:** fixed (2026-10-18). A billed face
   (Lucas Hoyos) was saved, but the graphics reload failed with FM26's
   "invalid operation handle" and the popup waited 30 s before giving up:

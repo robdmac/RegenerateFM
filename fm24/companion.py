@@ -51,7 +51,7 @@ def error_text(exc: Exception, handler=None) -> str:
     text = str(exc)
     if "HTTP 401" not in text:
         return text
-    if handler is not None and _asks_in_game(handler) and not _env_key():
+    if handler is not None and (_asks_in_game(handler) or _asks_in_window(handler)) and not _env_key():
         _handler_class(handler).key_rejected = True
         return text + REJECTED_KEY_IN_GAME
     return text + REJECTED_KEY
@@ -76,6 +76,65 @@ def _asks_in_game(handler) -> bool:
     return sys.platform == "darwin" and bool(handler.reload_port)
 
 
+def _asks_in_window(handler) -> bool:
+    """Started by FM24 on Windows or Proton: no window of its own, so a key is
+    asked for in FM Face's key dialog (ask_key_in_window)."""
+    return sys.platform == "win32" and bool(getattr(handler, "started_by_fm24", None))
+
+
+KEY_WINDOW = "Paste or type your OpenAI key in the FM Face: OpenAI key window."
+
+
+def ask_key_in_window(handler, *, tell_fm24: bool = True) -> bool:
+    """With no key saved (or one OpenAI rejected), ask in FM Face's key
+    dialog (key_dialog: an ordinary Windows edit box, which takes a paste
+    under Wine too), check the key with OpenAI (free) and save it in FM
+    Face's key file. True once a key is saved or set in .env."""
+    import key_dialog
+    import keystore
+    store = keystore.default_path()
+    with handler.key_lock:
+        if _env_key() or (load_env().get("OPENAI_API_KEY", "").strip() and not handler.key_rejected):
+            return True
+        if tell_fm24 and handler.reload_port:
+            try:
+                show_dialog(handler.reload_port, handler.token, "message", "FM Face", KEY_WINDOW)
+            except (DialogUnavailable, OSError, ValueError):
+                pass
+        problem = "OpenAI didn't accept the saved key. Paste a new one." if handler.key_rejected else None
+        while True:
+            text = (problem or "FM Face makes faces with your own OpenAI API key. Each face is one billed "
+                               "request on your OpenAI account, usually a few cents or less.") + \
+                   ("\n\nPaste the key (it starts with sk-) with Ctrl+V or type it, then choose Save key. "
+                    f"Get a key… opens {keystore.KEYS_PAGE}.\n\n"
+                    f"The key is saved encrypted for your Windows user in {store.parent}. "
+                    "Delete that folder to forget it.")
+            try:
+                entered = key_dialog.ask(text, link=keystore.KEYS_PAGE)
+            except OSError as exc:
+                print(f"Couldn't show the key dialog ({exc}).", flush=True)
+                return False
+            if entered is None:
+                print("No OpenAI key was saved; choosing a face command asks again.", flush=True)
+                return False
+            try:
+                key = keystore.clean(entered)
+            except ValueError as exc:
+                problem = str(exc)
+                continue
+            problem = keystore.check(key, base=_api())
+            if problem:
+                continue
+            try:
+                keystore.save(store, key)
+            except (OSError, ValueError) as exc:
+                problem = f"Could not save the key: {exc}"
+                continue
+            _handler_class(handler).key_rejected = False
+            print(f"OpenAI key checked and saved in {store.parent}.", flush=True)
+            return True
+
+
 def ensure_key(handler) -> bool:
     """FM24 for macOS asks for the OpenAI key in the game, like FM26: with no
     key saved (or one OpenAI rejected), show the library's key prompt, check
@@ -84,6 +143,8 @@ def ensure_key(handler) -> bool:
     with MISSING_KEY)."""
     import keystore
     store = keystore.default_path()
+    if not handler.preview_only and _asks_in_window(handler) and store is not None:
+        return ask_key_in_window(handler)
     if handler.preview_only or not _asks_in_game(handler) or store is None or _env_key():
         return True
     problem = None
@@ -346,6 +407,7 @@ class Handler(BaseHTTPRequestHandler):
     in_flight = False
     key_lock = threading.Lock()
     key_rejected = False
+    started_by_fm24 = None  # FM24's process ID when the DLL started this companion
     nonces: dict[str, float] = {}
 
     def log_message(self, format, *args):
@@ -509,7 +571,67 @@ def _default_graphics_dir() -> Path | None:
     return Path(buffer.value) / "Sports Interactive" / "Football Manager 2024" / "graphics" / "fmface"
 
 
-def main() -> None:
+def _installed_token(game_dir: Path) -> str | None:
+    import setup_fm24
+    return setup_fm24.installed_token(game_dir)
+
+
+def _exit_with_game(pid: int) -> None:
+    """A companion FM24 started stops when FM24 does."""
+    if sys.platform == "win32":
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        kernel32.OpenProcess.restype = ctypes.c_void_p
+        handle = kernel32.OpenProcess(0x00100000, False, pid)  # SYNCHRONIZE
+        if handle:
+            kernel32.WaitForSingleObject(ctypes.c_void_p(handle), 0xFFFFFFFF)
+    else:
+        import os
+        while True:
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                break
+            except PermissionError:
+                pass
+            time.sleep(2)
+    print("FM24 has closed, so the companion is stopping.", flush=True)
+    import os
+    os._exit(0)
+
+
+def _first_start(handler, game_dir: Path | None, preview_only: bool) -> None:
+    """In a companion FM24 started: build the optional skin if the setup
+    couldn't (plain python3 on Linux), then check the key, asking for one in
+    a window if none is saved."""
+    if game_dir is not None:
+        import setup_fm24
+        user_data = setup_fm24.find_user_data_dir(game_dir)
+        if user_data is not None and setup_fm24.build_skin_with_popups(game_dir, user_data / "skins" / "fmface"):
+            print("Built the optional FM Face skin; choose it in FM24's Preferences > Interface "
+                  "after restarting FM24.", flush=True)
+    if preview_only or _env_key():
+        return
+    _check_saved_key(handler)
+    if not load_env().get("OPENAI_API_KEY", "").strip() or handler.key_rejected:
+        ask_key_in_window(handler, tell_fm24=False)
+
+
+def _log_to_file() -> None:
+    """A companion FM24 started has no window: everything goes to
+    fmface-fm24.log beside it (the previous run's in fmface-fm24.log.old)."""
+    import os
+    log = ROOT / "fmface-fm24.log"
+    try:
+        if log.exists() and log.stat().st_size > 1_000_000:
+            os.replace(log, log.with_suffix(".log.old"))
+        stream = open(log, "a", encoding="utf-8", buffering=1, errors="replace")
+    except OSError:
+        return
+    sys.stdout = sys.stderr = stream
+
+
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--auth-file", type=Path, default=ROOT / ".fm24-auth",
                         help="the token file build_skin.py wrote (default: .fm24-auth beside FM Face)")
@@ -522,14 +644,22 @@ def main() -> None:
     parser.add_argument("--native-menu", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--native-port", type=int, default=8769)
     parser.add_argument("--preview-only", action="store_true", help="Return the prompt without an API request or portrait write")
-    args = parser.parse_args()
+    # Set by the DLL when it starts the companion with FM24.
+    parser.add_argument("--started-by-fm24", type=int, metavar="PID", help=argparse.SUPPRESS)
+    parser.add_argument("--game-dir", type=Path, help=argparse.SUPPRESS)
+    args = parser.parse_args(argv)
     if not 1024 <= args.native_port <= 65534:
         parser.error("--native-port must be between 1024 and 65534")
+    if args.started_by_fm24:
+        print(f"Started by FM24 (process {args.started_by_fm24}) at {time.strftime('%Y-%m-%d %H:%M:%S')}.", flush=True)
+        threading.Thread(target=_exit_with_game, args=(args.started_by_fm24,), daemon=True).start()
     try:
         token = args.auth_file.read_text(encoding="ascii").strip()
     except (OSError, UnicodeError) as exc:
-        parser.error(f"Could not read the FM24 token file {args.auth_file} ({exc}). "
-                     "fm24/build_skin.py writes it when it builds the FM Face skin.")
+        token = _installed_token(args.game_dir) if args.game_dir else None
+        if not token:
+            parser.error(f"Could not read the FM24 token file {args.auth_file} ({exc}). "
+                         "Run the FM Face setup again.")
     if len(token) < 40:
         parser.error("Invalid FM24 callback token file.")
     graphics_dir = args.graphics_dir.expanduser().resolve()
@@ -537,8 +667,9 @@ def main() -> None:
         graphics_dir.mkdir(exist_ok=True)
     if not graphics_dir.is_dir() or graphics_dir.name != "fmface" or graphics_dir.parent.name != "graphics" or graphics_dir.parent.parent.name != "Football Manager 2024":
         parser.error("--graphics-dir must be the existing Football Manager 2024/graphics/fmface directory")
-    if not args.preview_only and sys.platform != "darwin":
+    if not args.preview_only and sys.platform != "darwin" and not args.started_by_fm24:
         ask_for_key()
+    Handler.started_by_fm24 = args.started_by_fm24
     Handler.token = token
     Handler.graphics_dir = graphics_dir
     Handler.preview_only = args.preview_only
@@ -547,6 +678,9 @@ def main() -> None:
     try:
         server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     except OSError as exc:
+        if args.started_by_fm24:
+            parser.exit(0, f"Another FM Face companion is already running (port {args.port}: {exc}); "
+                           "this one is stopping.\n")
         parser.exit(1, f"Companion port 127.0.0.1:{args.port} is unavailable ({exc}). "
                        "Is another companion already running?\n")
     from native_listener import start_native_listener
@@ -561,6 +695,9 @@ def main() -> None:
     threading.Thread(target=lambda: _quietly(face_exists, Handler, "1"), daemon=True).start()
     if not args.preview_only and sys.platform == "darwin":
         threading.Thread(target=_quietly, args=(_check_saved_key, Handler), daemon=True).start()
+    if args.started_by_fm24:
+        threading.Thread(target=_quietly, args=(_first_start, Handler, args.game_dir, args.preview_only),
+                         daemon=True).start()
     # People by handle, for profiles whose header shows no ID, where FM24's
     # person table isn't mapped.
     if LAYOUT["browser_reference"] is not None and LAYOUT["person_table"] is None:
@@ -629,27 +766,42 @@ def ask_for_key() -> None:
         return
 
 
-def _setup_if_needed() -> None:
-    """A double-clicked companion sets FM24 up itself the first time (and after an update)."""
+def _setup_if_needed() -> Path | None:
+    """A double-clicked companion sets FM24 up itself the first time (and
+    after an update); FM24 then starts it. Returns FM24's folder."""
     import setup_fm24
     try:
         game, user_data = setup_fm24.resolve_dirs(None, None)
     except SystemExit as exc:
         print(exc, flush=True)
-        return
-    if not setup_fm24.is_set_up(game, user_data / "skins" / "fmface", ROOT / ".fm24-auth"):
+        return None
+    companion = setup_fm24.packaged_companion()
+    if not setup_fm24.is_set_up(game, user_data / "skins" / "fmface", ROOT / ".fm24-auth", companion):
         print("Setting up FM Face for FM24 (one time only).", flush=True)
-        setup_fm24.setup(game, user_data, ROOT / ".fm24-auth")
+        setup_fm24.setup(game, user_data, ROOT / ".fm24-auth", companion)
+    return game
 
 
 def _main_packaged() -> None:
-    """A double-clicked companion.exe closes its window on exit; keep errors readable.
+    """The packaged companion. FM24's DLL starts it with --started-by-fm24
+    (no window; it logs to fmface-fm24.log). Double-clicked, it sets FM24 up
+    and asks for the key, keeping its window readable on exit.
 
     `fmface-fm24.exe setup [--game-dir ...] [--remove]` runs only the setup.
     """
-    def pause():
+    if "--started-by-fm24" in sys.argv:
+        _log_to_file()
         try:
-            input("Press Enter to close.")
+            main()
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            raise SystemExit(1)
+        return
+
+    def pause(prompt: str = "Press Enter to close."):
+        try:
+            input(prompt)
         except (EOFError, OSError):
             pass
     try:
@@ -659,7 +811,18 @@ def _main_packaged() -> None:
             pause()
             return
         if len(sys.argv) == 1:
-            _setup_if_needed()
+            game = _setup_if_needed()
+            if game is None:
+                pause()
+                return
+            ask_for_key()
+            import setup_fm24
+            if not setup_fm24.native_install.game_running(game):
+                print("\nFM Face is set up. It starts by itself whenever you start FM24, "
+                      "so there's nothing else to run.", flush=True)
+                pause()
+                return
+            # FM24 is already running; its companion normally is too.
         main()
     except SystemExit as exc:
         if exc.code not in (None, 0):

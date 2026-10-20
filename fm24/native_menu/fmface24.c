@@ -156,6 +156,11 @@ static BOOL read_game(const void *address, void *buffer, SIZE_T size)
 #define DATABASE_SCAN          0x2000
 #define PERSON_OBJECT          0x01000000u
 #define PERSON_HANDLE          8
+/* Person objects' vtables (MSVC RTTI): db::ACTUAL_PLAYER, db::ACTUAL_NON_PLAYER
+   and db::ACTUAL_PLAYER_AND_NON_PLAYER, as in layout.py's person_vtables. */
+#define PLAYER_VTABLE_RVA        0x5A4EE78
+#define NON_PLAYER_VTABLE_RVA    0x5A4C358
+#define PLAYER_COACH_VTABLE_RVA  0x5C7ECB8
 #define MAX_DEPTH              64
 
 static BOOL read_pointer(const unsigned char *address, unsigned char **value)
@@ -191,15 +196,19 @@ static unsigned char *search_stack[MAX_SEARCH];
 static LONG slot_person_id(unsigned char *database, size_t slot, unsigned int handle)
 {
     unsigned char *range[2], *person;
-    struct { unsigned int handle, id, again, zero; unsigned char marker[4]; } record;
+    struct { unsigned char *vtable; unsigned int handle, id, again; } record;
     if (!read_game(database + slot, range, sizeof(range)) || !range[0] || range[1] <= range[0] ||
         (range[1] - range[0]) % sizeof(void *) || handle >= (size_t)(range[1] - range[0]) / sizeof(void *) ||
         !read_pointer(range[0] + (size_t)handle * sizeof(void *), &person) || !person ||
-        !read_game(person + PERSON_HANDLE, &record, sizeof(record)))
+        !read_game(person, &record, sizeof(record)))
         return 0;
-    /* As in the companion: the ID twice, then a marker of 00 xx 58. */
-    if (record.handle != handle || record.id != record.again || record.marker[0] || record.marker[2] != 0x58 ||
-        record.id < 1 || record.id > 0x7fffffffu)
+    /* As in the companion: a person object (its class, from its vtable) with
+       this handle and the ID twice. The record's marker bytes are flags that
+       vary from person to person, so they aren't checked. The companion
+       checks the record again before using it. */
+    if ((record.vtable != game_base + PLAYER_VTABLE_RVA && record.vtable != game_base + NON_PLAYER_VTABLE_RVA &&
+         record.vtable != game_base + PLAYER_COACH_VTABLE_RVA) ||
+        record.handle != handle || record.id != record.again || record.id < 1 || record.id > 0x7fffffffu)
         return 0;
     return (LONG)record.id;
 }
@@ -1132,7 +1141,9 @@ static DWORD WINAPI bridge_worker(LPVOID unused)
             socket_fd = INVALID_SOCKET;
         }
         log_line("FMFACE24_COMPANION_UNAVAILABLE");
-        show_message(L"The FM Face companion isn't running. Start fm24/companion.py and try again.");
+        show_message(L"FM Face's companion isn't running. FM24 starts it; restart FM24 to try again. "
+                     L"If you moved the FM Face folder, run its setup again (fmface-fm24.exe on Windows, "
+                     L"install-linux.sh on Linux). fmface-fm24.log beside it says what went wrong.");
     }
     if (socket_fd != INVALID_SOCKET) closesocket(socket_fd);
     if (network) WSACleanup();
@@ -1305,6 +1316,47 @@ static void install_squad_menu(unsigned char *base)
     log_line("FMFACE24_SQUAD_MENU_INSTALLED");
 }
 
+/* Start FM Face's companion (fmface24.ini "companion": the full path of
+   fmface-fm24.exe) once the hooks are in, so the player never starts it. It
+   gets FM24's process ID, exits when FM24 does, and exits at once if a
+   companion is already running. DETACHED_PROCESS: no window; it logs to
+   fmface-fm24.log beside itself and opens a window only to ask for a key.
+   Under Proton the path is a Wine path (Z:\...). */
+static DWORD WINAPI start_companion(LPVOID unused)
+{
+    (void)unused;
+    WCHAR config[MAX_PATH], path[MAX_PATH], folder[MAX_PATH], game[MAX_PATH], command[3 * MAX_PATH + 64] = {0};
+    if (!sibling_path(config, L"fmface24.ini") || !sibling_path(game, L"")) return 0;
+    DWORD length = GetPrivateProfileStringW(L"fmface", L"companion", L"", path, MAX_PATH, config);
+    if (!length) { log_line("FMFACE24_COMPANION_NOT_CONFIGURED"); return 0; }
+    DWORD attributes = GetFileAttributesW(path);
+    if (length >= MAX_PATH - 1 || attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_DIRECTORY)) {
+        log_line("FMFACE24_COMPANION_MISSING"); return 0;
+    }
+    wcscpy(folder, path);
+    WCHAR *slash = wcsrchr(folder, L'\\');
+    if (!slash) { log_line("FMFACE24_COMPANION_MISSING"); return 0; }
+    *slash = 0;
+    game[wcslen(game) - 1] = 0;  /* Without the trailing backslash, which would escape the quote. */
+    _snwprintf(command, sizeof(command) / sizeof(command[0]) - 1, L"\"%ls\" --started-by-fm24 %lu --game-dir \"%ls\"",
+             path, (unsigned long)GetCurrentProcessId(), game);
+    STARTUPINFOW startup;
+    ZeroMemory(&startup, sizeof(startup));
+    startup.cb = sizeof(startup);
+    PROCESS_INFORMATION process;
+    if (!CreateProcessW(path, command, NULL, NULL, FALSE, DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
+                        NULL, folder, &startup, &process)) {
+        char line[64];
+        snprintf(line, sizeof(line), "FMFACE24_COMPANION_START_FAILED error=%lu", GetLastError());
+        log_line(line);
+        return 0;
+    }
+    CloseHandle(process.hThread);
+    CloseHandle(process.hProcess);
+    log_line("FMFACE24_COMPANION_STARTED");
+    return 0;
+}
+
 static void install_event_hook(void)
 {
     WCHAR config[MAX_PATH], token[129];
@@ -1357,6 +1409,8 @@ static void install_event_hook(void)
     log_line("FMFACE24_NATIVE_MENU_HOOK_INSTALLED");
     install_squad_menu(base);
     if (bridge_port < 65535 && (thread = CreateThread(NULL, 0, reload_listener, NULL, 0, NULL)))
+        CloseHandle(thread);
+    if ((thread = CreateThread(NULL, 0, start_companion, NULL, 0, NULL)))
         CloseHandle(thread);
 }
 

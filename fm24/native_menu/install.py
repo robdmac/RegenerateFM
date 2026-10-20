@@ -139,6 +139,31 @@ def load_manifest(path: Path) -> dict | None:
     return metadata
 
 
+def has_popup(panel: Path) -> bool:
+    return any(f'id="{widget}"' in panel.read_text(encoding="utf-8-sig") for widget in ("fmnP", "fmnS"))
+
+
+def config_text(port: int, token: str, companion: str | None) -> bytes:
+    """fmface24.ini. The DLL reads it with GetPrivateProfileString, which
+    takes UTF-16 with a byte-order mark, so any companion path works; the
+    macOS library reads plain ASCII and starts no companion."""
+    text = f"[fmface]\nenabled=1\nport={port}\ntoken={token}\n"
+    if MACOS:
+        return text.encode("ascii")
+    if companion:
+        if "\n" in companion or "\r" in companion:
+            raise ValueError("Invalid companion path.")
+        text += f"companion={companion}\n"
+    return text.replace("\n", "\r\n").encode("utf-16")
+
+
+def read_config(path: Path) -> dict[str, str]:
+    """fmface24.ini's settings, in either encoding."""
+    data = path.read_bytes()
+    text = data.decode("utf-16") if data[:2] in (b"\xff\xfe", b"\xfe\xff") else data.decode("ascii")
+    return dict(line.split("=", 1) for line in text.splitlines() if "=" in line)
+
+
 def game_running(game: Path) -> bool:
     """FM24 from this folder is running (not FM26, whose executable is fm.exe too)."""
     suffix = f"/{game.name}/{EXECUTABLE}".lower()
@@ -182,6 +207,7 @@ def main(argv: list[str] | None = None) -> None:
                         help=f"the FM Face library to install (default: {DEFAULT_LIBRARY})")
     parser.add_argument("--auth-file", type=Path)
     parser.add_argument("--port", type=int, default=8769)
+    parser.add_argument("--companion", help="the companion FM24 starts (fmface-fm24.exe), as Windows sees it")
     parser.add_argument("--remove", action="store_true")
     args = parser.parse_args(argv)
     game = args.game_dir.expanduser().resolve()
@@ -231,13 +257,19 @@ def main(argv: list[str] | None = None) -> None:
 
         # Work out every panel's original text before writing anything.
         installed = metadata["panels"] if metadata else {}
-        modified = {}
+        # The skin is optional: without it (or a panel of it) only the
+        # portrait popup is missing. The companion builds it later if needed.
+        modified, adopted = {}, {}
         for kind, name in PANEL_FILES.items():
             panel, backup = skin / name, skin / (name + BACKUP_SUFFIX)
             if name in installed:
                 original = backup.read_text(encoding="utf-8-sig")
             elif not panel.exists():
-                parser.error(f"The FM Face skin is missing {panel}; build the skin first.")
+                continue
+            elif has_popup(panel):
+                # Built with the popup by the companion: owned, removed on uninstall.
+                adopted[name] = {"sha256": digest(panel), "created": True}
+                continue
             elif backup.exists():
                 parser.error(f"Unowned panel backup already exists; refusing to replace it: {backup}")
             else:
@@ -250,7 +282,7 @@ def main(argv: list[str] | None = None) -> None:
         # All build, token, source-panel, and existing-install checks precede writes.
         if LEGACY_SQUAD_PANEL in installed:
             _restore_panel(skin, LEGACY_SQUAD_PANEL, installed[LEGACY_SQUAD_PANEL], transaction)
-        panels = {}
+        panels = dict(adopted)
         for name, text in modified.items():
             panel = skin / name
             if name not in installed:
@@ -260,7 +292,7 @@ def main(argv: list[str] | None = None) -> None:
         transaction.write(target, dll, private=False)
         if launcher:
             transaction.write(launcher, (HERE / LAUNCHER).read_bytes(), mode=0o755)
-        transaction.write(config, f"[fmface]\nenabled=1\nport={args.port}\ntoken={token}\n".encode("ascii"))
+        transaction.write(config, config_text(args.port, token, args.companion))
         transaction.write(manifest, (json.dumps({"version": 2, "dllSha256": digest(target),
                                                  "panels": panels}, indent=2) + "\n").encode())
     except BaseException as exc:
@@ -281,9 +313,12 @@ def main(argv: list[str] | None = None) -> None:
         print(f'Steam launch option for FM24: "{launcher}" %command%')
     elif sys.platform == "win32":
         print("On Windows, FM24 loads the DLL from its folder; no launch option is needed.")
-    else:
+    elif not args.companion:
         print('Proton launch option: WINEDLLOVERRIDES="winmm=n,b" %command%')
-    print("Start the companion while you play (add --preview-only for no-charge tests).")
+    if args.companion and not MACOS:
+        print("FM24 starts the FM Face companion itself.")
+    else:
+        print("Start the companion while you play (add --preview-only for no-charge tests).")
 
 
 if __name__ == "__main__":
