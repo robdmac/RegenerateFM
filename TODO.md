@@ -98,20 +98,36 @@
   person; every one of the 29,330 players and staff in a Reading save reads
   (see native_menu/README.md, "Person records"). Mac players-coaches are
   still refused (their class isn't mapped there).
-- **FM24 squad scan speed:** on the Reading Under 21s the scan took 16 s
-  before its confirmation (2026-10-19); time each step before changing it.
-  Full passes over FM24's memory (each a few seconds):
-  - `_scan`: always, and does three jobs at once (the Squad table's name
-    cells, FM24's portrait index, today's date), so caching only the date
-    saves nothing. Removing the pass needs a direct route for all three:
-    the cells by walking the widget tree from the UI manager (`_children`),
-    the date from a game global, and the portrait index by finding FM24's
-    picture table once per session and caching its address, checked on
-    each use like the person table.
-  - `_find_handle_table`: the first scan per FM24 run only (cached per pid).
-  - `_undrawn_names`: only for players with no name in their record, now
-    rare since names come from the first-name and surname objects.
-  The rest (per-row record checks, team and club reads) is unmeasured.
+- **FM24 squad scan speed:** measured 2026-10-20 on the Inter Miami test
+  save under Proton: 8 s from the menu click to the confirmation on the first
+  team, 6.6 s on Inter Miami II. Of the companion's 5.3 s, 5.0 s is the one
+  full pass over FM24's memory (`_scan`); the person-table pass (1.4 s) runs
+  only on the first scan of a session, and the rest is under 0.3 s. Natively
+  on Linux the pass takes 3.3 s. The pass does three jobs; to remove it, all
+  three need a direct route:
+  - **Name cells:** done in a test script, not in FM Face. Walk the widget
+    tree from the UI manager's root at `manager+0x58`, following only
+    children whose parent link points back. It found the same cells as the
+    pass in 0.01 s, after visiting 737 widgets.
+  - **Today's date:** the top-bar widget `dtam` (vtable RVA 0x5824808)
+    points at the "3 Jan 2023" string at +0x188, so the tree walk can read
+    it. Check it against the year in the player records. The only value
+    elsewhere that moved by exactly one game day is in `TRANSFER_MANAGER`
+    (+0x7dc), whose meaning is unknown.
+  - **Portrait index:** don't cache it. FM24 keeps it as 32-byte nodes
+    ({key string, u32 hash, 'NULL', value, 0}) in 8192-node pools. A skin
+    reload with no new files left every node in place, but a new portrait's
+    node landed outside the pools seen before, so cached pools would miss
+    it. The hash isn't CRC32, CRC32C, FNV, djb2, sdbm, Murmur3 or Jenkins,
+    and no bucket array showed up. Next: find the map's owner from FM24's
+    code that looks up `graphics/pictures/person/...` (the code that reads
+    the record's portrait key).
+- **FM24 squad scan counts a removed face as present:** after a test portrait
+  was added, reloaded, removed and reloaded again (2026-10-20, Bryan Destin),
+  FM24 drew a silhouette, but the pass still found the old key string in
+  freed memory, so the squad command would skip him until FM24 restarts.
+  Reading the live index (above) fixes it too. It only happens after a face
+  is removed during a session.
 - **FM24 squad dialog names the club, not the team:** a youth squad's
   confirmation says "20 of 21 Reading players"; FM doesn't store "Reading
   Under 21s", so it would come from the screen's header.
