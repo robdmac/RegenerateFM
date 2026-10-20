@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import unittest
@@ -287,8 +288,9 @@ class GeneratorParityTests(unittest.TestCase):
                 {"action": "savekey", "path": path, "apiKey": ""},
                 {"action": "loadkey", "path": path},
             ])
-            # Off Windows (these tests) the file is marked unencrypted; FM26 uses DPAPI.
-            self.assertTrue(Path(path).read_bytes().startswith(b"FMFK0\n"))
+            # Off Windows the file is marked unencrypted; on Windows it is DPAPI-encrypted.
+            marker = b"FMFK1\n" if sys.platform == "win32" else b"FMFK0\n"
+            self.assertTrue(Path(path).read_bytes().startswith(marker))
         self.assertEqual(results[0], {"apiKey": None})
         self.assertEqual(results[1], {"problem": None})
         self.assertEqual(results[2], {"problem": "OpenAI didn't accept this key. Check that you copied all of it."})

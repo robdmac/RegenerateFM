@@ -388,8 +388,10 @@ class NativeInstallerTests(unittest.TestCase):
             install._atomic_write(destination, b"new configuration", 0o600)
             self.assertEqual(unrelated.read_bytes(), b"keep this file")
             self.assertEqual(destination.read_bytes(), b"new configuration")
-            self.assertEqual(destination.stat().st_mode & 0o777, 0o600)
+            if sys.platform != "win32":  # Windows has no POSIX permission bits.
+                self.assertEqual(destination.stat().st_mode & 0o777, 0o600)
 
+    @unittest.skipIf(sys.platform == "win32", "Windows has no POSIX permission bits")
     def test_directory_rollback_preserves_permissions(self):
         with tempfile.TemporaryDirectory() as name:
             root = Path(name)

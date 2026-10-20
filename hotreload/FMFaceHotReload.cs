@@ -30,7 +30,9 @@ namespace FMFaceHotReload
         private static readonly Regex AgePattern = new Regex(@"\b(\d{1,2}) years old\b", RegexOptions.Compiled);
         private static readonly Regex IdPattern = new Regex(@"\bID:\s*(\d{1,20})\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex StatPattern = new Regex(@"^(?:[1-9]|1[0-9]|20)(?:[-–](?:[1-9]|1[0-9]|20))?$", RegexOptions.Compiled);
-        private static readonly Regex PositionPattern = new Regex(@"^(?:Goalkeeper|Defender|Wing[- ]Back|Defensive Midfielder|Midfielder|Attacking Midfielder|Striker)(?:\s*\([^)]{1,30}\))?$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        // One position or several, comma-separated: "Attacking Midfielder (Right), Striker (Centre)".
+        private const string OnePosition = @"(?:Goalkeeper|Defender|Wing[- ]Back|Defensive Midfielder|Midfielder|Attacking Midfielder|Striker)(?:\s*\([^)]{1,30}\))?";
+        private static readonly Regex PositionPattern = new Regex("^" + OnePosition + @"(?:\s*,\s*" + OnePosition + ")*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly HashSet<string> PhysicalNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "Acceleration", "Agility", "Balance", "Jumping Reach", "Natural Fitness", "Pace", "Stamina", "Strength"
@@ -52,6 +54,9 @@ namespace FMFaceHotReload
         private VisualElement _portraitDismissLayer;
         private SquadScan _squadScan;
         private VisualElement _squadDialog;
+        // The dialog's buttons and what each does; see WatchSquadDialogClicks.
+        private readonly Dictionary<VisualElement, Action> _squadDialogActions = new Dictionary<VisualElement, Action>();
+        private VisualElement _squadClickRoot;
         private VisualElement _squadMenuButton;
         private VisualElement _squadMenuList;
         private SquadBatch _squadBatch;
@@ -84,7 +89,7 @@ namespace FMFaceHotReload
         {
             if (!SupportedGameBuild())
             {
-                Log.LogWarning("FM Face supports only the checked FM26 26.3.2 binaries; buttons disabled");
+                Log.LogWarning("FM Face supports only the checked FM26 26.3.2 and FM26 Demo binaries; buttons disabled");
                 return;
             }
             Instance = this;
@@ -154,10 +159,20 @@ namespace FMFaceHotReload
                         && HasHash(Path.Combine(contents, "PlugIns", "game_plugin.bundle", "Contents", "MacOS", "game_plugin"),
                                "de6b048ab1a95fd4ae683a7d751a33645183a9a570fa1c2fba32fd308ca87979");
                 }
-                return HasHash(Path.Combine(Paths.GameRootPath, "GameAssembly.dll"),
-                           "7ce3eb474dc6093df633f979e869e55b2ec7953fde2e732392a694d379ff7a0c")
-                    && HasHash(Path.Combine(Paths.GameRootPath, "fm_Data", "Plugins", "x86_64", "game_plugin.dll"),
-                           "eb6c86fab56e051fe41482c7b93d8cb0af716a1cc2c6197ce1babbff68372bb8");
+                string gameAssembly = Path.Combine(Paths.GameRootPath, "GameAssembly.dll");
+                string gamePlugin = Path.Combine(Paths.GameRootPath, "fm_Data", "Plugins", "x86_64", "game_plugin.dll");
+                if (HasHash(gameAssembly, "7ce3eb474dc6093df633f979e869e55b2ec7953fde2e732392a694d379ff7a0c")
+                    && HasHash(gamePlugin, "eb6c86fab56e051fe41482c7b93d8cb0af716a1cc2c6197ce1babbff68372bb8"))
+                    return true;
+                // The FM26 Demo (Steam app 3551360) is a separate 26.3.2 build
+                // that keeps its user data in "Football Manager 26 Demo".
+                if (HasHash(gameAssembly, "edcd74617b881817da1895f4272add8fcfcab9d15a4ab64d858d408f59c730f0")
+                    && HasHash(gamePlugin, "a4181cf61a265058d0b447fd0d679d5ac282b08a7962f0f0d67dbd27bdf9aa26"))
+                {
+                    UserDataName = "Football Manager 26 Demo";
+                    return true;
+                }
+                return false;
             }
             catch (Exception error)
             {
@@ -618,6 +633,7 @@ namespace FMFaceHotReload
             public float LastY = -1;
             public int Steps;
             public int ExpectedCount;
+            public int Passes = 1;
             public readonly Dictionary<string, SquadCandidate> Portraits = new Dictionary<string, SquadCandidate>(StringComparer.Ordinal);
             public readonly HashSet<string> Missing = new HashSet<string>(StringComparer.Ordinal);
             public Label Status;
@@ -652,13 +668,24 @@ namespace FMFaceHotReload
             public System.DateTime NextPlayerUtc;
             public double LastDiagnosis = -10;
             public System.DateTime? UnfocusedSinceUtc;
+            // The Demo's Squad button opens its Overview dashboard, so the batch
+            // goes on to this page's tab from there (null on 26.3.2).
+            public string ReturnTab;
+            public bool TabClicked;
         }
 
         private void CheckSquadMenu()
         {
             var root = CurrentRoot();
-            if (FindNamed(root, "SquadScreen") == null || FindNamed(root, "PlayerTableContainer") == null)
+            var table = SquadTable(root);
+            if (table == null || FindScroll(table) == null)
             {
+                // Off the squad pages this is the normal case, so only say why on a
+                // page that has a player table without the rows FM Face reads.
+                if (table != null)
+                    NoteSquadMenu("the squad table has no scrolling list of NameButtons: " + Ancestry(table));
+                else
+                    _squadMenuNote = null;
                 RemoveSquadMenuButton();
                 return;
             }
@@ -670,12 +697,20 @@ namespace FMFaceHotReload
                 menuList = menuList.parent;
             if (menuList == null || menuList.worldBound.width < 100)
             {
+                // A closed dropdown is the usual case; only odd matches are logged.
+                if (menuItem != null)
+                    NoteSquadMenu(menuList == null ? "\"Squad Numbers\" has no parent named View: " + Ancestry(menuItem)
+                    : "the dropdown's View is " + menuList.worldBound.width + " px wide");
                 RemoveSquadMenuButton();
                 return;
             }
             var scroll = menuList.parent?.TryCast<ScrollView>();
             if (scroll == null)
+            {
+                NoteSquadMenu("the dropdown's View isn't in a ScrollView: " + Ancestry(menuList));
                 return;
+            }
+            NoteSquadMenu("dropdown found");
             // FM26 closes the dropdown when the pointer leaves it, so the item goes
             // inside the dropdown, after its list: moving to it never leaves the menu.
             var dropdown = scroll.parent;
@@ -722,12 +757,44 @@ namespace FMFaceHotReload
             button.style.top = scroll.worldBound.yMax - root.worldBound.y + 2;
         }
 
+        // Why the squad dropdown has (or hasn't) the command, logged when it changes,
+        // so a build whose squad screens differ shows where the match stops.
+        private string _squadMenuNote;
+
+        private void NoteSquadMenu(string note)
+        {
+            if (note == _squadMenuNote)
+                return;
+            _squadMenuNote = note;
+            Log.LogInfo("Squad menu: " + note);
+        }
+
+        private static string Ancestry(VisualElement element)
+        {
+            var names = new List<string>();
+            for (var e = element; e != null && names.Count < 70; e = e.parent)
+                names.Add((string.IsNullOrEmpty(e.name) ? "?" : e.name) + ":" + e.GetType().Name);
+            return string.Join(" < ", names);
+        }
+
         private void RemoveSquadMenuButton()
         {
             if (_squadMenuButton != null && _squadMenuButton.parent != null)
                 _squadMenuButton.RemoveFromHierarchy();
             _squadMenuButton = null;
             _squadMenuList = null;
+        }
+
+        // The squad's player table. FM26 26.3.2 shows it on Squad > Overview
+        // (SquadScreen > PlayerTableContainer). The Demo's Overview is a tile
+        // dashboard instead, which stays in the tree after you leave it; its
+        // First Team and Under 21s pages are a TeamSquadReport with a "playertable".
+        private static VisualElement SquadTable(VisualElement root)
+        {
+            if (FindNamed(root, "SquadScreen") != null && FindNamed(root, "PlayerTableContainer") is VisualElement table)
+                return table;
+            var report = FindNamed(root, "TeamSquadReport");
+            return report == null ? null : FindNamed(report, "playertable");
         }
 
         private static ScrollView FindScroll(VisualElement element)
@@ -766,7 +833,7 @@ namespace FMFaceHotReload
                 return;
             }
             var root = CurrentRoot();
-            var table = FindNamed(root, "PlayerTableContainer");
+            var table = SquadTable(root);
             var list = FindScroll(table);
             if (list == null)
             {
@@ -776,9 +843,16 @@ namespace FMFaceHotReload
             int expected = 0;
             foreach (var value in TextValues(table.parent))
             {
-                var match = Regex.Match(value, @"^Players\s*\((\d+)\)$");
+                var match = Regex.Match(value, @"^(?:Senior Squad )?Players\s*\((\d+)\)$");
                 if (match.Success && int.TryParse(match.Groups[1].Value, out expected))
                     break;
+            }
+            // Without the count the scan still runs, but nothing can be generated.
+            if (expected == 0)
+            {
+                var texts = TextValues(table.parent);
+                Log.LogWarning("Squad player count was not found near the table; texts: " +
+                    string.Join(" | ", texts.GetRange(0, Math.Min(40, texts.Count))));
             }
             var status = ShowSquadDialog("Scanning squad portraits…", "Cancel", () => CancelSquadScan());
             _squadScan = new SquadScan
@@ -793,7 +867,7 @@ namespace FMFaceHotReload
             var scan = _squadScan;
             if (scan == null)
                 return;
-            if (scan.List.parent == null || FindNamed(CurrentRoot(), "SquadScreen") == null)
+            if (scan.List.parent == null || SquadTable(CurrentRoot()) == null)
             {
                 CancelSquadScan();
                 return;
@@ -831,6 +905,19 @@ namespace FMFaceHotReload
                 throw new InvalidOperationException("Squad scan exceeded 200 steps");
             if (currentY >= maxY - 2f || (scan.LastY >= 0 && Math.Abs(currentY - scan.LastY) < 1f))
             {
+                // Rows that were still blank (names arrive after the rows on the
+                // Demo) were skipped; another pass from the top picks them up.
+                if (scan.ExpectedCount > 0 && scan.Portraits.Count < scan.ExpectedCount && scan.Passes < 3)
+                {
+                    scan.Passes++;
+                    scan.LastY = -1;
+                    scan.AwaitTop = true;
+                    scan.TopReadyUtc = System.DateTime.UtcNow.AddSeconds(1);
+                    scan.List.scrollOffset = new Vector2(scan.List.scrollOffset.x, 0);
+                    Log.LogInfo("Squad scan read " + scan.Portraits.Count + " of " + scan.ExpectedCount +
+                                " players; scanning again (pass " + scan.Passes + ")");
+                    return;
+                }
                 scan.List.scrollOffset = new Vector2(scan.List.scrollOffset.x, scan.OriginalY);
                 _squadScan = null;
                 Log.LogInfo("FM Face squad scan finished: " + scan.Portraits.Count +
@@ -884,6 +971,7 @@ namespace FMFaceHotReload
             generate.style.color = Color.white;
             generate.style.backgroundColor = new Color(0.38f, 0.10f, 0.60f, 1f);
             _squadDialog.Insert(1, generate);
+            _squadDialogActions[generate] = () => StartSquadBatch(missing);
             Log.LogInfo("FM Face squad confirmation ready: " + missing.Count + " missing portraits");
         }
 
@@ -891,7 +979,7 @@ namespace FMFaceHotReload
         {
             if (missing.Count == 0 || _pending != null || WaitingForGraphics || _squadBatch != null)
                 return;
-            var list = FindScroll(FindNamed(CurrentRoot(), "PlayerTableContainer"));
+            var list = FindScroll(SquadTable(CurrentRoot()));
             if (list == null)
             {
                 Log.LogWarning("Squad list disappeared before generation; no image request was made");
@@ -911,7 +999,8 @@ namespace FMFaceHotReload
             }
             var status = ShowSquadDialog("Opening the first missing player…", "Stop after current face",
                 () => RequestStopSquadBatch());
-            var batch = new SquadBatch { List = list, Status = status, Settings = settings };
+            var batch = new SquadBatch { List = list, Status = status, Settings = settings,
+                ReturnTab = FindNamed(CurrentRoot(), "TeamSquadReport") != null ? "First Team" : null };
             batch.Queue.AddRange(missing);
             _squadBatch = batch;
             list.scrollOffset = new Vector2(list.scrollOffset.x, 0);
@@ -981,8 +1070,10 @@ namespace FMFaceHotReload
                     ReturnToSquad(batch);
                     break;
                 case SquadStage.AwaitSquad:
-                    var list = FindScroll(FindNamed(CurrentRoot(), "PlayerTableContainer"));
-                    if (FindNamed(CurrentRoot(), "SquadScreen") != null && list != null)
+                    var list = FindScroll(SquadTable(CurrentRoot()));
+                    if (list == null && batch.ReturnTab != null && !batch.TabClicked)
+                        OpenSquadTab(batch);
+                    if (list != null)
                     {
                         batch.Index++;
                         if (batch.Index >= batch.Queue.Count)
@@ -1015,15 +1106,18 @@ namespace FMFaceHotReload
                     " seconds; you can stop the batch.";
                 return;
             }
-            if (FindNamed(CurrentRoot(), "SquadScreen") == null || batch.List?.parent == null)
+            if (SquadTable(CurrentRoot()) == null || batch.List?.parent == null)
                 throw new InvalidOperationException("Squad screen changed before finding " + batch.Queue[batch.Index].Name);
             var target = batch.Queue[batch.Index];
             batch.Status.text = "Finding " + target.Name + " (" + (batch.Index + 1) + "/" + batch.Queue.Count + ")…";
             var view = FindNamed(batch.List, "View");
+            int readable = 0;
             for (int i = 0; view != null && i < view.hierarchy.childCount; i++)
             {
                 var row = view.hierarchy.ElementAt(i);
                 var candidate = ReadSquadCandidate(row);
+                if (candidate != null)
+                    readable++;
                 if (candidate == null || candidate.Key != target.Key)
                     continue;
                 if (candidate.Address != "person_default")
@@ -1040,12 +1134,27 @@ namespace FMFaceHotReload
                 Log.LogInfo("Opened missing player " + target.Name + " from squad row");
                 return;
             }
+            // A squad page that has just opened shows its rows before their names
+            // (3-5 s on the Demo); wait for them rather than searching an empty list.
+            if (readable == 0 && System.DateTime.UtcNow - batch.StageStartedUtc < TimeSpan.FromSeconds(20))
+                return;
             float current = batch.List.scrollOffset.y;
             float max = Math.Max(0f, batch.List.contentContainer.layout.height -
                                    batch.List.contentViewport.layout.height);
-            if (++batch.SearchSteps > 100 || current >= max - 1f ||
-                (batch.LastY >= 0 && Math.Abs(current - batch.LastY) < 1f))
+            if (++batch.SearchSteps > 100)
                 throw new InvalidOperationException("Could not find " + target.Name + " in the current squad");
+            if (current >= max - 1f || (batch.LastY >= 0 && Math.Abs(current - batch.LastY) < 1f))
+            {
+                // A list that has just reopened can report no room to scroll before
+                // its layout catches up, so sweep again from the top for a while.
+                var searched = System.DateTime.UtcNow - batch.StageStartedUtc;
+                if (searched >= TimeSpan.FromSeconds(15))
+                    throw new InvalidOperationException("Could not find " + target.Name + " in the current squad (" +
+                        readable + " rows readable, scroll " + current + " of " + max + ")");
+                batch.LastY = -1;
+                batch.List.scrollOffset = new Vector2(batch.List.scrollOffset.x, 0);
+                return;
+            }
             batch.LastY = current;
             batch.List.scrollOffset = new Vector2(batch.List.scrollOffset.x,
                 Math.Min(max, current + Math.Max(60f, batch.List.contentViewport.layout.height * 0.35f)));
@@ -1127,10 +1236,29 @@ namespace FMFaceHotReload
             SetBatchStage(batch, SquadStage.Refresh);
         }
 
+        // In the Demo, once Squad has opened the Overview dashboard (its SquadScreen,
+        // with no player table), choose the batch's tab in the squad navigation.
+        private void OpenSquadTab(SquadBatch batch)
+        {
+            var root = CurrentRoot();
+            if (FindNamed(root, "SquadScreen") == null)
+                return;
+            var label = FindText(root, batch.ReturnTab);
+            var button = label;
+            while (button != null && button.TryCast<Button>() == null)
+                button = button.parent;
+            var tab = button?.TryCast<Button>();
+            if (tab == null)
+                return;
+            batch.TabClicked = true;
+            tab.clickable.SimulateSingleClick(null);
+            Log.LogInfo("Opened " + batch.ReturnTab + " from Squad Overview: " + Ancestry(label));
+        }
+
         private void ReturnToSquad(SquadBatch batch)
         {
-            if (FindNamed(CurrentRoot(), "SquadScreen") != null &&
-                FindNamed(CurrentRoot(), "PlayerTableContainer") != null)
+            batch.TabClicked = false;
+            if (SquadTable(CurrentRoot()) != null)
             {
                 SetBatchStage(batch, SquadStage.AwaitSquad);
                 return;
@@ -1426,8 +1554,10 @@ namespace FMFaceHotReload
             var root = CurrentRoot();
             var dialog = new VisualElement { name = "fmface-squad-dialog" };
             dialog.style.position = Position.Absolute;
-            dialog.style.right = 24;
-            dialog.style.top = 80;
+            // Centred: on the Demo's squad pages another UI panel takes clicks in
+            // the top-right corner, where the key dialog sits on other screens.
+            dialog.style.left = Math.Max(0f, (root.layout.width - 360f) / 2f);
+            dialog.style.top = Math.Max(0f, root.layout.height / 3f - 80f);
             dialog.style.width = 360;
             dialog.style.paddingTop = 16;
             dialog.style.paddingBottom = 16;
@@ -1446,7 +1576,38 @@ namespace FMFaceHotReload
             dialog.Add(button);
             root.Add(dialog);
             _squadDialog = dialog;
+            _squadDialogActions.Clear();
+            _squadDialogActions[button] = buttonAction;
+            WatchSquadDialogClicks(root);
             return label;
+        }
+
+        // On the Demo's squad pages no pointer event reaches the dialog: something in
+        // FM handles it on the way down and stops it. A handler on the panel's top
+        // element runs first, so a press on one of the dialog's buttons is acted on
+        // there and goes no further.
+        private void WatchSquadDialogClicks(VisualElement root)
+        {
+            var top = root?.panel?.visualTree;
+            if (top == null || top == _squadClickRoot)
+                return;
+            _squadClickRoot = top;
+            top.RegisterCallback(DelegateSupport.ConvertDelegate<EventCallback<PointerDownEvent>>(
+                new Action<PointerDownEvent>(e =>
+                {
+                    if (_squadDialog == null || _squadDialog.parent == null || e.button != 0)
+                        return;
+                    foreach (var pair in new List<KeyValuePair<VisualElement, Action>>(_squadDialogActions))
+                    {
+                        if (pair.Key.parent == null || !pair.Key.enabledInHierarchy ||
+                            !pair.Key.worldBound.Contains(e.position))
+                            continue;
+                        e.StopPropagation();
+                        Log.LogInfo("Squad dialog button pressed: " + pair.Key.TryCast<TextElement>()?.text);
+                        pair.Value();
+                        return;
+                    }
+                })), TrickleDown.TrickleDown);
         }
 
         private void CheckPortraitTrigger()
@@ -1905,8 +2066,11 @@ namespace FMFaceHotReload
             string userData = OperatingSystem.IsMacOS()
                 ? KeyStore.ApplicationSupport
                 : Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-            return Path.Combine(userData, "Sports Interactive", "Football Manager 26", "graphics", "fmface");
+            return Path.Combine(userData, "Sports Interactive", UserDataName, "graphics", "fmface");
         }
+
+        // The game's folder under Sports Interactive; SupportedGameBuild sets it for the Demo.
+        private static string UserDataName = "Football Manager 26";
 
         private bool Refresh()
         {
