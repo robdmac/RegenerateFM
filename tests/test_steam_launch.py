@@ -87,7 +87,8 @@ class LaunchOptionTests(unittest.TestCase):
             with mock.patch.object(steam_launch, "steam_running", return_value=True), \
                     mock.patch.object(steam_launch, "needs_change", return_value=True), \
                     mock.patch.object(steam_launch, "update_accounts") as update, \
-                    mock.patch.object(sys, "platform", "darwin"):
+                    mock.patch.object(steam_launch, "fm_face_option",
+                                      return_value=f'"{game / "run_fmface.sh"}"'):
                 self.assertIn("Quit Steam", steam_launch.apply("fm26", game))
             update.assert_not_called()
 
