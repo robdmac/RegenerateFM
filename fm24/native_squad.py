@@ -51,6 +51,8 @@ HEADER_ROW_ID = int.from_bytes(b"HROW", "big")
 PERSON_HANDLE = 8
 PERSON_ROW = 0x01000000
 WIDGET_MANAGER, WIDGET_PARENT, WIDGET_ID, WIDGET_CHILDREN = 0x48, 0x50, 0x5C, 0x100
+NOT_A_SQUAD = ("Generate missing squad faces works on a squad's player list, and this screen shows "
+               "another kind of list. Choose it from the Squad screen's menu instead.")
 _PERSON_PICTURE = b"graphics/pictures/person/"
 _PORTRAIT = re.compile(rb"(?:r-)?([1-9][0-9]{0,9})/portrait")
 _NO_PICTURE = b"graphics/pictures/person/none/male/player/portrait"
@@ -107,7 +109,9 @@ def _children(pid: int, widget: int) -> list[int]:
     begin, end = _u64(pid, widget + WIDGET_CHILDREN), _u64(pid, widget + WIDGET_CHILDREN + 8)
     if end < begin or (end - begin) % 8 or end - begin > 8 * 8192:
         raise MemoryUnavailable("Invalid FM24 widget children.")
-    data = read_process_bytes(pid, begin, end - begin) if end > begin else b""
+    # Reads are at most 4 KB (512 children); Lionel Messi's profile has a widget with more.
+    data = b"".join(read_process_bytes(pid, begin + start, min(4096, end - begin - start))
+                    for start in range(0, end - begin, 4096))
     return list(struct.unpack(f"<{len(data) // 8}Q", data))
 
 
@@ -271,6 +275,10 @@ def read_squad(pid: int | None = None, attempts: int = 3, catalogue: bool = True
                 if exc.person_id not in brief:
                     brief.append(exc.person_id)
                 continue
+            except MemoryUnavailable as exc:
+                # The squad menu is also offered on screens with another kind of
+                # player list (a Development Center team's overview).
+                raise MemoryUnavailable(NOT_A_SQUAD) from exc
             if person_id not in seen:
                 seen.add(person_id)
                 result.append(SquadRow(person_id, person + 12, _text(pid, _u64(pid, cell + ROW_NAME))))

@@ -54,9 +54,6 @@ namespace FMFaceHotReload
         private VisualElement _portraitDismissLayer;
         private SquadScan _squadScan;
         private VisualElement _squadDialog;
-        // The dialog's buttons and what each does; see WatchSquadDialogClicks.
-        private readonly Dictionary<VisualElement, Action> _squadDialogActions = new Dictionary<VisualElement, Action>();
-        private VisualElement _squadClickRoot;
         private VisualElement _squadMenuButton;
         private VisualElement _squadMenuList;
         private SquadBatch _squadBatch;
@@ -84,6 +81,9 @@ namespace FMFaceHotReload
         // How long the squad batch waits for an opened profile to show all it reads
         // (within the batch's 45 s limit for each step).
         private static readonly TimeSpan ProfileBindTimeout = TimeSpan.FromSeconds(30);
+        // How long an opened profile's attributes may show as unknown before the
+        // batch takes the player as needing scouting rather than still loading.
+        private static readonly TimeSpan ScoutingSettle = TimeSpan.FromSeconds(5);
 
         public override void Load()
         {
@@ -245,6 +245,12 @@ namespace FMFaceHotReload
                     StartedUtc = System.DateTime.UtcNow
                 };
             }
+            catch (NeedsScoutingException error)
+            {
+                _pending = null;
+                Log.LogInfo(error.Message);
+                ShowDialog(error.Message, "Close", () => CancelSquadScan());
+            }
             catch (Exception error)
             {
                 _pending = null;
@@ -348,6 +354,10 @@ namespace FMFaceHotReload
             var loanClub = FirstText(FindNamed(header, "TeamAwayFromOrTo"));
             if (!string.IsNullOrWhiteSpace(loanClub))
                 profile.Club = loanClub;
+            // A free agent's header has no PlayingTeam; its contract box says "Free Agent".
+            if (string.IsNullOrWhiteSpace(profile.Club) &&
+                FirstText(FindNamed(header, "Frame 1000003767")) is string contract && FaceGenerator.NoClub(contract))
+                profile.Club = contract.Trim();
             profile.Nationality = FirstText(FindNamed(header, "Frame 1000003766"));
             foreach (var value in TextValues(banner))
             {
@@ -375,6 +385,7 @@ namespace FMFaceHotReload
                     profile.Height = texts[i + 1];
                     break;
                 }
+            int unknown = 0;
             foreach (var row in NamedElements(attributes, "attributes_row"))
             {
                 if (row.worldBound.width < 40 || row.worldBound.height < 10)
@@ -384,6 +395,8 @@ namespace FMFaceHotReload
                     continue;
                 string stat = values[0];
                 string score = values[values.Count - 1].Replace(" ", "");
+                if (score == "-" || score == "–")
+                    unknown++;  // not scouted yet
                 if (!StatPattern.IsMatch(score))
                     continue;
                 object number = score.Contains("-") || score.Contains("–") ? score : (object)int.Parse(score);
@@ -396,6 +409,10 @@ namespace FMFaceHotReload
                 else if (!stat.Contains("Rating"))
                     profile.Technical[stat] = number;
             }
+            bool fewStats = profile.Physical.Count != 8 ||
+                profile.Technical.Count + profile.Mental.Count + profile.Goalkeeping.Count < 6;
+            if (fewStats && unknown > 0 && !string.IsNullOrWhiteSpace(profile.Name))
+                throw new NeedsScoutingException(profile.Name);
             if (string.IsNullOrWhiteSpace(profile.Name) || string.IsNullOrWhiteSpace(profile.Position) ||
                 string.IsNullOrWhiteSpace(profile.Club) || string.IsNullOrWhiteSpace(profile.Nationality) ||
                 string.IsNullOrWhiteSpace(profile.Height) || profile.Age < 14 || profile.Physical.Count != 8 ||
@@ -407,6 +424,15 @@ namespace FMFaceHotReload
                     ", mental=" + profile.Mental.Count + ", goalkeeping=" + profile.Goalkeeping.Count + ".");
             profile.BiographyHeadline = CaptureBiographyHeadline(root);
             return profile;
+        }
+
+        // A player whose attributes FM26 hides until they are scouted: too few are
+        // known to describe them, which is said in a dialog rather than as a failure.
+        private sealed class NeedsScoutingException : InvalidOperationException
+        {
+            public NeedsScoutingException(string name)
+                : base("Your scouts don't know enough about " + name + " yet. Scout them first, and once " +
+                       "some of their attributes are known, FM Face can make their face. No image was requested.") { }
         }
 
         private static ProfileSnapshot CaptureStaff(long personId, out VisualElement picture, out VisualElement root)
@@ -668,10 +694,12 @@ namespace FMFaceHotReload
             public System.DateTime NextPlayerUtc;
             public double LastDiagnosis = -10;
             public System.DateTime? UnfocusedSinceUtc;
-            // The Demo's Squad button opens its Overview dashboard, so the batch
-            // goes on to this page's tab from there (null on 26.3.2).
+            // A TeamSquadReport page's team ("Atlanta United Academy"): Squad opens
+            // the Overview, so the batch goes on to this team's tab from there.
+            // Null when the batch started on Squad > Overview's own table.
             public string ReturnTab;
             public bool TabClicked;
+            public int NeedsScouting;
         }
 
         private void CheckSquadMenu()
@@ -789,12 +817,25 @@ namespace FMFaceHotReload
         // (SquadScreen > PlayerTableContainer). The Demo's Overview is a tile
         // dashboard instead, which stays in the tree after you leave it; its
         // First Team and Under 21s pages are a TeamSquadReport with a "playertable".
+        // FM26 26.3.2 keeps Squad > Overview laid out under a team page, and reuses one
+        // TeamSquadReport for every team (hidden, display None, when not shown), so a
+        // shown team page is preferred.
         private static VisualElement SquadTable(VisualElement root)
         {
+            if (FindNamed(root, "TeamSquadReport") is VisualElement report && FindNamed(report, "playertable") is VisualElement teamTable)
+                return teamTable;
             if (FindNamed(root, "SquadScreen") != null && FindNamed(root, "PlayerTableContainer") is VisualElement table)
                 return table;
-            var report = FindNamed(root, "TeamSquadReport");
-            return report == null ? null : FindNamed(report, "playertable");
+            return null;
+        }
+
+        // The batch's player list: on the team page it started from (ReturnTab), else Squad > Overview's.
+        private static ScrollView BatchList(SquadBatch batch)
+        {
+            var root = CurrentRoot();
+            if (batch.ReturnTab != null && SquadPageTeam(root) != batch.ReturnTab)
+                return null;
+            return FindScroll(SquadTable(root));
         }
 
         private static ScrollView FindScroll(VisualElement element)
@@ -829,7 +870,7 @@ namespace FMFaceHotReload
             catch (Exception error)
             {
                 Log.LogWarning(error.Message);
-                ShowSquadDialog(error.Message, "Close", () => CancelSquadScan());
+                ShowDialog(error.Message, "Close", () => CancelSquadScan());
                 return;
             }
             var root = CurrentRoot();
@@ -854,7 +895,7 @@ namespace FMFaceHotReload
                 Log.LogWarning("Squad player count was not found near the table; texts: " +
                     string.Join(" | ", texts.GetRange(0, Math.Min(40, texts.Count))));
             }
-            var status = ShowSquadDialog("Scanning squad portraits…", "Cancel", () => CancelSquadScan());
+            var status = ShowDialog("Scanning squad portraits…", "Cancel", () => CancelSquadScan());
             _squadScan = new SquadScan
             { List = list, OriginalY = list.scrollOffset.y, Status = status, ExpectedCount = expected,
               TopReadyUtc = System.DateTime.UtcNow.AddSeconds(1) };
@@ -949,9 +990,12 @@ namespace FMFaceHotReload
             var image = FindNamed(row, "PersonImage")?.TryCast<SI.UI.Image>();
             if (string.IsNullOrWhiteSpace(name) || image == null)
                 return null;
+            // Position and age follow the name. Cells before it, such as First Team's
+            // Inf tags ("Wnt"), can be drawn after the row, so the key starts at the name.
             var values = TextValues(row);
-            var position = values.Count > 1 ? values[1] : "";
-            int.TryParse(values.Count > 2 ? values[2] : "", out int age);
+            int at = values.IndexOf(name);
+            var position = at >= 0 && at + 1 < values.Count ? values[at + 1] : "";
+            int.TryParse(at >= 0 && at + 2 < values.Count ? values[at + 2] : "", out int age);
             return new SquadCandidate
             {
                 Key = name + "|" + position + "|" + age,
@@ -961,7 +1005,7 @@ namespace FMFaceHotReload
 
         private void ShowSquadConfirmation(List<SquadCandidate> missing, int squadCount)
         {
-            var status = ShowSquadDialog(missing.Count + " of " + squadCount +
+            var status = ShowDialog(missing.Count + " of " + squadCount +
                 " players have no portrait. Generate " + missing.Count +
                 " faces? Each face makes one billed API request.", "Cancel", () => CancelSquadScan());
             var generate = new Button((Il2CppSystem.Action)(System.Action)(() => StartSquadBatch(missing)))
@@ -971,7 +1015,6 @@ namespace FMFaceHotReload
             generate.style.color = Color.white;
             generate.style.backgroundColor = new Color(0.38f, 0.10f, 0.60f, 1f);
             _squadDialog.Insert(1, generate);
-            _squadDialogActions[generate] = () => StartSquadBatch(missing);
             Log.LogInfo("FM Face squad confirmation ready: " + missing.Count + " missing portraits");
         }
 
@@ -994,13 +1037,13 @@ namespace FMFaceHotReload
             catch (Exception error)
             {
                 Log.LogWarning(error.Message);
-                ShowSquadDialog(error.Message, "Close", () => CancelSquadScan());
+                ShowDialog(error.Message, "Close", () => CancelSquadScan());
                 return;
             }
-            var status = ShowSquadDialog("Opening the first missing player…", "Stop after current face",
+            var status = ShowDialog("Opening the first missing player…", "Stop after current face",
                 () => RequestStopSquadBatch());
             var batch = new SquadBatch { List = list, Status = status, Settings = settings,
-                ReturnTab = FindNamed(CurrentRoot(), "TeamSquadReport") != null ? "First Team" : null };
+                ReturnTab = SquadPageTeam(CurrentRoot()) };
             batch.Queue.AddRange(missing);
             _squadBatch = batch;
             list.scrollOffset = new Vector2(list.scrollOffset.x, 0);
@@ -1070,14 +1113,17 @@ namespace FMFaceHotReload
                     ReturnToSquad(batch);
                     break;
                 case SquadStage.AwaitSquad:
-                    var list = FindScroll(SquadTable(CurrentRoot()));
+                    var list = BatchList(batch);
                     if (list == null && batch.ReturnTab != null && !batch.TabClicked)
                         OpenSquadTab(batch);
                     if (list != null)
                     {
                         batch.Index++;
                         if (batch.Index >= batch.Queue.Count)
-                            StopSquadBatch("Finished: " + batch.Completed + " squad faces generated.");
+                            StopSquadBatch("Finished: " + batch.Completed + " squad faces generated." +
+                                (batch.NeedsScouting == 0 ? "" : " " + batch.NeedsScouting +
+                                 (batch.NeedsScouting == 1 ? " player needs" : " players need") +
+                                 " scouting before FM Face can make their face."));
                         else
                         {
                             batch.List = list;
@@ -1106,7 +1152,7 @@ namespace FMFaceHotReload
                     " seconds; you can stop the batch.";
                 return;
             }
-            if (SquadTable(CurrentRoot()) == null || batch.List?.parent == null)
+            if (BatchList(batch) == null || batch.List?.parent == null)
                 throw new InvalidOperationException("Squad screen changed before finding " + batch.Queue[batch.Index].Name);
             var target = batch.Queue[batch.Index];
             batch.Status.text = "Finding " + target.Name + " (" + (batch.Index + 1) + "/" + batch.Queue.Count + ")…";
@@ -1170,6 +1216,14 @@ namespace FMFaceHotReload
             VisualElement picture;
             VisualElement root;
             try { profile = CaptureProfile(personId, out picture, out root); }
+            catch (NeedsScoutingException) when (System.DateTime.UtcNow - batch.StageStartedUtc >= ScoutingSettle)
+            {
+                // Hidden attributes, still hidden once the profile has settled: skip them.
+                Log.LogInfo("Skipping " + target.Name + ": needs scouting first");
+                batch.NeedsScouting++;
+                SetBatchStage(batch, SquadStage.ReturnToSquad);
+                return;
+            }
             catch (InvalidOperationException error) when (System.DateTime.UtcNow - batch.StageStartedUtc < ProfileBindTimeout)
             {
                 // FM creates the header before its bound name, stats and height
@@ -1236,14 +1290,29 @@ namespace FMFaceHotReload
             SetBatchStage(batch, SquadStage.Refresh);
         }
 
-        // In the Demo, once Squad has opened the Overview dashboard (its SquadScreen,
-        // with no player table), choose the batch's tab in the squad navigation.
+        // The team a TeamSquadReport page lists, its heading's first text, or null.
+        private static string SquadPageTeam(VisualElement root)
+        {
+            var report = FindNamed(root, "TeamSquadReport");
+            var table = report == null ? null : FindNamed(report, "playertable");
+            var texts = table?.parent == null ? null : TextValues(table.parent);
+            return texts != null && texts.Count > 0 ? texts[0] : null;
+        }
+
+        // Once Squad has opened the Overview (its SquadScreen, with no player table),
+        // choose the batch's team in the squad navigation beside "Overview": the
+        // team's own tab ("Atlanta United Academy"), or "First Team" for the club's.
         private void OpenSquadTab(SquadBatch batch)
         {
             var root = CurrentRoot();
             if (FindNamed(root, "SquadScreen") == null)
                 return;
-            var label = FindText(root, batch.ReturnTab);
+            var nav = FindText(root, "First Team");
+            while (nav != null && FindText(nav, "Overview") == null)
+                nav = nav.parent;
+            if (nav == null)
+                return;
+            var label = FindText(nav, batch.ReturnTab) ?? FindText(nav, "First Team");
             var button = label;
             while (button != null && button.TryCast<Button>() == null)
                 button = button.parent;
@@ -1252,13 +1321,13 @@ namespace FMFaceHotReload
                 return;
             batch.TabClicked = true;
             tab.clickable.SimulateSingleClick(null);
-            Log.LogInfo("Opened " + batch.ReturnTab + " from Squad Overview: " + Ancestry(label));
+            Log.LogInfo("Opened " + FirstText(label) + " for " + batch.ReturnTab + " from Squad Overview");
         }
 
         private void ReturnToSquad(SquadBatch batch)
         {
             batch.TabClicked = false;
-            if (SquadTable(CurrentRoot()) != null)
+            if (BatchList(batch) != null)
             {
                 SetBatchStage(batch, SquadStage.AwaitSquad);
                 return;
@@ -1548,14 +1617,13 @@ namespace FMFaceHotReload
             }
         }
 
-        private Label ShowSquadDialog(string text, string buttonText, Action buttonAction)
+        private Label ShowDialog(string text, string buttonText, Action buttonAction)
         {
             CancelSquadScan();
             var root = CurrentRoot();
             var dialog = new VisualElement { name = "fmface-squad-dialog" };
             dialog.style.position = Position.Absolute;
-            // Centred: on the Demo's squad pages another UI panel takes clicks in
-            // the top-right corner, where the key dialog sits on other screens.
+            // Centred over the page.
             dialog.style.left = Math.Max(0f, (root.layout.width - 360f) / 2f);
             dialog.style.top = Math.Max(0f, root.layout.height / 3f - 80f);
             dialog.style.width = 360;
@@ -1576,38 +1644,7 @@ namespace FMFaceHotReload
             dialog.Add(button);
             root.Add(dialog);
             _squadDialog = dialog;
-            _squadDialogActions.Clear();
-            _squadDialogActions[button] = buttonAction;
-            WatchSquadDialogClicks(root);
             return label;
-        }
-
-        // On the Demo's squad pages no pointer event reaches the dialog: something in
-        // FM handles it on the way down and stops it. A handler on the panel's top
-        // element runs first, so a press on one of the dialog's buttons is acted on
-        // there and goes no further.
-        private void WatchSquadDialogClicks(VisualElement root)
-        {
-            var top = root?.panel?.visualTree;
-            if (top == null || top == _squadClickRoot)
-                return;
-            _squadClickRoot = top;
-            top.RegisterCallback(DelegateSupport.ConvertDelegate<EventCallback<PointerDownEvent>>(
-                new Action<PointerDownEvent>(e =>
-                {
-                    if (_squadDialog == null || _squadDialog.parent == null || e.button != 0)
-                        return;
-                    foreach (var pair in new List<KeyValuePair<VisualElement, Action>>(_squadDialogActions))
-                    {
-                        if (pair.Key.parent == null || !pair.Key.enabledInHierarchy ||
-                            !pair.Key.worldBound.Contains(e.position))
-                            continue;
-                        e.StopPropagation();
-                        Log.LogInfo("Squad dialog button pressed: " + pair.Key.TryCast<TextElement>()?.text);
-                        pair.Value();
-                        return;
-                    }
-                })), TrickleDown.TrickleDown);
         }
 
         private void CheckPortraitTrigger()

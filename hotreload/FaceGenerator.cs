@@ -227,9 +227,9 @@ namespace FMFaceHotReload
             return result;
         }
 
-        private static bool NoClub(string club)
+        public static bool NoClub(string club)
         {
-            string folded = club.ToLowerInvariant();
+            string folded = (club ?? "").Trim().ToLowerInvariant();
             return folded == "free agent" || folded == "unattached" || folded == "no club";
         }
 

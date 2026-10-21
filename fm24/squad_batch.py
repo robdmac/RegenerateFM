@@ -13,7 +13,7 @@ import time
 from live_memory import MemoryUnavailable, find_game_pid
 from native_dialog import DialogUnavailable, NativeProgress, notify, show_dialog
 from native_profile import shown_team, squad_club, squad_player_profile
-from native_squad import read_squad_rows
+from native_squad import NOT_A_SQUAD, read_squad_rows
 
 
 def _terminal(text: str) -> None:
@@ -140,7 +140,9 @@ def run_native_squad_batch(handler, generate, describe=str, *, pid: int | None =
         batch_dialog = None
     except (ValueError, OSError, RuntimeError, MemoryUnavailable) as exc:
         print(f"FM24 squad batch stopped: {exc}", flush=True)
-        _finish(batch_dialog, native, f"Squad faces stopped: {exc}", _terminal)
+        # Nothing was started on a screen without a squad list, so it says just that.
+        _finish(batch_dialog, native, NOT_A_SQUAD if str(exc) == NOT_A_SQUAD else f"Squad faces stopped: {exc}",
+                _terminal)
         batch_dialog = None
     finally:
         if batch_dialog:

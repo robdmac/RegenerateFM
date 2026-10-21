@@ -41,7 +41,8 @@ _built_event = threading.Condition(_lock)
 
 def person_handle(reference: int) -> int:
     """The handle in a person reference; ValueError for any other kind of object."""
-    if reference >> 24 != PERSON_TYPE or (reference & _INDEX_MASK) in (0, _INDEX_MASK):
+    # Handle 0 is the people vector's first person, not a null reference.
+    if reference >> 24 != PERSON_TYPE or (reference & _INDEX_MASK) == _INDEX_MASK:
         raise ValueError(f"FM24 reference {reference:#010x} is not a person.")
     return reference & _INDEX_MASK
 
@@ -75,7 +76,7 @@ def _scan_objects(pid: int) -> dict[int, int]:
             while offset >= 0:
                 if (base + offset) % 8 == 0 and offset + 24 <= len(data):
                     handle, number, again = struct.unpack_from("<III", data, offset + 8)
-                    if number == again and number and 0 < handle < _INDEX_MASK:
+                    if number == again and number and 0 <= handle < _INDEX_MASK:
                         found.setdefault(handle, base + offset + 12)
                 offset = data.find(needle, offset + 1)
     return found

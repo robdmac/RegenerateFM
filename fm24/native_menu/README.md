@@ -578,3 +578,15 @@ The same survey found three more things the companion had assumed:
 With the people vector's own index as reference, the companion's handle
 index (person objects found by their vtables, 29,329 people in 6 s) agreed
 on 2,000 of 2,000 sampled handles.
+
+`fm24/research/survey_people.py` repeats the survey on a running FM24. On
+Windows 10 (2026-10-21), in an Atlanta United save: 72,045 entries; all
+45,940 players, staff and player-coaches read through the companion's record
+parser and profile readers (33,850 with no full-name string, 9,966 free
+agents); the handle index agreed on every person but the one at handle 0,
+which it had excluded; and 400 of 400 sampled IDs found their own record
+with the memory search. Handle 0 is a person (Michael Reiziger, ID 47, in
+that save), so reference 0x01000000 is accepted. Checked live through the
+Overview tab menu: Reiziger, Lionel Messi (whose profile has a widget with
+more than 512 children), a free agent, a player-coach, a reserve-team player
+and club, national-team and unemployed staff.
