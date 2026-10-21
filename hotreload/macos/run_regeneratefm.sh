@@ -1,10 +1,10 @@
 #!/bin/sh
 # Starts Football Manager 26 (or the FM26 Demo) on macOS with BepInEx and the
-# FM Face plugin.
+# RegenerateFM plugin.
 #
 # It lives in the game folder, beside fm.app, with the rest of the release's
 # FM26-macOS folder. The game's Steam launch option runs it:
-#   "/path/to/Football Manager 26/run_fmface.sh" %command%
+#   "/path/to/Football Manager 26/run_regeneratefm.sh" %command%
 #
 # BepInEx's macOS runtime (CoreCLR and its native helpers) is x86_64 only, so
 # the game runs under Rosetta 2. FM26 is a universal app, so nothing in fm.app
@@ -28,11 +28,11 @@ if [ $# -gt 0 ]; then
 fi
 
 if [ ! -x "$GAME" ]; then
-    echo "FM Face: Football Manager 26 isn't at $GAME. Put run_fmface.sh beside fm.app." >&2
+    echo "RegenerateFM: Football Manager 26 isn't at $GAME. Put run_regeneratefm.sh beside fm.app." >&2
     exit 1
 fi
 if ! /usr/bin/arch -x86_64 /usr/bin/true 2>/dev/null; then
-    echo "FM Face needs Rosetta 2. Install it with: softwareupdate --install-rosetta" >&2
+    echo "RegenerateFM needs Rosetta 2. Install it with: softwareupdate --install-rosetta" >&2
     exit 1
 fi
 

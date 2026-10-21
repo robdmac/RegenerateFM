@@ -1,11 +1,11 @@
-# Third-party software in the FM Face release
+# Third-party software in the RegenerateFM release
 
-FM Face's own code is under the MIT licence in `LICENSE`. The release ZIP's
+RegenerateFM's own code is under the MIT licence in `LICENSE`. The release ZIP's
 `FM26` folder also contains, unmodified, the
 [BepInEx 6.0.0-be.760 Unity IL2CPP Windows x64](https://builds.bepinex.dev/projects/bepinex_be/)
 build (`BepInEx-Unity.IL2CPP-win-x64-6.0.0-be.760+a1afbfb.zip`, SHA-256
 `9753b825578a3c3a31cc10067cd45a44a7bf56d3c34c4679e24d6adfd0fba8ea`), which
-loads the FM Face plugin into FM26. Its parts and their licences:
+loads the RegenerateFM plugin into FM26. Its parts and their licences:
 
 | Component | Licence | Source |
 |---|---|---|

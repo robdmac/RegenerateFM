@@ -6,7 +6,7 @@ One read-only pass over FM24's writable memory finds:
   tree, and the person record each row shows (the same rows FM24 draws,
   including loaned-in and reserve players listed on the screen), and
 * FM24's graphics resource index, which lists every indexed
-  ``graphics/pictures/person/<id>/portrait`` (built-in and FM Face pictures).
+  ``graphics/pictures/person/<id>/portrait`` (built-in and RegenerateFM pictures).
 
 Layouts are those of the pinned FM24 24.4.2 build (see native_menu/README.md).
 Anything unexpected raises MemoryUnavailable; callers must not guess.
@@ -53,7 +53,7 @@ PERSON_HANDLE = 8
 PERSON_ROW = 0x01000000
 WIDGET_MANAGER, WIDGET_PARENT, WIDGET_ID, WIDGET_CHILDREN = 0x48, 0x50, 0x5C, 0x100
 NOT_A_SQUAD = ("Generate missing squad faces works on a team's player list, and the list on this screen has no "
-               "players FM Face can read. Open the team's Squad screen (for a reserve or youth team, its tab "
+               "players RegenerateFM can read. Open the team's Squad screen (for a reserve or youth team, its tab "
                "in the Development Center) and choose it from that menu.")
 _PERSON_PICTURE = b"graphics/pictures/person/"
 _PORTRAIT = re.compile(rb"(?:r-)?([1-9][0-9]{0,9})/portrait")
@@ -80,7 +80,7 @@ class SquadState:
     unreadable: tuple[str, ...] = ()    # undrawn players whose names FM24 hasn't loaded
     brief: tuple[str, ...] = ()         # players FM24 keeps only a brief record for
     coaches: int = 0                    # player-coaches, made from their own profile instead
-    others: int = 0                     # rows that aren't players FM Face can read
+    others: int = 0                     # rows that aren't players RegenerateFM can read
 
     @property
     def complete(self) -> bool:
@@ -135,7 +135,7 @@ def _attached(pid: int, widget: int, manager: int) -> bool:
 
 
 class NotAPlayer(MemoryUnavailable):
-    """A row's person isn't a player FM Face can describe from the list: a
+    """A row's person isn't a player RegenerateFM can describe from the list: a
     player-coach (``coach``), staff, or no validated person at all."""
 
     def __init__(self, coach: bool = False):
@@ -306,7 +306,7 @@ def read_squad(pid: int | None = None, attempts: int = 3, catalogue: bool = True
         # The squad menu is also offered on screens with another kind of list
         # (a Development Center team's overview can list staff).
         raise MemoryUnavailable(
-            "FM24 keeps only brief records for the players shown (no age or ability), so FM Face "
+            "FM24 keeps only brief records for the players shown (no age or ability), so RegenerateFM "
             "can't describe them." if brief else NOT_A_SQUAD if coaches or others else
             "The open FM24 Squad table has no players.")
     today = dt.date.min

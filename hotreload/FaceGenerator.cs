@@ -15,7 +15,7 @@ using System.Threading.Tasks;
 using System.Xml;
 using System.Xml.Linq;
 
-namespace FMFaceHotReload
+namespace RegenerateFMHotReload
 {
     // The profile read from FM26's screen. Stat values are an int (1-20) or a
     // scouted range string such as "12-15".
@@ -45,7 +45,7 @@ namespace FMFaceHotReload
     }
 
     // Prompts, the image request and the saved portrait. This is the FM26 copy
-    // of fmface.py's generator; tests/test_fm26_generator.py checks that both
+    // of regeneratefm.py's generator; tests/test_fm26_generator.py checks that both
     // build the same prompts.
     internal static class FaceGenerator
     {
@@ -258,7 +258,7 @@ namespace FMFaceHotReload
                 return AppearanceInstruction(AppearanceTraits("name:" + name.ToLowerInvariant(), age));
             }
             ValidateId(personId);
-            string path = directory != null ? Path.Combine(directory, ".fmface-appearances", personId + ".json") : null;
+            string path = directory != null ? Path.Combine(directory, ".regeneratefm-appearances", personId + ".json") : null;
             if (path != null && File.Exists(path))
             {
                 using (var json = JsonDocument.Parse(File.ReadAllBytes(path)))
@@ -292,7 +292,7 @@ namespace FMFaceHotReload
             {
                 byte[] digest;
                 using (var sha = SHA256.Create())
-                    digest = sha.ComputeHash(Encoding.UTF8.GetBytes("fmface-appearance-v1\0" + seed + "\0" + category));
+                    digest = sha.ComputeHash(Encoding.UTF8.GetBytes("regeneratefm-appearance-v1\0" + seed + "\0" + category));
                 ulong value = 0;
                 for (int i = 0; i < 8; i++)
                     value = (value << 8) | digest[i];
@@ -369,9 +369,9 @@ namespace FMFaceHotReload
             if (string.IsNullOrWhiteSpace(settings.ApiKey))
                 throw new MissingApiKeyException();
             if (Array.IndexOf(Qualities, settings.Quality) < 0)
-                throw new ArgumentException("Quality in fmface.hotreload.cfg must be low, medium, high, xhigh, max, or auto.");
+                throw new ArgumentException("Quality in regeneratefm.hotreload.cfg must be low, medium, high, xhigh, max, or auto.");
             if (string.IsNullOrWhiteSpace(settings.Model))
-                throw new ArgumentException("Model in fmface.hotreload.cfg is empty.");
+                throw new ArgumentException("Model in regeneratefm.hotreload.cfg is empty.");
         }
 
         // Asks OpenAI whether the key works, with a free request that lists
@@ -388,7 +388,9 @@ namespace FMFaceHotReload
                         if (response.IsSuccessStatusCode)
                             return null;
                         if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
-                            return "OpenAI didn't accept this key. Check that you copied all of it.";
+                            return Credits.IsToken(key)
+                                ? "This RegenerateFM sign-in isn't valid any more. Choose Buy credits / Sign in."
+                                : "OpenAI didn't accept this key. Check that you copied all of it.";
                         return "OpenAI couldn't check the key (HTTP " + (int)response.StatusCode + "). Try again.";
                     }
                 }
@@ -427,7 +429,7 @@ namespace FMFaceHotReload
             if (reference.Length > MaxReference)
                 throw new ArgumentException("The existing portrait is too large to send.");
             CheckSettings(settings);
-            var content = new MultipartFormDataContent("fmface-" + Guid.NewGuid().ToString("N"));
+            var content = new MultipartFormDataContent("regeneratefm-" + Guid.NewGuid().ToString("N"));
             foreach (var field in Fields(settings, prompt))
                 content.Add(new StringContent(field.Value, Encoding.UTF8), field.Key);
             var image = new ByteArrayContent(reference);
@@ -466,9 +468,14 @@ namespace FMFaceHotReload
                         catch (Exception) { }
                         if (detail.Length == 0)
                             detail = response.ReasonPhrase ?? "";
-                        string message = "OpenAI image API returned HTTP " + (int)response.StatusCode + ": " + detail.Replace(key, "[REDACTED]");
+                        // RegenerateFM credits' messages are written for the player already.
+                        string message = Credits.IsToken(key)
+                            ? detail.Replace(key, "[REDACTED]")
+                            : "OpenAI image API returned HTTP " + (int)response.StatusCode + ": " + detail.Replace(key, "[REDACTED]");
                         if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
                             throw new ApiKeyRejectedException(message);
+                        if ((int)response.StatusCode == 402)
+                            throw new OutOfCreditsException(message);
                         throw new InvalidOperationException(message);
                     }
                     string image;
@@ -500,7 +507,7 @@ namespace FMFaceHotReload
         }
 
         // One in-game request: build the prompt, ask the image API and save the
-        // face. Update face prefers FM Face's own saved file to the game's
+        // face. Update face prefers RegenerateFM's own saved file to the game's
         // on-screen copy. Nothing is saved when the request fails.
         public static async Task<string> MakePortrait(ImageSettings settings, string folder, string personId,
                                                       ProfileSnapshot profile, bool update, byte[] shownPng,
@@ -557,12 +564,12 @@ namespace FMFaceHotReload
             new HashSet<string> { "graphics/pictures/person/" + personId + "/portrait",
                                   "graphics/pictures/person/r-" + personId + "/portrait" };
 
-        // A file FM Face saved for this person: "<id>" (before faces were
+        // A file RegenerateFM saved for this person: "<id>" (before faces were
         // versioned, and from the FM26 web page) or "<id>-<16 hex>".
         private static bool IsPortraitStem(string stem, string personId) =>
             stem == personId || Regex.IsMatch(stem ?? "", "^" + personId + "-[0-9a-f]{16}$");
 
-        // FM Face's saved portrait for this ID, if config.xml still maps it.
+        // RegenerateFM's saved portrait for this ID, if config.xml still maps it.
         public static byte[] CurrentPortrait(string directory, string personId)
         {
             ValidateId(personId);
@@ -602,7 +609,7 @@ namespace FMFaceHotReload
             }
             catch (XmlException error)
             {
-                throw new ArgumentException("config.xml in the FM Face graphics folder could not be read: " + error.Message);
+                throw new ArgumentException("config.xml in the RegenerateFM graphics folder could not be read: " + error.Message);
             }
             var found = document.Root?.Elements("list").FirstOrDefault(list => (string)list.Attribute("id") == "maps");
             if (found == null)
@@ -678,7 +685,7 @@ namespace FMFaceHotReload
         private static void AtomicWrite(string path, byte[] content)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path));
-            string temporary = Path.Combine(Path.GetDirectoryName(path), ".fmface-" + Guid.NewGuid().ToString("N"));
+            string temporary = Path.Combine(Path.GetDirectoryName(path), ".regeneratefm-" + Guid.NewGuid().ToString("N"));
             try
             {
                 File.WriteAllBytes(temporary, content);
@@ -702,16 +709,112 @@ namespace FMFaceHotReload
         public ApiKeyRejectedException(string message) : base(message) { }
     }
 
+    // RegenerateFM credits ran out (HTTP 402 from the credits service).
+    internal sealed class OutOfCreditsException : InvalidOperationException
+    {
+        public OutOfCreditsException(string message) : base(message) { }
+    }
+
+    // RegenerateFM credits (the regeneratefm-credits Worker): a token bought with credits
+    // instead of an OpenAI key. The game gets one by device sign-in: it starts
+    // a sign-in, opens the browser at the returned link, and polls until the
+    // player has signed in and confirmed the code, then saves the token where
+    // an OpenAI key goes. Image requests with the token go to the service,
+    // which speaks OpenAI's image API.
+    internal static class Credits
+    {
+        public const string Prefix = "rfm_";
+        public const string DefaultServiceUrl = "https://credits.regenerate.fm";
+
+        public static bool IsToken(string key) => key != null && key.StartsWith(Prefix, StringComparison.Ordinal);
+
+        // The image API address for a key: the credits service's for a token.
+        public static string ApiBase(string serviceUrl) => serviceUrl.TrimEnd('/') + "/v1";
+
+        public sealed class SignIn
+        {
+            public string DeviceCode;
+            public string UserCode;
+            public string Link;
+            public int Interval;
+            public System.DateTime ExpiresUtc;
+        }
+
+        public sealed class Poll
+        {
+            public string Status;   // pending, slow_down, approved, expired
+            public string Token;
+            public string Email;
+            public int Credits;
+        }
+
+        private static readonly HttpClient Client = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+
+        public static async Task<SignIn> Start(string serviceUrl)
+        {
+            using (var response = await Client.PostAsync(serviceUrl.TrimEnd('/') + "/device/start",
+                       new StringContent("{}", Encoding.UTF8, "application/json")).ConfigureAwait(false))
+            {
+                string body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                if (!response.IsSuccessStatusCode)
+                    throw new InvalidOperationException("RegenerateFM credits couldn't start a sign-in (HTTP " + (int)response.StatusCode + ").");
+                using (var json = JsonDocument.Parse(body))
+                {
+                    var root = json.RootElement;
+                    string link = root.GetProperty("verification_uri_complete").GetString();
+                    // Only the service's own pages are opened in the browser.
+                    if (!link.StartsWith(serviceUrl.TrimEnd('/') + "/", StringComparison.Ordinal))
+                        throw new InvalidOperationException("RegenerateFM credits returned an unexpected sign-in link.");
+                    return new SignIn
+                    {
+                        DeviceCode = root.GetProperty("device_code").GetString(),
+                        UserCode = root.GetProperty("user_code").GetString(),
+                        Link = link,
+                        Interval = Math.Max(2, root.GetProperty("interval").GetInt32()),
+                        ExpiresUtc = System.DateTime.UtcNow.AddSeconds(root.GetProperty("expires_in").GetInt32())
+                    };
+                }
+            }
+        }
+
+        public static async Task<Poll> Check(string serviceUrl, string deviceCode)
+        {
+            string request = JsonSerializer.Serialize(new Dictionary<string, string> { ["device_code"] = deviceCode });
+            using (var response = await Client.PostAsync(serviceUrl.TrimEnd('/') + "/device/poll",
+                       new StringContent(request, Encoding.UTF8, "application/json")).ConfigureAwait(false))
+            {
+                if ((int)response.StatusCode == 410)
+                    return new Poll { Status = "expired" };
+                string body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                if (!response.IsSuccessStatusCode)
+                    throw new InvalidOperationException("RegenerateFM credits answered HTTP " + (int)response.StatusCode + ".");
+                using (var json = JsonDocument.Parse(body))
+                {
+                    var root = json.RootElement;
+                    var poll = new Poll { Status = root.GetProperty("status").GetString() };
+                    if (poll.Status == "approved")
+                    {
+                        poll.Token = root.GetProperty("token").GetString();
+                        poll.Email = root.GetProperty("email").GetString();
+                        poll.Credits = root.GetProperty("credits").GetInt32();
+                    }
+                    return poll;
+                }
+            }
+        }
+    }
+
     // The player's OpenAI key, kept outside the game folder (which people zip
     // up when asking for mod support). On Windows, and under Proton, it is
     // encrypted with DPAPI for the current Windows user. On macOS it is in
     // Application Support, readable only by the user.
     internal static class KeyStore
     {
-        private static readonly byte[] Protected = Encoding.ASCII.GetBytes("FMFK1\n");
-        private static readonly byte[] Plain = Encoding.ASCII.GetBytes("FMFK0\n");
-        private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("FM Face OpenAI API key");
-        private static readonly Regex KeyPattern = new Regex(@"^sk-[A-Za-z0-9_\-]{16,300}$", RegexOptions.Compiled);
+        private static readonly byte[] Protected = Encoding.ASCII.GetBytes("RFMK1\n");
+        private static readonly byte[] Plain = Encoding.ASCII.GetBytes("RFMK0\n");
+        private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("RegenerateFM OpenAI API key");
+        // An OpenAI key, or a RegenerateFM credits token (Credits).
+        private static readonly Regex KeyPattern = new Regex(@"^(sk-[A-Za-z0-9_\-]{16,300}|rfm_[A-Za-z0-9_\-]{20,100})$", RegexOptions.Compiled);
 
         // .NET 6 maps ApplicationData to ~/.config on macOS, not where Mac programs keep their data.
         public static string ApplicationSupport =>
@@ -719,7 +822,7 @@ namespace FMFaceHotReload
 
         public static string DefaultPath =>
             Path.Combine(OperatingSystem.IsMacOS() ? ApplicationSupport : Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                         "FM Face", "openai-key");
+                         "RegenerateFM", "openai-key");
 
         // The pasted key without surrounding spaces, or an exception whose
         // message tells the player what is wrong.
@@ -744,7 +847,7 @@ namespace FMFaceHotReload
             else if (StartsWith(data, Plain))
                 payload = data.Skip(Plain.Length).ToArray();
             else
-                throw new InvalidDataException("The saved OpenAI key file is not in FM Face's format: " + path);
+                throw new InvalidDataException("The saved OpenAI key file is not in RegenerateFM's format: " + path);
             string key = Encoding.UTF8.GetString(payload).Trim();
             return key.Length > 0 ? key : null;
         }
@@ -823,7 +926,7 @@ namespace FMFaceHotReload
                 var inputBlob = new DataBlob { Size = data.Length, Data = input.AddrOfPinnedObject() };
                 var entropyBlob = new DataBlob { Size = Entropy.Length, Data = entropy.AddrOfPinnedObject() };
                 bool ok = protect
-                    ? CryptProtectData(ref inputBlob, "FM Face OpenAI API key", ref entropyBlob, IntPtr.Zero, IntPtr.Zero, UiForbidden, ref output)
+                    ? CryptProtectData(ref inputBlob, "RegenerateFM OpenAI API key", ref entropyBlob, IntPtr.Zero, IntPtr.Zero, UiForbidden, ref output)
                     : CryptUnprotectData(ref inputBlob, IntPtr.Zero, ref entropyBlob, IntPtr.Zero, IntPtr.Zero, UiForbidden, ref output);
                 if (!ok)
                     throw new InvalidDataException((protect ? "Could not encrypt" : "Could not decrypt") +

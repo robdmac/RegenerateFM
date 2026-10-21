@@ -14,14 +14,14 @@
 #define IDLE_EVENT    0x49444c45u /* IDLE */
 #define SKIN_EVENT    0x47436853u /* GChS: change skin */
 #define STAGE_EVENT   0x6368736bu /* chsk: one queued stage of a skin change */
-#define DIALOG_YES    0x464d4459u /* FMDY: FM Face dialog answered Yes or OK */
-#define DIALOG_NO     0x464d444eu /* FMDN: FM Face dialog answered No */
+#define DIALOG_YES    0x464d4459u /* FMDY: RegenerateFM dialog answered Yes or OK */
+#define DIALOG_NO     0x464d444eu /* FMDN: RegenerateFM dialog answered No */
 #define MENU_OPEN     0x6d656f70u /* meop: a popup menu opened; posted to the popup button's parent */
 
-extern void *fmface_exports[];
-extern const char *fmface_export_names[];
-extern const unsigned short fmface_export_ordinals[];
-extern const unsigned int fmface_export_count;
+extern void *regeneratefm_exports[];
+extern const char *regeneratefm_export_names[];
+extern const unsigned short regeneratefm_export_ordinals[];
+extern const unsigned int regeneratefm_export_count;
 
 typedef int (*event_handler)(void *, unsigned int, void *);
 static HMODULE self_module, real_winmm;
@@ -68,8 +68,8 @@ static void show_message(const WCHAR *text)
 {
     char utf8[1024];
     int count = WideCharToMultiByte(CP_UTF8, 0, text, -1, utf8, sizeof(utf8), NULL, NULL);
-    if (count > 0 && queue_dialog(2, "FM Face", utf8)) return;
-    MessageBoxW(NULL, text, L"FM Face", MB_OK | MB_ICONINFORMATION | MB_TOPMOST | MB_SETFOREGROUND);
+    if (count > 0 && queue_dialog(2, "RegenerateFM", utf8)) return;
+    MessageBoxW(NULL, text, L"RegenerateFM", MB_OK | MB_ICONINFORMATION | MB_TOPMOST | MB_SETFOREGROUND);
 }
 
 static BOOL sibling_path(WCHAR *path, const WCHAR *name)
@@ -238,7 +238,7 @@ static LONG object_person_id(unsigned int object_id)
     return found;
 }
 
-/* Reads the person the open screen shows, starting from FM Face's portrait
+/* Reads the person the open screen shows, starting from RegenerateFM's portrait
    popup (the clicked menu's source widget). Runs on FM24's UI thread inside
    the menu callback, so the screen cannot change while it is read. Every read
    is guarded, and any surprise (wrong source widget, no single sidebar, not a
@@ -275,7 +275,7 @@ static LONG clicked_person_id(void *manager, void *event)
 
 /* The row that was chosen: FMFG (Generate new face) or FMFU (Update face).
    The portrait popup posts its select_event, FMFG, for every row and names
-   the row in the event's 'slct' property; a row FM Face adds to the Overview
+   the row in the event's 'slct' property; a row RegenerateFM adds to the Overview
    tab menu sends its own ID as the event, with the same 'slct'. An event
    keeps its properties as a vector of {fourcc key, value pointer} at +0; a
    fourcc value holds its code at +8. The 'slct' value must have the same type
@@ -369,7 +369,7 @@ static volatile LONG dialog_state;
 
 static void finish_reload(LONG state, const char *line)
 {
-    /* Reloading the skin destroys any open FM Face dialog (DIALOG_SHOWN). */
+    /* Reloading the skin destroys any open RegenerateFM dialog (DIALOG_SHOWN). */
     InterlockedCompareExchange(&dialog_state, DIALOG_CLOSED, DIALOG_SHOWN);
     InterlockedExchange(&reload_state, state);
     log_line(line);
@@ -386,15 +386,15 @@ static void reload_tick(void *manager, unsigned int id)
         /* FM24 can handle the posted GChS before the post returns. */
         InterlockedExchange(&reload_state, RELOAD_RUNNING);
         if (post_skin_reload(manager))
-            log_line("FMFACE24_RELOAD_POSTED");
+            log_line("REGENERATEFM24_RELOAD_POSTED");
         else
-            finish_reload(RELOAD_FAILED, "FMFACE24_RELOAD_NOT_POSTED");
+            finish_reload(RELOAD_FAILED, "REGENERATEFM24_RELOAD_NOT_POSTED");
     } else if (state == RELOAD_RUNNING) {
         if (id == SKIN_EVENT) reload_started = TRUE;
         if (id == STAGE_EVENT && reload_started && reload_stage(manager, &stage) && stage == -1)
-            finish_reload(RELOAD_DONE, "FMFACE24_RELOAD_DONE");
+            finish_reload(RELOAD_DONE, "REGENERATEFM24_RELOAD_DONE");
         else if (GetTickCount64() - reload_posted > (reload_started ? 60000 : 10000))
-            finish_reload(RELOAD_FAILED, "FMFACE24_RELOAD_TIMEOUT");
+            finish_reload(RELOAD_FAILED, "REGENERATEFM24_RELOAD_TIMEOUT");
     }
 }
 
@@ -402,7 +402,7 @@ static void reload_tick(void *manager, unsigned int id)
    return to start screen?" query by building a property record (titl, text,
    acte = the event posted for Yes, noet = the event ID posted for No, widt,
    heig) and passing it to a dialog function with the screen manager as owner
-   and parent. FM Face does the same on the UI thread's next IDLE event, with
+   and parent. RegenerateFM does the same on the UI thread's next IDLE event, with
    its own FMDY/FMDN events, which the manager hook below receives. Kind 1 is
    a Yes/No question. Kind 2 is an OK message: the same dialog, after which
    its "no  " button is hidden (skin property hidn) and its "yes " button is
@@ -410,7 +410,7 @@ static void reload_tick(void *manager, unsigned int id)
    gave an OK-only text dialog. Kind 3 is squad progress: the same, with the
    one button labelled "Stop after this face". A skin reload destroys open
    dialogs without an event, so a finished reload marks the dialog closed.
-   Only an unanswered question blocks a new FM Face dialog. */
+   Only an unanswered question blocks a new RegenerateFM dialog. */
 static SRWLOCK dialog_lock = SRWLOCK_INIT;
 static int dialog_kind;
 static char dialog_title[256], dialog_text[1024];
@@ -491,8 +491,8 @@ static BOOL show_dialog(void *manager)
     return dialog != NULL;
 }
 
-/* In-game progress text. The companion sets the text of FM Face's portrait
-   popup (skin IDs fmnP/fmnS, drawn over the portrait), or of the FM Face
+/* In-game progress text. The companion sets the text of RegenerateFM's portrait
+   popup (skin IDs fmnP/fmnS, drawn over the portrait), or of the RegenerateFM
    dialog that is open, by applying a {text} property record to the widget,
    as FM24 does when it creates a dialog. Widgets are found afresh under the
    screen's root widget (manager + 0x58) every time, so a widget destroyed
@@ -538,7 +538,7 @@ static unsigned char *find_widget(void *manager, unsigned int a, unsigned int b,
         find_widget_under(manager, root, a, b, object) : NULL;
 }
 
-/* An open FM Face message or progress dialog: hide No and relabel Yes.
+/* An open RegenerateFM message or progress dialog: hide No and relabel Yes.
    FALSE until both buttons exist (FM24 may build them after creation). */
 static BOOL make_ok_dialog(void *manager, const char *label)
 {
@@ -586,14 +586,14 @@ static BOOL apply_progress(void *manager)
 }
 
 /* Called on the UI thread for every manager event. Returns TRUE when the
-   event was an FM Face dialog answer and has been consumed. */
+   event was a RegenerateFM dialog answer and has been consumed. */
 static BOOL dialog_tick(void *manager, unsigned int id)
 {
     LONG state = dialog_state;
     if (id == DIALOG_YES || id == DIALOG_NO) {
         if (state == DIALOG_SHOWN) {
             InterlockedExchange(&dialog_state, id == DIALOG_YES ? DIALOG_ANSWER_YES : DIALOG_ANSWER_NO);
-            log_line(id == DIALOG_YES ? "FMFACE24_DIALOG_YES" : "FMFACE24_DIALOG_NO");
+            log_line(id == DIALOG_YES ? "REGENERATEFM24_DIALOG_YES" : "REGENERATEFM24_DIALOG_NO");
         }
         return TRUE;
     }
@@ -602,14 +602,14 @@ static BOOL dialog_tick(void *manager, unsigned int id)
         InterlockedExchange(&progress_state, applied ? PROGRESS_DONE : PROGRESS_FAILED);
         if (!applied && progress_target != 1 && dialog_state == DIALOG_SHOWN)
             InterlockedExchange(&dialog_state, DIALOG_CLOSED);
-        log_line(applied ? "FMFACE24_PROGRESS_SET" : "FMFACE24_PROGRESS_NOT_SET");
+        log_line(applied ? "REGENERATEFM24_PROGRESS_SET" : "REGENERATEFM24_PROGRESS_NOT_SET");
     }
     if (state == DIALOG_SHOWN && dialog_kind != 1 && ok_dialog_tries > 0 && id == IDLE_EVENT) {
         if (make_ok_dialog(manager, dialog_kind == 3 ? "Stop after this face" : "OK")) {
             ok_dialog_tries = 0;
-            log_line("FMFACE24_DIALOG_OK_BUTTON");
+            log_line("REGENERATEFM24_DIALOG_OK_BUTTON");
         } else if (!--ok_dialog_tries) {
-            log_line("FMFACE24_DIALOG_OK_BUTTON_NOT_FOUND");
+            log_line("REGENERATEFM24_DIALOG_OK_BUTTON_NOT_FOUND");
         }
     }
     if (state == DIALOG_REQUESTED && id == IDLE_EVENT && reload_state != RELOAD_RUNNING &&
@@ -618,10 +618,10 @@ static BOOL dialog_tick(void *manager, unsigned int id)
         dialog_shown_at = GetTickCount64();
         if (show_dialog(manager)) {
             ok_dialog_tries = 20;
-            log_line("FMFACE24_DIALOG_SHOWN");
+            log_line("REGENERATEFM24_DIALOG_SHOWN");
         } else {
             InterlockedExchange(&dialog_state, DIALOG_FAILED);
-            log_line("FMFACE24_DIALOG_FAILED");
+            log_line("REGENERATEFM24_DIALOG_FAILED");
         }
     }
     return FALSE;
@@ -639,9 +639,9 @@ static void queue_click(unsigned int id, unsigned int item, LONG64 click_ms, LON
     SetEvent(event_ready);
 }
 
-/* Performance build (build.py --perf): time FM Face's own work on FM24's UI
+/* Performance build (build.py --perf): time RegenerateFM's own work on FM24's UI
    thread, excluding the game's handler, and log totals once a minute. */
-#ifdef FMFACE_PERF
+#ifdef REGENERATEFM_PERF
 static LARGE_INTEGER perf_frequency;
 static LONG64 perf_events, perf_game, perf_own, perf_own_max, perf_menu;
 static ULONGLONG perf_reported;
@@ -664,8 +664,8 @@ static void perf_report(void)
     ULONGLONG now = GetTickCount64();
     if (!perf_reported) perf_reported = now;
     if (now - perf_reported < 60000) return;
-    char line[160];
-    snprintf(line, sizeof(line), "FMFACE24_PERF events=%lld own_us=%lld own_max_us=%lld game_us=%lld menu_us=%lld",
+    char line[192];
+    snprintf(line, sizeof(line), "REGENERATEFM24_PERF events=%lld own_us=%lld own_max_us=%lld game_us=%lld menu_us=%lld",
              (long long)perf_events, (long long)perf_us(perf_own), (long long)perf_us(perf_own_max),
              (long long)perf_us(perf_game), (long long)perf_us(perf_menu));
     log_line(line);
@@ -704,7 +704,7 @@ static int handle_event(void *object, unsigned int id, void *event)
 
 static int native_event(void *object, unsigned int id, void *event)
 {
-#ifdef FMFACE_PERF
+#ifdef REGENERATEFM_PERF
     LONG64 game_before = perf_game, start = perf_now();
     int result = handle_event(object, id, event);
     LONG64 own = perf_now() - start - (perf_game - game_before);
@@ -735,7 +735,7 @@ static void add_squad_item(void *provider, void **builder, void *context);
 static void squad_menu_add(void *provider, void **builder, void *context)
 {
     original_menu_add(provider, builder, context);
-#ifdef FMFACE_PERF
+#ifdef REGENERATEFM_PERF
     LONG64 start = perf_now();
     add_squad_item(provider, builder, context);
     perf_menu += perf_now() - start;
@@ -847,8 +847,8 @@ static struct sockaddr_in face_destination(void)
 }
 
 /* UI thread only. 1 if the companion says the person has a face, 0 if not,
-   -1 without an answer. "FMFACE24F 1 <serial> <person> <token>" goes to the
-   bridge port; the reply is "FMFACE24F <serial> <yes|no>". */
+   -1 without an answer. "REGENERATEFM24F 1 <serial> <person> <token>" goes to the
+   bridge port; the reply is "REGENERATEFM24F <serial> <yes|no>". */
 static int query_face(LONG person)
 {
     if (!face_network) {
@@ -861,9 +861,9 @@ static int query_face(LONG person)
     struct sockaddr_in destination = face_destination(), source;
     LONG serial = ++face_serial;
     char packet[256], yes[48], no[48];
-    int count = snprintf(packet, sizeof(packet), "FMFACE24F 1 %ld %ld %s", (long)serial, (long)person, bridge_token);
-    snprintf(yes, sizeof(yes), "FMFACE24F %ld yes", (long)serial);
-    snprintf(no, sizeof(no), "FMFACE24F %ld no", (long)serial);
+    int count = snprintf(packet, sizeof(packet), "REGENERATEFM24F 1 %ld %ld %s", (long)serial, (long)person, bridge_token);
+    snprintf(yes, sizeof(yes), "REGENERATEFM24F %ld yes", (long)serial);
+    snprintf(no, sizeof(no), "REGENERATEFM24F %ld no", (long)serial);
     if (sendto(face_socket, packet, count, 0, (struct sockaddr *)&destination, sizeof(destination)) != count)
         goto failed;
     ULONGLONG deadline = GetTickCount64() + (face_quiet ? 0 : FACE_TIMEOUT_MS);
@@ -885,7 +885,7 @@ static int query_face(LONG person)
         }
         reply[received] = 0;
         if (length != sizeof(source) || source.sin_port != destination.sin_port ||
-            source.sin_addr.s_addr != destination.sin_addr.s_addr || strncmp(reply, "FMFACE24F ", 10))
+            source.sin_addr.s_addr != destination.sin_addr.s_addr || strncmp(reply, "REGENERATEFM24F ", 16))
             continue;
         if (face_quiet) {  /* The companion is answering again: wait for this check. */
             face_quiet = FALSE;
@@ -914,7 +914,7 @@ static int popup_rows(unsigned char *popup, unsigned int popup_id, unsigned char
 
 /* A person profile's Overview tab menu (FM24's 'Pprf' tab button, a popup
    subclass) lists FM24's person actions (Set Nickname, Follow or Unfollow);
-   FM Face appends its two rows to it. */
+   RegenerateFM appends its two rows to it. */
 static BOOL person_overview(unsigned char **rows, int count)
 {
     for (int i = 0; i < count; ++i) {
@@ -955,7 +955,7 @@ static void add_menu_row(unsigned char *root, unsigned int id, const char *label
 /* A team's tab menu (FM24's tab-button class) whose rows include its Squad
    view (TeSq): a reserve or youth team's tab in the Development Center, or
    another club's Players tab (its rows are the club's teams, All Players
-   (Capl) and Export Team for Versus Competition; TeSq in some saves). FM Face appends "Generate missing squad
+   (Capl) and Export Team for Versus Competition; TeSq in some saves). RegenerateFM appends "Generate missing squad
    faces…" (FMFS) unless the menu has it already, as the first team's Squad
    menu does through its provider. Like the provider's, the command works on
    the Squad table shown; the companion refuses without one. */
@@ -979,7 +979,7 @@ static void add_squad_rows(unsigned char **children, int count)
         }
         if (squad && !present && rows_count < MAX_POPUP_ROWS) {
             add_menu_row(root, SQUAD_EVENT, "Generate missing squad faces\xe2\x80\xa6");
-            log_line("FMFACE24_TEAM_MENU_ADDED");
+            log_line("REGENERATEFM24_TEAM_MENU_ADDED");
         }
     }
 }
@@ -1029,8 +1029,8 @@ static void popup_opened(void *manager, void *event)
     int face = person ? query_face(person) : -1;
     QueryPerformanceCounter(&t2);
     set_flag(update + ITEM_PROPERTIES, SKIN_ID('d','i','s','a'), face == 0);
-    char line[160];
-    snprintf(line, sizeof(line), "FMFACE24_%s person=%ld face=%s id_us=%lld query_us=%lld",
+    char line[192];
+    snprintf(line, sizeof(line), "REGENERATEFM24_%s person=%ld face=%s id_us=%lld query_us=%lld",
              popup_id == SKIN_ID('P','p','r','f') ? "OVERVIEW_MENU" : "POPUP", (long)person,
              face == 1 ? "yes" : face == 0 ? "no" : "unknown",
              (t1.QuadPart - t0.QuadPart) * 1000000 / f.QuadPart, (t2.QuadPart - t1.QuadPart) * 1000000 / f.QuadPart);
@@ -1046,9 +1046,9 @@ enum { REPLY_NONE, REPLY_ACCEPTED, REPLY_BUSY, REPLY_STALE, REPLY_SOCKET_ERROR }
 static int exchange(SOCKET socket_fd, const char *packet, int count, LONG serial)
 {
     char accepted[64], busy[64], stale[64];
-    snprintf(accepted, sizeof(accepted), "FMFACE24 ACK %ld accepted", (long)serial);
-    snprintf(busy, sizeof(busy), "FMFACE24 ACK %ld busy", (long)serial);
-    snprintf(stale, sizeof(stale), "FMFACE24 ACK %ld stale", (long)serial);
+    snprintf(accepted, sizeof(accepted), "REGENERATEFM24 ACK %ld accepted", (long)serial);
+    snprintf(busy, sizeof(busy), "REGENERATEFM24 ACK %ld busy", (long)serial);
+    snprintf(stale, sizeof(stale), "REGENERATEFM24 ACK %ld stale", (long)serial);
     for (int attempt = 0; attempt < 3; ++attempt) {
         if (send(socket_fd, packet, count, 0) != count) return REPLY_SOCKET_ERROR;
         ULONGLONG deadline = GetTickCount64() + 700;
@@ -1084,7 +1084,7 @@ static DWORD WINAPI bridge_worker(LPVOID unused)
     WSADATA data;
     BOOL network = WSAStartup(MAKEWORD(2,2), &data) == 0;
     SOCKET socket_fd = INVALID_SOCKET;
-    log_line(network ? "FMFACE24_BRIDGE_READY" : "FMFACE24_BRIDGE_WSA_FAILED");
+    log_line(network ? "REGENERATEFM24_BRIDGE_READY" : "REGENERATEFM24_BRIDGE_WSA_FAILED");
     while (WaitForSingleObject(event_ready, INFINITE) == WAIT_OBJECT_0) {
         AcquireSRWLockExclusive(&pending_lock);
         unsigned int id = pending.event;
@@ -1096,57 +1096,57 @@ static DWORD WINAPI bridge_worker(LPVOID unused)
         ReleaseSRWLockExclusive(&pending_lock);
         if (!id) continue;
         if (id == PROFILE_EVENT) {
-            char line[96];
-            snprintf(line, sizeof(line), "FMFACE24_PROFILE_CLICK person=%ld read_ms=%ld item=%s", (long)person,
+            char line[128];
+            snprintf(line, sizeof(line), "REGENERATEFM24_PROFILE_CLICK person=%ld read_ms=%ld item=%s", (long)person,
                      (long)read_ms, item == UPDATE_ITEM ? "update" : item == PROFILE_EVENT ? "generate" : "unknown");
             log_line(line);
             if (!item) {
-                show_message(L"FM Face could not tell which menu item was chosen, so nothing was generated. "
+                show_message(L"RegenerateFM could not tell which menu item was chosen, so nothing was generated. "
                              L"Choose it again.");
                 continue;
             }
         } else {
-            log_line("FMFACE24_SQUAD_CLICK");
+            log_line("REGENERATEFM24_SQUAD_CLICK");
         }
         if (!network) {
-            show_message(L"FM Face could not start its network bridge. Restart FM24 and check fmface24.log.");
+            show_message(L"RegenerateFM could not start its network bridge. Restart FM24 and check regeneratefm24.log.");
             continue;
         }
         if (socket_fd == INVALID_SOCKET) socket_fd = open_bridge();
         if (socket_fd == INVALID_SOCKET) {
-            log_line("FMFACE24_BRIDGE_SOCKET_FAILED");
-            show_message(L"FM Face could not open its local connection. Restart FM24 and check fmface24.log.");
+            log_line("REGENERATEFM24_BRIDGE_SOCKET_FAILED");
+            show_message(L"RegenerateFM could not open its local connection. Restart FM24 and check regeneratefm24.log.");
             continue;
         }
         LONG serial = InterlockedIncrement(&sequence);
-        char packet[256];
-        int count = snprintf(packet, sizeof(packet), "FMFACE24 5 %llu %ld %s %lld %ld %s",
+        char packet[320];
+        int count = snprintf(packet, sizeof(packet), "REGENERATEFM24 5 %llu %ld %s %lld %ld %s",
                              (unsigned long long)bridge_instance, (long)serial,
                              id == SQUAD_EVENT ? "squad" : item == UPDATE_ITEM ? "update" : "profile",
                              (long long)click_ms, (long)person, bridge_token);
         int result = exchange(socket_fd, packet, count, serial);
-        if (result == REPLY_ACCEPTED) { log_line("FMFACE24_CLICK_ACCEPTED"); continue; }
+        if (result == REPLY_ACCEPTED) { log_line("REGENERATEFM24_CLICK_ACCEPTED"); continue; }
         if (result == REPLY_BUSY) {
-            log_line("FMFACE24_CLICK_BUSY");
-            show_message(L"FM Face is already processing a request. Please wait for it to finish.");
+            log_line("REGENERATEFM24_CLICK_BUSY");
+            show_message(L"RegenerateFM is already processing a request. Please wait for it to finish.");
             continue;
         }
         if (result == REPLY_STALE) {
-            log_line("FMFACE24_CLICK_STALE");
-            show_message(L"FM Face received this click too late to be sure which screen was open, "
+            log_line("REGENERATEFM24_CLICK_STALE");
+            show_message(L"RegenerateFM received this click too late to be sure which screen was open, "
                          L"so nothing was generated. Choose the menu item again.");
             continue;
         }
         if (result == REPLY_SOCKET_ERROR) {
             /* Recreate the socket for the next click instead of failing forever. */
-            log_line("FMFACE24_BRIDGE_SOCKET_ERROR");
+            log_line("REGENERATEFM24_BRIDGE_SOCKET_ERROR");
             closesocket(socket_fd);
             socket_fd = INVALID_SOCKET;
         }
-        log_line("FMFACE24_COMPANION_UNAVAILABLE");
-        show_message(L"FM Face's companion isn't running. FM24 starts it; restart FM24 to try again. "
-                     L"If you moved the FM Face folder, run its setup again (fmface-fm24.exe on Windows, "
-                     L"install-linux.sh on Linux). fmface-fm24.log beside it says what went wrong.");
+        log_line("REGENERATEFM24_COMPANION_UNAVAILABLE");
+        show_message(L"RegenerateFM's companion isn't running. FM24 starts it; restart FM24 to try again. "
+                     L"If you moved the RegenerateFM folder, run its setup again (regeneratefm-fm24.exe on Windows, "
+                     L"install-linux.sh on Linux). regeneratefm-fm24.log beside it says what went wrong.");
     }
     if (socket_fd != INVALID_SOCKET) closesocket(socket_fd);
     if (network) WSACleanup();
@@ -1178,12 +1178,12 @@ static BOOL base64_text(const char *in, char *out, size_t size)
 }
 
 /* Loopback requests on bridge port + 1, all carrying the private token:
-     "FMFACE24R 1 <serial> <token>": reload the current skin in game. The reply
-     "FMFACE24R <serial> <status>" is queued, busy, done or failed.
-     "FMFACE24D 1 <serial> <token> <confirm|message|progress> <title> <text>":
-     show an FM24 dialog (title and text base64 UTF-8). The reply "FMFACE24D
+     "REGENERATEFM24R 1 <serial> <token>": reload the current skin in game. The reply
+     "REGENERATEFM24R <serial> <status>" is queued, busy, done or failed.
+     "REGENERATEFM24D 1 <serial> <token> <confirm|message|progress> <title> <text>":
+     show an FM24 dialog (title and text base64 UTF-8). The reply "REGENERATEFM24D
      <serial> <status>" is queued, busy, shown, yes, no, closed or failed.
-     "FMFACE24P 1 <serial> <token> <portrait|dialog|finish> <text|->": set
+     "REGENERATEFM24P 1 <serial> <token> <portrait|dialog|finish> <text|->": set
      progress text (base64 UTF-8; "-" clears it); "finish" also turns the open
      progress dialog into an OK message. The reply is queued, busy, done or
      failed.
@@ -1193,7 +1193,7 @@ static DWORD WINAPI reload_listener(LPVOID unused)
 {
     (void)unused;
     WSADATA data;
-    if (WSAStartup(MAKEWORD(2,2), &data)) { log_line("FMFACE24_RELOAD_WSA_FAILED"); return 0; }
+    if (WSAStartup(MAKEWORD(2,2), &data)) { log_line("REGENERATEFM24_RELOAD_WSA_FAILED"); return 0; }
     SOCKET socket_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     struct sockaddr_in local;
     memset(&local, 0, sizeof(local));
@@ -1201,12 +1201,12 @@ static DWORD WINAPI reload_listener(LPVOID unused)
     local.sin_port = htons((unsigned short)(bridge_port + 1));
     local.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     if (socket_fd == INVALID_SOCKET || bind(socket_fd, (struct sockaddr *)&local, sizeof(local))) {
-        log_line("FMFACE24_RELOAD_PORT_FAILED");
+        log_line("REGENERATEFM24_RELOAD_PORT_FAILED");
         if (socket_fd != INVALID_SOCKET) closesocket(socket_fd);
         WSACleanup();
         return 0;
     }
-    log_line("FMFACE24_RELOAD_READY");
+    log_line("REGENERATEFM24_RELOAD_READY");
     long long last = 0, last_dialog = 0, last_progress = 0;
     static char packet[4096], title_b64[400], text_b64[1500], title[256], text[1024];
     for (;;) {
@@ -1220,7 +1220,7 @@ static DWORD WINAPI reload_listener(LPVOID unused)
         const char *status;
         char reply[64];
         int count;
-        if (sscanf(packet, "FMFACE24D 1 %lld %159s %15s %399s %1499s %c", &serial, token, kind,
+        if (sscanf(packet, "REGENERATEFM24D 1 %lld %159s %15s %399s %1499s %c", &serial, token, kind,
                    title_b64, text_b64, &extra) == 5) {
             if (serial <= 0 || strcmp(token, bridge_token) || (strcmp(kind, "confirm") && strcmp(kind, "message") && strcmp(kind, "progress")) ||
                 !base64_text(title_b64, title, sizeof(title)) || !base64_text(text_b64, text, sizeof(text)))
@@ -1231,7 +1231,7 @@ static DWORD WINAPI reload_listener(LPVOID unused)
                     status = "busy";
                 } else {
                     last_dialog = serial;
-                    log_line("FMFACE24_DIALOG_REQUESTED");
+                    log_line("REGENERATEFM24_DIALOG_REQUESTED");
                     status = "queued";
                 }
             } else if (serial == last_dialog) {
@@ -1241,11 +1241,11 @@ static DWORD WINAPI reload_listener(LPVOID unused)
             } else {
                 continue;
             }
-            count = snprintf(reply, sizeof(reply), "FMFACE24D %lld %s", serial, status);
+            count = snprintf(reply, sizeof(reply), "REGENERATEFM24D %lld %s", serial, status);
             sendto(socket_fd, reply, count, 0, (struct sockaddr *)&peer, sizeof(peer));
             continue;
         }
-        if (sscanf(packet, "FMFACE24P 1 %lld %159s %15s %1499s %c", &serial, token, kind, text_b64, &extra) == 4) {
+        if (sscanf(packet, "REGENERATEFM24P 1 %lld %159s %15s %1499s %c", &serial, token, kind, text_b64, &extra) == 4) {
             if (serial <= 0 || strcmp(token, bridge_token) || (strcmp(kind, "portrait") && strcmp(kind, "dialog") && strcmp(kind, "finish")) ||
                 (strcmp(text_b64, "-") && !base64_text(text_b64, text, sizeof(text))))
                 continue;
@@ -1265,11 +1265,11 @@ static DWORD WINAPI reload_listener(LPVOID unused)
             } else {
                 continue;
             }
-            count = snprintf(reply, sizeof(reply), "FMFACE24P %lld %s", serial, status);
+            count = snprintf(reply, sizeof(reply), "REGENERATEFM24P %lld %s", serial, status);
             sendto(socket_fd, reply, count, 0, (struct sockaddr *)&peer, sizeof(peer));
             continue;
         }
-        if (sscanf(packet, "FMFACE24R 1 %lld %159s %c", &serial, token, &extra) != 2 ||
+        if (sscanf(packet, "REGENERATEFM24R 1 %lld %159s %c", &serial, token, &extra) != 2 ||
             serial <= 0 || strcmp(token, bridge_token))
             continue;
         LONG state = reload_state;
@@ -1279,7 +1279,7 @@ static DWORD WINAPI reload_listener(LPVOID unused)
             } else {
                 last = serial;
                 InterlockedExchange(&reload_state, RELOAD_REQUESTED);
-                log_line("FMFACE24_RELOAD_REQUESTED");
+                log_line("REGENERATEFM24_RELOAD_REQUESTED");
                 status = "queued";
             }
         } else if (serial == last) {
@@ -1287,7 +1287,7 @@ static DWORD WINAPI reload_listener(LPVOID unused)
         } else {
             continue;
         }
-        count = snprintf(reply, sizeof(reply), "FMFACE24R %lld %s", serial, status);
+        count = snprintf(reply, sizeof(reply), "REGENERATEFM24R %lld %s", serial, status);
         sendto(socket_fd, reply, count, 0, (struct sockaddr *)&peer, sizeof(peer));
     }
 }
@@ -1309,36 +1309,36 @@ static void install_squad_menu(unsigned char *base)
     void **add_slot = (void **)(base + SQUAD_MENU_ADD_SLOT_RVA);
     void **event_slot = (void **)(base + SQUAD_MENU_EVENT_SLOT_RVA);
     if (*add_slot != (void *)original_menu_add || *event_slot != (void *)original_menu_event) {
-        log_line("FMFACE24_SQUAD_MENU_MISMATCH"); return;
+        log_line("REGENERATEFM24_SQUAD_MENU_MISMATCH"); return;
     }
     /* Command handler first, so the item never exists without its handler. */
     if (!replace_slot(event_slot, (void *)original_menu_event, (void *)squad_menu_event) ||
         !replace_slot(add_slot, (void *)original_menu_add, (void *)squad_menu_add)) {
-        log_line("FMFACE24_SQUAD_MENU_PROTECT_FAILED"); return;
+        log_line("REGENERATEFM24_SQUAD_MENU_PROTECT_FAILED"); return;
     }
-    log_line("FMFACE24_SQUAD_MENU_INSTALLED");
+    log_line("REGENERATEFM24_SQUAD_MENU_INSTALLED");
 }
 
-/* Start FM Face's companion (fmface24.ini "companion": the full path of
-   fmface-fm24.exe) once the hooks are in, so the player never starts it. It
+/* Start RegenerateFM's companion (regeneratefm24.ini "companion": the full path of
+   regeneratefm-fm24.exe) once the hooks are in, so the player never starts it. It
    gets FM24's process ID, exits when FM24 does, and exits at once if a
    companion is already running. DETACHED_PROCESS: no window; it logs to
-   fmface-fm24.log beside itself and opens a window only to ask for a key.
+   regeneratefm-fm24.log beside itself and opens a window only to ask for a key.
    Under Proton the path is a Wine path (Z:\...). */
 static DWORD WINAPI start_companion(LPVOID unused)
 {
     (void)unused;
     WCHAR config[MAX_PATH], path[MAX_PATH], folder[MAX_PATH], game[MAX_PATH], command[3 * MAX_PATH + 64] = {0};
-    if (!sibling_path(config, L"fmface24.ini") || !sibling_path(game, L"")) return 0;
-    DWORD length = GetPrivateProfileStringW(L"fmface", L"companion", L"", path, MAX_PATH, config);
-    if (!length) { log_line("FMFACE24_COMPANION_NOT_CONFIGURED"); return 0; }
+    if (!sibling_path(config, L"regeneratefm24.ini") || !sibling_path(game, L"")) return 0;
+    DWORD length = GetPrivateProfileStringW(L"regeneratefm", L"companion", L"", path, MAX_PATH, config);
+    if (!length) { log_line("REGENERATEFM24_COMPANION_NOT_CONFIGURED"); return 0; }
     DWORD attributes = GetFileAttributesW(path);
     if (length >= MAX_PATH - 1 || attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_DIRECTORY)) {
-        log_line("FMFACE24_COMPANION_MISSING"); return 0;
+        log_line("REGENERATEFM24_COMPANION_MISSING"); return 0;
     }
     wcscpy(folder, path);
     WCHAR *slash = wcsrchr(folder, L'\\');
-    if (!slash) { log_line("FMFACE24_COMPANION_MISSING"); return 0; }
+    if (!slash) { log_line("REGENERATEFM24_COMPANION_MISSING"); return 0; }
     *slash = 0;
     game[wcslen(game) - 1] = 0;  /* Without the trailing backslash, which would escape the quote. */
     _snwprintf(command, sizeof(command) / sizeof(command[0]) - 1, L"\"%ls\" --started-by-fm24 %lu --game-dir \"%ls\"",
@@ -1349,52 +1349,52 @@ static DWORD WINAPI start_companion(LPVOID unused)
     PROCESS_INFORMATION process;
     if (!CreateProcessW(path, command, NULL, NULL, FALSE, DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
                         NULL, folder, &startup, &process)) {
-        char line[64];
-        snprintf(line, sizeof(line), "FMFACE24_COMPANION_START_FAILED error=%lu", GetLastError());
+        char line[96];
+        snprintf(line, sizeof(line), "REGENERATEFM24_COMPANION_START_FAILED error=%lu", GetLastError());
         log_line(line);
         return 0;
     }
     CloseHandle(process.hThread);
     CloseHandle(process.hProcess);
-    log_line("FMFACE24_COMPANION_STARTED");
+    log_line("REGENERATEFM24_COMPANION_STARTED");
     return 0;
 }
 
 static void install_event_hook(void)
 {
     WCHAR config[MAX_PATH], token[129];
-    if (!sibling_path(log_path, L"fmface24.log") || !sibling_path(config, L"fmface24.ini")) return;
-    if (!GetPrivateProfileIntW(L"fmface", L"enabled", 0, config)) return;
-    int port = GetPrivateProfileIntW(L"fmface", L"port", 0, config);
-    DWORD length = GetPrivateProfileStringW(L"fmface", L"token", L"", token, 129, config);
+    if (!sibling_path(log_path, L"regeneratefm24.log") || !sibling_path(config, L"regeneratefm24.ini")) return;
+    if (!GetPrivateProfileIntW(L"regeneratefm", L"enabled", 0, config)) return;
+    int port = GetPrivateProfileIntW(L"regeneratefm", L"port", 0, config);
+    DWORD length = GetPrivateProfileStringW(L"regeneratefm", L"token", L"", token, 129, config);
     if (port < 1024 || port > 65535 || length < 40 || length > 128) {
-        log_line("FMFACE24_INVALID_CONFIG"); return;
+        log_line("REGENERATEFM24_INVALID_CONFIG"); return;
     }
     for (DWORD i = 0; i < length; ++i) {
         WCHAR c = token[i];
         if (!((c >= L'a' && c <= L'z') || (c >= L'A' && c <= L'Z') ||
               (c >= L'0' && c <= L'9') || c == L'_' || c == L'-')) {
-            log_line("FMFACE24_INVALID_TOKEN"); return;
+            log_line("REGENERATEFM24_INVALID_TOKEN"); return;
         }
         bridge_token[i] = (char)c;
     }
     bridge_token[length] = 0;
     bridge_port = (unsigned short)port;
     bridge_instance = unix_ms();
-    if (!supported_executable()) { log_line("FMFACE24_UNSUPPORTED_EXECUTABLE"); return; }
+    if (!supported_executable()) { log_line("REGENERATEFM24_UNSUPPORTED_EXECUTABLE"); return; }
     unsigned char *base = game_base = (unsigned char *)GetModuleHandleW(NULL);
     IMAGE_DOS_HEADER *dos = (IMAGE_DOS_HEADER *)base;
     IMAGE_NT_HEADERS64 *nt = (IMAGE_NT_HEADERS64 *)(base + dos->e_lfanew);
     if (nt->FileHeader.TimeDateStamp != FM24_TIMESTAMP || nt->OptionalHeader.SizeOfImage != FM24_IMAGE_SIZE) {
-        log_line("FMFACE24_UNSUPPORTED_IMAGE"); return;
+        log_line("REGENERATEFM24_UNSUPPORTED_IMAGE"); return;
     }
     static const unsigned char prologue[] = FM24_HANDLER_BYTES;
     event_handler *slot = (event_handler *)(base + VTABLE_SLOT_RVA);
     original_event = (event_handler)(base + HANDLER_RVA);
     if (*slot != original_event || memcmp(base + HANDLER_RVA, prologue, sizeof(prologue))) {
-        log_line("FMFACE24_HANDLER_MISMATCH"); return;
+        log_line("REGENERATEFM24_HANDLER_MISMATCH"); return;
     }
-#ifdef FMFACE_PERF
+#ifdef REGENERATEFM_PERF
     QueryPerformanceFrequency(&perf_frequency);
 #endif
     event_ready = CreateEventW(NULL, FALSE, FALSE, NULL);
@@ -1404,12 +1404,12 @@ static void install_event_hook(void)
     CloseHandle(thread);
     DWORD previous;
     if (!VirtualProtect(slot, sizeof(*slot), PAGE_READWRITE, &previous)) {
-        log_line("FMFACE24_VTABLE_PROTECT_FAILED"); return;
+        log_line("REGENERATEFM24_VTABLE_PROTECT_FAILED"); return;
     }
     InterlockedExchangePointer((PVOID volatile *)slot, (PVOID)native_event);
     DWORD ignored;
     VirtualProtect(slot, sizeof(*slot), previous, &ignored);
-    log_line("FMFACE24_NATIVE_MENU_HOOK_INSTALLED");
+    log_line("REGENERATEFM24_NATIVE_MENU_HOOK_INSTALLED");
     install_squad_menu(base);
     if (bridge_port < 65535 && (thread = CreateThread(NULL, 0, reload_listener, NULL, 0, NULL)))
         CloseHandle(thread);
@@ -1432,20 +1432,20 @@ static BOOL CALLBACK initialize(PINIT_ONCE once, PVOID parameter, PVOID *context
     wcscat(path, L"\\winmm.dll");
     real_winmm = LoadLibraryW(path);
     if (!real_winmm || real_winmm == self_module) return FALSE;
-    for (unsigned int i = 0; i < fmface_export_count; ++i) {
-        FARPROC function = GetProcAddress(real_winmm, fmface_export_names[i] ? fmface_export_names[i] :
-                                          (LPCSTR)(uintptr_t)fmface_export_ordinals[i]);
-        fmface_exports[i] = function ? (void *)function : (void *)missing_export;
+    for (unsigned int i = 0; i < regeneratefm_export_count; ++i) {
+        FARPROC function = GetProcAddress(real_winmm, regeneratefm_export_names[i] ? regeneratefm_export_names[i] :
+                                          (LPCSTR)(uintptr_t)regeneratefm_export_ordinals[i]);
+        regeneratefm_exports[i] = function ? (void *)function : (void *)missing_export;
     }
     install_event_hook();
     return TRUE;
 }
 
-void *fmface_resolve_export(unsigned int index)
+void *regeneratefm_resolve_export(unsigned int index)
 {
     if (!InitOnceExecuteOnce(&initialized, initialize, NULL, NULL))
-        fmface_exports[index] = (void *)missing_export;
-    return fmface_exports[index];
+        regeneratefm_exports[index] = (void *)missing_export;
+    return regeneratefm_exports[index];
 }
 
 BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved)

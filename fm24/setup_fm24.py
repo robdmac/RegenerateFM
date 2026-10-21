@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Set up FM Face for FM24 in one step: find the game, build the optional FM
+"""Set up RegenerateFM for FM24 in one step: find the game, build the optional FM
 Face skin from FM24's own panels and install the native library (the DLL on
-Windows and Proton, libfmface24.dylib and run_fmface24.sh on macOS).
+Windows and Proton, libregeneratefm24.dylib and run_regeneratefm24.sh on macOS).
 
 The packaged companion runs this itself the first time it starts, and the DLL
 then starts that companion with FM24. On Linux, the release's
 install-linux.sh runs it with plain python3 (no packages needed) for the
 packaged companion, which runs inside FM24's Proton prefix:
-    python3 fm24/setup_fm24.py --companion <path to fmface-fm24.exe>
+    python3 fm24/setup_fm24.py --companion <path to regeneratefm-fm24.exe>
 From source: python3 fm24/setup_fm24.py [--game-dir ...] [--user-data-dir ...]
 """
 
@@ -30,7 +30,7 @@ import build_skin  # noqa: E402
 import install as native_install  # noqa: E402
 from skin import modify_panel  # noqa: E402
 import steam_launch  # noqa: E402
-from fmface import ROOT  # noqa: E402
+from regeneratefm import ROOT  # noqa: E402
 from steam_launch import steam_libraries, steam_roots  # noqa: E402,F401
 
 APP_ID = "2252570"
@@ -55,7 +55,7 @@ def bundled_dll(companion: Path | None = None) -> Path:
 
 def packaged_companion() -> Path | None:
     """This packaged companion, which FM24 then starts itself; on macOS, this
-    source's companion.py, which run_fmface24.sh starts with this Python."""
+    source's companion.py, which run_regeneratefm24.sh starts with this Python."""
     if sys.platform == "darwin":
         return HERE / "companion.py"
     return Path(sys.executable).resolve() if getattr(sys, "frozen", False) and sys.platform == "win32" else None
@@ -106,7 +106,7 @@ def find_user_data_dir(game: Path) -> Path | None:
 
 
 def build_skin_from_game(game: Path, skin_dir: Path) -> None:
-    """The FM Face skin, made from the panels in FM24's own panels.fmf.
+    """The RegenerateFM skin, made from the panels in FM24's own panels.fmf.
     Raises ImportError without the zstandard package."""
     import game_archive
     archive = game / "data" / "game" / "panels.fmf"
@@ -124,7 +124,7 @@ def build_skin_from_game(game: Path, skin_dir: Path) -> None:
 
 
 def build_skin_with_popups(game: Path, skin_dir: Path) -> bool:
-    """With FM24 running, from the companion it started: the FM Face skin and
+    """With FM24 running, from the companion it started: the RegenerateFM skin and
     its portrait popups, if the setup couldn't build it (plain python3 on
     Linux). The installer adopts these panels the next time it runs. True if
     it was built now."""
@@ -138,15 +138,15 @@ def build_skin_with_popups(game: Path, skin_dir: Path) -> bool:
 
 
 def installed_config(game: Path) -> dict[str, str]:
-    """The DLL's settings (fmface24.ini), if FM Face was installed before."""
+    """The DLL's settings (regeneratefm24.ini), if RegenerateFM was installed before."""
     try:
-        return native_install.read_config(game / "fmface24.ini")
+        return native_install.read_config(game / "regeneratefm24.ini")
     except (OSError, UnicodeError, ValueError):
         return {}
 
 
 def installed_token(game: Path) -> str | None:
-    """The token in the DLL's settings, if FM Face was installed before."""
+    """The token in the DLL's settings, if RegenerateFM was installed before."""
     token = installed_config(game).get("token", "")
     return token if re.fullmatch(r"[A-Za-z0-9_-]{40,128}", token) else None
 
@@ -154,7 +154,7 @@ def installed_token(game: Path) -> str | None:
 def is_set_up(game: Path, skin_dir: Path, auth_file: Path, companion: Path | None = None) -> bool:
     """True when this library (and on macOS its launcher), the skin, the
     companion's token and the companion FM24 starts are installed."""
-    manifest = game / "fmface24-install.json"
+    manifest = game / "regeneratefm24-install.json"
     dll = game / native_install.LIBRARY
     try:
         metadata = native_install.load_manifest(manifest)
@@ -173,7 +173,7 @@ def is_set_up(game: Path, skin_dir: Path, auth_file: Path, companion: Path | Non
 
 
 QUIT_STEAM = ("Steam is running. Quit Steam first (Steam > Exit, not just closing its window), "
-              "then run the FM Face setup again: Steam only keeps a game's launch option set while it is closed.")
+              "then run the RegenerateFM setup again: Steam only keeps a game's launch option set while it is closed.")
 
 
 def check_steam_closed(game: Path, *, remove: bool = False) -> None:
@@ -184,18 +184,18 @@ def check_steam_closed(game: Path, *, remove: bool = False) -> None:
 
 
 def setup(game: Path, user_data: Path, auth_file: Path, companion: Path | None = None) -> None:
-    skin_dir = user_data / "skins" / "fmface"
+    skin_dir = user_data / "skins" / "regeneratefm"
     check_steam_closed(game)
     if is_set_up(game, skin_dir, auth_file, companion):
-        print("FM Face is already set up for FM24.", flush=True)
+        print("RegenerateFM is already set up for FM24.", flush=True)
         _launch_option(game)
         return
     if native_install.game_running(game):
-        raise SystemExit("Close FM24, then run the FM Face setup again.")
+        raise SystemExit("Close FM24, then run the RegenerateFM setup again.")
     dll = bundled_dll(companion)
     if not dll.is_file():
         builder = "build_macos.py" if native_install.MACOS else "build.py"
-        raise SystemExit(f"The FM Face library is missing: {dll}. Build it with fm24/native_menu/{builder}.")
+        raise SystemExit(f"The RegenerateFM library is missing: {dll}. Build it with fm24/native_menu/{builder}.")
     # A companion in a new folder (an update, say) keeps the token FM24 already has.
     existing = installed_token(game)
     if existing and not auth_file.exists():
@@ -206,11 +206,11 @@ def setup(game: Path, user_data: Path, auth_file: Path, companion: Path | None =
     if not (skin_dir / "skin_config.xml").is_file():
         try:
             build_skin_from_game(game, skin_dir)
-            print(f"Built the FM Face skin in {skin_dir}", flush=True)
+            print(f"Built the RegenerateFM skin in {skin_dir}", flush=True)
         except ImportError:
             # Plain python3 on Linux: the companion builds it when FM24 first starts it.
-            print("The optional FM Face skin will be built when FM24 first starts.", flush=True)
-    (user_data / "graphics" / "fmface").mkdir(parents=True, exist_ok=True)
+            print("The optional RegenerateFM skin will be built when FM24 first starts.", flush=True)
+    (user_data / "graphics" / "regeneratefm").mkdir(parents=True, exist_ok=True)
     command = ["--game-dir", str(game), "--skin-dir", str(skin_dir), "--auth-file", str(auth_file), "--dll", str(dll)]
     if companion is not None:
         command += ["--companion", windows_path(companion)]
@@ -225,11 +225,11 @@ def setup(game: Path, user_data: Path, auth_file: Path, companion: Path | None =
     native_install.main(command)
     _launch_option(game)
     print("\nIn FM24, Generate new face and Update face are in a profile's Overview tab menu, with any skin.\n"
-          "For them on the portrait too, choose the \"FM Face\" skin in Preferences > Interface.\n", flush=True)
+          "For them on the portrait too, choose the \"RegenerateFM\" skin in Preferences > Interface.\n", flush=True)
 
 
 def _launch_option(game: Path, *, remove: bool = False) -> None:
-    """Steam's launch option for FM24 (macOS and Proton), so Play starts FM Face."""
+    """Steam's launch option for FM24 (macOS and Proton), so Play starts RegenerateFM."""
     if sys.platform != "win32":
         print(steam_launch.apply("fm24", game, remove=remove), flush=True)
 
@@ -237,13 +237,13 @@ def _launch_option(game: Path, *, remove: bool = False) -> None:
 def resolve_dirs(game_dir: Path | None, user_data_dir: Path | None) -> tuple[Path, Path]:
     game = game_dir.expanduser().resolve() if game_dir else find_game_dir()
     if game is None or not (game / native_install.EXECUTABLE).is_file():
-        raise SystemExit("FM Face couldn't find FM24 in your Steam libraries. Run the setup again with "
+        raise SystemExit("RegenerateFM couldn't find FM24 in your Steam libraries. Run the setup again with "
                          "--game-dir \"<path to Football Manager 2024>\".")
     user_data = user_data_dir.expanduser().resolve() if user_data_dir else find_user_data_dir(game)
     if user_data is None or not user_data.is_dir():
         where = ("~/Library/Application Support/Sports Interactive/Football Manager 2024"
                  if native_install.MACOS else "Documents\\Sports Interactive\\Football Manager 2024")
-        raise SystemExit(f"FM Face couldn't find FM24's user-data folder ({where}). "
+        raise SystemExit(f"RegenerateFM couldn't find FM24's user-data folder ({where}). "
                          "Start FM24 once to create it, or pass --user-data-dir.")
     return game, user_data
 
@@ -256,20 +256,20 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--auth-file", type=Path,
                         help="the companion's token file (default: .fm24-auth beside the companion)")
     parser.add_argument("--companion", type=Path,
-                        help="the packaged fmface-fm24.exe for FM24 to start (Linux; the packaged companion sets itself)")
+                        help="the packaged regeneratefm-fm24.exe for FM24 to start (Linux; the packaged companion sets itself)")
     parser.add_argument("--remove", action="store_true", help="uninstall the DLL and restore the skin's panels")
     args = parser.parse_args(argv)
     companion = args.companion.expanduser().resolve() if args.companion else packaged_companion()
     if companion is not None and not companion.is_file():
-        raise SystemExit(f"There is no FM Face companion at {companion}.")
-    # The packaged companion keeps its token beside itself; from source, beside FM Face.
+        raise SystemExit(f"There is no RegenerateFM companion at {companion}.")
+    # The packaged companion keeps its token beside itself; from source, beside RegenerateFM.
     packaged = companion is not None and companion.suffix != ".py"
     auth_file = args.auth_file or (companion.parent if packaged else ROOT) / ".fm24-auth"
     game, user_data = resolve_dirs(args.game_dir, args.user_data_dir)
     print(f"FM24: {game}\nFM24 user data: {user_data}", flush=True)
     if args.remove:
         check_steam_closed(game, remove=True)
-        native_install.main(["--game-dir", str(game), "--skin-dir", str(user_data / "skins" / "fmface"), "--remove"])
+        native_install.main(["--game-dir", str(game), "--skin-dir", str(user_data / "skins" / "regeneratefm"), "--remove"])
         _launch_option(game, remove=True)
         return
     setup(game, user_data, auth_file, companion)

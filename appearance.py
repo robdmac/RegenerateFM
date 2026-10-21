@@ -9,7 +9,7 @@ TRAIT_KEYS = ("face", "features", "hair", "facialHair", "expression")
 def appearance_traits(seed: str, age: int) -> dict[str, str]:
     """Choose independently per trait; never use Python's randomized hash()."""
     def pick(category, choices):
-        digest = hashlib.sha256(f"fmface-appearance-v1\0{seed}\0{category}".encode()).digest()
+        digest = hashlib.sha256(f"regeneratefm-appearance-v1\0{seed}\0{category}".encode()).digest()
         return choices[int.from_bytes(digest[:8], "big") % len(choices)]
 
     shape = pick("faceShape", ("a relatively long face", "a broad face", "an oval face",

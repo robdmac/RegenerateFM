@@ -81,7 +81,7 @@ def main() -> None:
         if not found:
             parser.error(f"{tool} is required.")
     args.output.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="fmface-macos-") as scratch:
+    with tempfile.TemporaryDirectory(prefix="regeneratefm-macos-") as scratch:
         build_funchook(Path(scratch), args.output)
         build_il2cppinterop(Path(scratch), args.output, dotnet)
     for name in ("libfunchook.dylib", "Il2CppInterop.Runtime.dll", "Il2CppInterop.Common.dll"):

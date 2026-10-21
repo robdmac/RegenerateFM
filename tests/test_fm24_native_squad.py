@@ -16,7 +16,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "fm24"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import fmface  # noqa: E402
+import regeneratefm  # noqa: E402
 import layout  # noqa: E402  The fixtures are records from the Windows fm.exe.
 layout.LAYOUT.update(layout.WINDOWS)
 import native_profile
@@ -76,8 +76,8 @@ class PlayingClubTests(unittest.TestCase):
             profile = native_profile._profile(1, record, identity, ["Attacking Midfielder (Center) - Iceland"],
                                               33, False)
         self.assertEqual((profile["club"], profile["position"]), ("Free agent", "Attacking Midfielder (Center)"))
-        self.assertIn("who is a free agent", fmface.profile_prompt(profile))
-        self.assertIn("plain unbranded football shirt", fmface.profile_prompt(profile))
+        self.assertIn("who is a free agent", regeneratefm.profile_prompt(profile))
+        self.assertIn("plain unbranded football shirt", regeneratefm.profile_prompt(profile))
 
     TEAM, CLUB = layout.WINDOWS["team_vtable"], layout.WINDOWS["club_vtable"]
 
@@ -355,7 +355,7 @@ class NativeBatchTests(unittest.TestCase):
                        {"ok": True, "playerId": person, "refreshed": True})
         self.assertEqual(calls, [("3", "Player 3"), ("5", "Player 5")])
         progress = Progress.made[0]
-        self.assertEqual(progress.shown[0], (8770, "FM Face squad faces", "Generating Player 3 (1/2)"))
+        self.assertEqual(progress.shown[0], (8770, "RegenerateFM squad faces", "Generating Player 3 (1/2)"))
         self.assertIn("Loaded Player 5 (2/2)", progress.shown)
         # The progress dialog itself becomes the result message.
         self.assertEqual(progress.result, "Generated 2 squad faces.")
@@ -440,7 +440,7 @@ class ConfirmationTests(unittest.TestCase):
         text = dialog.call_args.args[4]
         self.assertIn("2 of the 22 Reading players read have no portrait", text)
         self.assertIn("1 player-coach was left out; make their faces from their own profiles.", text)
-        self.assertIn("2 rows that aren't players FM Face can read were left out.", text)
+        self.assertIn("2 rows that aren't players RegenerateFM can read were left out.", text)
 
 
 class RatingTests(unittest.TestCase):

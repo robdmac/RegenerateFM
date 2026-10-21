@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Package the FM24 companion as dist/fmface-fm24/fmface-fm24.exe.
+"""Package the FM24 companion as dist/regeneratefm-fm24/regeneratefm-fm24.exe.
 
 Run with a Windows Python 3.11 that has the packages in
 fm24/requirements-exe.txt; on Linux, a Windows Python under Wine works:
@@ -11,7 +11,7 @@ The result is a folder rather than a single file: one-file packages unpack
 themselves to a temporary folder on every start, which is slower and is more
 often flagged by antivirus software. The exe includes the FM24 DLL built by
 fm24/native_menu/build.py: on its first start it finds FM24 through Steam,
-builds the FM Face skin from FM24's own panels, installs the DLL and asks for
+builds the RegenerateFM skin from FM24's own panels, installs the DLL and asks for
 the OpenAI key (or reads OPENAI_API_KEY from a .env beside it).
 """
 
@@ -22,7 +22,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-NAME = "fmface-fm24"
+NAME = "regeneratefm-fm24"
 
 
 def main() -> None:

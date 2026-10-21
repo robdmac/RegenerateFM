@@ -19,9 +19,9 @@ using SI.UI;
 using UnityEngine;
 using UnityEngine.UIElements;
 
-namespace FMFaceHotReload
+namespace RegenerateFMHotReload
 {
-    [BepInPlugin("fmface.hotreload", "FM Face", "0.9.0")]
+    [BepInPlugin("regeneratefm.hotreload", "RegenerateFM", "0.9.0")]
     public sealed class HotReloadPlugin : BasePlugin
     {
         internal static HotReloadPlugin Instance;
@@ -76,6 +76,15 @@ namespace FMFaceHotReload
         private BepInEx.Configuration.ConfigEntry<string> _model;
         private BepInEx.Configuration.ConfigEntry<string> _quality;
         private BepInEx.Configuration.ConfigEntry<string> _apiBaseUrl;
+        private BepInEx.Configuration.ConfigEntry<string> _creditsUrl;
+        // RegenerateFM credits sign-in in progress (Credits): starting, then polling.
+        private Task<Credits.SignIn> _creditsStart;
+        private Credits.SignIn _creditsSignIn;
+        private Task<Credits.Poll> _creditsPoll;
+        private System.DateTime _creditsNextPollUtc;
+        // The key dialog is open for a game already signed in to RegenerateFM credits
+        // (out of credits), so Buy credits opens the credits page.
+        private bool _keyDialogSignedIn;
         private static readonly TimeSpan GenerationTimeout = TimeSpan.FromMinutes(5);
         private static readonly TimeSpan GraphicsTimeout = TimeSpan.FromSeconds(30);
         // How long the squad batch waits for an opened profile to show all it reads
@@ -89,7 +98,7 @@ namespace FMFaceHotReload
         {
             if (!SupportedGameBuild())
             {
-                Log.LogWarning("FM Face supports only the checked FM26 26.3.2 and FM26 Demo binaries; buttons disabled");
+                Log.LogWarning("RegenerateFM supports only the checked FM26 26.3.2 and FM26 Demo binaries; buttons disabled");
                 return;
             }
             Instance = this;
@@ -99,7 +108,7 @@ namespace FMFaceHotReload
                 Interfaces = new[] { typeof(IMenuContributor) }
             });
             _menuContributor = new FaceMenuContributor();
-            _harmony = new Harmony("fmface.hotreload");
+            _harmony = new Harmony("regeneratefm.hotreload");
             // See LocatorPatch: on macOS the reload is followed another way.
             if (OperatingSystem.IsMacOS())
                 _harmony.PatchAll(typeof(LocatorPatch));
@@ -107,10 +116,10 @@ namespace FMFaceHotReload
                 _harmony.PatchAll(typeof(AssetLoadPatch));
             _harmony.PatchAll(typeof(MenuOpenPatch));
             AddComponent<StaffWatcher>();
-            Log.LogInfo("FM Face Actions and portrait menu integration loaded");
+            Log.LogInfo("RegenerateFM Actions and portrait menu integration loaded");
         }
 
-        // Model and quality are in BepInEx/config/fmface.hotreload.cfg, reread
+        // Model and quality are in BepInEx/config/regeneratefm.hotreload.cfg, reread
         // before each request. The key is kept apart (KeyStore) and asked for
         // in the game.
         private void BindSettings()
@@ -121,6 +130,8 @@ namespace FMFaceHotReload
                     new BepInEx.Configuration.AcceptableValueList<string>(FaceGenerator.Qualities)));
             _apiBaseUrl = Config.Bind("OpenAI", "ApiBaseUrl", "https://api.openai.com/v1",
                 "Image API address. Leave this unchanged unless you are testing.");
+            _creditsUrl = Config.Bind("Credits", "ServiceUrl", Credits.DefaultServiceUrl,
+                "RegenerateFM credits service, used when you buy credits instead of using an OpenAI key.");
         }
 
         private ImageSettings CurrentSettings()
@@ -141,10 +152,24 @@ namespace FMFaceHotReload
                 ApiKey = key ?? "",
                 Model = (_model.Value ?? "").Trim(),
                 Quality = (_quality.Value ?? "").Trim().ToLowerInvariant(),
-                BaseUrl = (_apiBaseUrl.Value ?? "").Trim()
+                BaseUrl = BaseUrlFor(key)
             };
             FaceGenerator.CheckSettings(settings);
             return settings;
+        }
+
+        // OpenAI's address (or ApiBaseUrl when testing), or the credits
+        // service's for a RegenerateFM credits token.
+        private string BaseUrlFor(string key)
+        {
+            return Credits.IsToken(key) ? Credits.ApiBase(CreditsServiceUrl()) : (_apiBaseUrl.Value ?? "").Trim();
+        }
+
+        private string CreditsServiceUrl()
+        {
+            string url = (_creditsUrl.Value ?? "").Trim().TrimEnd('/');
+            return url.StartsWith("https://", StringComparison.Ordinal) || url.StartsWith("http://127.0.0.1", StringComparison.Ordinal)
+                ? url : Credits.DefaultServiceUrl;
         }
 
         private bool SupportedGameBuild()
@@ -316,8 +341,7 @@ namespace FMFaceHotReload
                 {
                     ShowError(pending.Overlay, pending.Message, result.Error);
                     Log.LogError("Face generation failed: " + result.Error);
-                    if (result.KeyRejected)
-                        ShowKeyDialog("OpenAI didn't accept the saved key. Paste a new one.", null);
+                    ShowKeyProblem(result);
                     return;
                 }
                 Log.LogInfo("Portrait saved to " + result.GraphicsDir);
@@ -488,7 +512,7 @@ namespace FMFaceHotReload
         {
             public NeedsScoutingException(string name)
                 : base("Your scouts don't know enough about " + name + " yet: half or more of their " +
-                       "attributes are unknown. Scout them first, and once most are known, FM Face can make " +
+                       "attributes are unknown. Scout them first, and once most are known, RegenerateFM can make " +
                        "their face. No image was requested.") { }
         }
 
@@ -692,6 +716,7 @@ namespace FMFaceHotReload
                 plugin.CheckRefreshTimeout();
                 plugin.PollGeneration();
                 plugin.PollKeyCheck();
+                plugin.PollCreditsSignIn();
                 plugin.PollKeyTyping();
                 try { plugin.PollScoutingRetry(); }
                 catch (Exception error) { plugin.Log.LogWarning("Profile check failed: " + error.Message); }
@@ -770,7 +795,7 @@ namespace FMFaceHotReload
             if (table == null || FindScroll(table) == null)
             {
                 // Off the squad pages this is the normal case, so only say why on a
-                // page that has a player table without the rows FM Face reads.
+                // page that has a player table without the rows RegenerateFM reads.
                 if (table != null)
                     NoteSquadMenu("the squad table has no scrolling list of NameButtons: " + Ancestry(table));
                 else
@@ -812,7 +837,7 @@ namespace FMFaceHotReload
             RemoveSquadMenuButton();
             var button = new Button((Il2CppSystem.Action)(System.Action)(() => StartSquadScan()))
             {
-                name = "fmface-squad-command", text = "Generate faces…", focusable = false
+                name = "regeneratefm-squad-command", text = "Generate faces…", focusable = false
             };
             button.style.height = 36;
             button.style.flexShrink = 0;
@@ -835,7 +860,7 @@ namespace FMFaceHotReload
             var chain = new List<string>();
             for (VisualElement element = scroll; element != null && chain.Count < 6; element = element.parent)
                 chain.Add((element.name ?? "") + " " + element.GetType().Name + " " + element.worldBound);
-            Log.LogInfo("FM Face squad command added to Squad menu " + (dropdown != null ? "(inside it)" : "(below it)") +
+            Log.LogInfo("RegenerateFM squad command added to Squad menu " + (dropdown != null ? "(inside it)" : "(below it)") +
                         "; dropdown: " + string.Join(" < ", chain));
         }
 
@@ -919,7 +944,7 @@ namespace FMFaceHotReload
         {
             if (_pending != null || WaitingForGraphics || _squadScan != null || _squadBatch != null)
             {
-                Log.LogWarning("Squad scan cannot start while another FM Face operation is active");
+                Log.LogWarning("Squad scan cannot start while another RegenerateFM operation is active");
                 return;
             }
             if (!KeyReady(StartSquadScan))
@@ -961,7 +986,7 @@ namespace FMFaceHotReload
             { List = list, OriginalY = list.scrollOffset.y, Status = status, ExpectedCount = expected,
               TopReadyUtc = System.DateTime.UtcNow.AddSeconds(1) };
             list.scrollOffset = new Vector2(list.scrollOffset.x, 0);
-            Log.LogInfo("FM Face squad portrait scan started");
+            Log.LogInfo("RegenerateFM squad portrait scan started");
         }
 
         private void PollSquadScan()
@@ -1022,7 +1047,7 @@ namespace FMFaceHotReload
                 }
                 scan.List.scrollOffset = new Vector2(scan.List.scrollOffset.x, scan.OriginalY);
                 _squadScan = null;
-                Log.LogInfo("FM Face squad scan finished: " + scan.Portraits.Count +
+                Log.LogInfo("RegenerateFM squad scan finished: " + scan.Portraits.Count +
                             " of " + scan.ExpectedCount + " players, " + scan.Missing.Count + " missing portraits");
                 if (scan.Status != null)
                     scan.Status.text = scan.ExpectedCount > 0 && scan.Portraits.Count != scan.ExpectedCount
@@ -1076,7 +1101,7 @@ namespace FMFaceHotReload
             generate.style.color = Color.white;
             generate.style.backgroundColor = new Color(0.38f, 0.10f, 0.60f, 1f);
             _squadDialog.Insert(1, generate);
-            Log.LogInfo("FM Face squad confirmation ready: " + missing.Count + " missing portraits");
+            Log.LogInfo("RegenerateFM squad confirmation ready: " + missing.Count + " missing portraits");
         }
 
         private void StartSquadBatch(List<SquadCandidate> missing)
@@ -1108,7 +1133,7 @@ namespace FMFaceHotReload
             batch.Queue.AddRange(missing);
             _squadBatch = batch;
             list.scrollOffset = new Vector2(list.scrollOffset.x, 0);
-            Log.LogInfo("FM Face squad batch started for " + missing.Count + " players");
+            Log.LogInfo("RegenerateFM squad batch started for " + missing.Count + " players");
         }
 
         private void PollSquadBatch()
@@ -1125,7 +1150,7 @@ namespace FMFaceHotReload
                 {
                     batch.UnfocusedSinceUtc = System.DateTime.UtcNow;
                     batch.Status.text = "Paused while FM26 is in the background; return to FM26 to continue.";
-                    Log.LogInfo("FM Face squad batch paused: FM26 is in the background");
+                    Log.LogInfo("RegenerateFM squad batch paused: FM26 is in the background");
                 }
                 return;
             }
@@ -1135,7 +1160,7 @@ namespace FMFaceHotReload
                 batch.StageStartedUtc += away;
                 batch.NextPlayerUtc += away;
                 batch.UnfocusedSinceUtc = null;
-                Log.LogInfo("FM Face squad batch resumed after " + away.TotalSeconds.ToString("0") + " s in the background");
+                Log.LogInfo("RegenerateFM squad batch resumed after " + away.TotalSeconds.ToString("0") + " s in the background");
             }
             if (batch.StopAfterCurrent && batch.Stage != SquadStage.Request && batch.Stage != SquadStage.Refresh)
             {
@@ -1184,7 +1209,7 @@ namespace FMFaceHotReload
                             StopSquadBatch("Finished: " + batch.Completed + " squad faces generated." +
                                 (batch.NeedsScouting == 0 ? "" : " " + batch.NeedsScouting +
                                  (batch.NeedsScouting == 1 ? " player needs" : " players need") +
-                                 " scouting before FM Face can make their face."));
+                                 " scouting before RegenerateFM can make their face."));
                         else
                         {
                             batch.List = list;
@@ -1336,8 +1361,7 @@ namespace FMFaceHotReload
             if (!result.Success)
             {
                 StopSquadBatch("Portrait request failed for " + batch.Queue[batch.Index].Name + ": " + result.Error);
-                if (result.KeyRejected)
-                    ShowKeyDialog("OpenAI didn't accept the saved key. Paste a new one.", null);
+                ShowKeyProblem(result);
                 return;
             }
             Log.LogInfo("Squad portrait saved for " + batch.Queue[batch.Index].Name + " to " + result.GraphicsDir);
@@ -1409,7 +1433,7 @@ namespace FMFaceHotReload
         {
             if (_squadBatch == null)
                 return;
-            Log.LogInfo("FM Face squad batch: " + message);
+            Log.LogInfo("RegenerateFM squad batch: " + message);
             var status = _squadBatch.Status;
             _squadBatch = null;
             if (status != null && status.parent != null)
@@ -1435,7 +1459,7 @@ namespace FMFaceHotReload
             }
             batch.StopAfterCurrent = true;
             batch.Status.text = "Stopping after the current face finishes…";
-            Log.LogInfo("FM Face squad batch stop requested after " + batch.Completed + " completed faces");
+            Log.LogInfo("RegenerateFM squad batch stop requested after " + batch.Completed + " completed faces");
         }
 
         private void CancelSquadScan()
@@ -1460,20 +1484,21 @@ namespace FMFaceHotReload
             catch (Exception error)
             {
                 Log.LogWarning("Could not read the saved OpenAI key: " + error.Message);
-                ShowKeyDialog("FM Face couldn't read the saved key. Paste it again.", next);
+                ShowKeyDialog("RegenerateFM couldn't read the saved key. Paste it again.", next);
                 return false;
             }
             ShowKeyDialog(null, next);
             return false;
         }
 
-        private void ShowKeyDialog(string problem, Action next)
+        private void ShowKeyDialog(string problem, Action next, bool signedIn = false)
         {
             CloseKeyDialog();
+            _keyDialogSignedIn = signedIn;
             var root = CurrentRoot();
             if (root == null)
                 return;
-            var dialog = new VisualElement { name = "fmface-key-dialog" };
+            var dialog = new VisualElement { name = "regeneratefm-key-dialog" };
             dialog.style.position = Position.Absolute;
             dialog.style.right = 24;
             dialog.style.top = 80;
@@ -1493,9 +1518,20 @@ namespace FMFaceHotReload
                 dialog.Add(label);
                 return label;
             };
-            text("FM Face: your OpenAI API key", 18);
-            text(problem ?? "FM Face makes faces with your own OpenAI API key. Each face is one billed request " +
-                 "on your OpenAI account, usually a few cents or less.", 14);
+            text("RegenerateFM: paying for faces", 18);
+            if (problem != null)
+                text(problem, 14).style.color = new Color(1f, 0.82f, 0.45f, 1f);
+            text("Buy RegenerateFM credits: 50 faces for £1, 400 for £5 or 1000 for £10. You sign in with your email " +
+                 "in your browser; there's nothing to paste.", 14);
+            var buy = new Button((Il2CppSystem.Action)(System.Action)(() => BuyCredits()))
+            { text = "Buy credits / Sign in", focusable = false };
+            buy.style.height = 34;
+            buy.style.marginBottom = 14;
+            buy.style.color = Color.white;
+            buy.style.backgroundColor = new Color(0.38f, 0.10f, 0.60f, 1f);
+            dialog.Add(buy);
+            text("Or use your own OpenAI API key. Each face is then one billed request on your OpenAI account, " +
+                 "usually a few cents or less.", 13);
             var open = new Button((Il2CppSystem.Action)(System.Action)(() => Application.OpenURL("https://platform.openai.com/api-keys")))
             { text = "Get a key at platform.openai.com/api-keys", focusable = false };
             open.style.height = 30;
@@ -1538,7 +1574,7 @@ namespace FMFaceHotReload
             entry.Add(field);
             entry.Add(pasteButton);
             dialog.Add(entry);
-            _keyStatus = text("Paste or type the key (it starts with sk-), then choose Save.", 13);
+            _keyStatus = text("Paste or type the key (it starts with sk-), then choose Save key.", 13);
             _keyStatus.style.marginTop = 6;
             var buttons = new VisualElement();
             buttons.style.flexDirection = FlexDirection.Row;
@@ -1558,6 +1594,18 @@ namespace FMFaceHotReload
             text("The key is kept on this computer only, " +
                  (OperatingSystem.IsWindows() ? "encrypted for your Windows user" : "readable only by your user account") + ", in " +
                  Path.GetDirectoryName(KeyStore.DefaultPath) + ". Delete that folder to forget it.", 12);
+            var questions = new Button((Il2CppSystem.Action)(System.Action)(() => ShowKeyFaq(dialog)))
+            { text = "Questions: why it costs money, and which option is cheaper", focusable = false };
+            questions.style.height = 26;
+            questions.style.marginTop = 4;
+            questions.style.fontSize = 12;
+            questions.style.color = new Color(0.78f, 0.70f, 1f, 1f);
+            questions.style.backgroundColor = new Color(0, 0, 0, 0);
+            questions.style.borderTopWidth = 0;
+            questions.style.borderBottomWidth = 0;
+            questions.style.borderLeftWidth = 0;
+            questions.style.borderRightWidth = 0;
+            dialog.Add(questions);
             root.Add(dialog);
             _keyDialog = dialog;
             _keyField = field;
@@ -1582,14 +1630,14 @@ namespace FMFaceHotReload
             ImageSettings settings;
             try
             {
-                settings = new ImageSettings { BaseUrl = (_apiBaseUrl.Value ?? "").Trim() };
+                settings = new ImageSettings { BaseUrl = BaseUrlFor(key) };
             }
             catch (Exception error)
             {
                 _keyStatus.text = error.Message;
                 return;
             }
-            _keyStatus.text = "Checking the key with OpenAI (this is free)…";
+            _keyStatus.text = Credits.IsToken(key) ? "Checking the RegenerateFM sign-in…" : "Checking the key with OpenAI (this is free)…";
             _keyChecking = key;
             _keyCheck = FaceGenerator.CheckKey(settings, key);
         }
@@ -1641,6 +1689,212 @@ namespace FMFaceHotReload
             }
         }
 
+        // The key dialog's questions (the same as the credits pages' FAQ, in
+        // regeneratefm-credits/src/pages.ts), shown in place of the dialog's
+        // controls until Back. A question's link opens in the browser.
+        private static readonly (string Question, string Answer, string LinkText, string Link)[] KeyFaq =
+        {
+            ("Why does making a face cost money?",
+             "Each face is drawn by OpenAI's image model, and OpenAI charges for every image it makes. RegenerateFM doesn't run " +
+             "its own AI, so every face is one paid request to OpenAI, whether you use credits or your own key.", null, null),
+            ("Which is cheaper, credits or my own OpenAI API key?",
+             "Your own key. You then pay OpenAI's price for each image directly, which at RegenerateFM's default quality is " +
+             "usually around a penny or less. Credits cost 1p to 2p a face, but you don't need an OpenAI account, " +
+             "billing set up with OpenAI, or a key to copy into the game.",
+             "OpenAI's API pricing", "https://openai.com/api/pricing/"),
+            ("Why do credits cost more than OpenAI's own price?",
+             "Credits pay for more than the image: the card payment (each payment costs us about 20p plus 1.5%, which is " +
+             "why small packs cost more per face), the service that signs you in and passes each request on to OpenAI, " +
+             "and the credit we give back when an image fails.", null, null),
+            ("Can I use my ChatGPT Plus or Pro subscription instead?",
+             "Not yet. A ChatGPT subscription and OpenAI's API are separate products. OpenAI has started letting some apps " +
+             "use a ChatGPT plan through \u201cSign in with ChatGPT\u201d, but it's a preview, and image generation is one " +
+             "of the things it doesn't support yet. If OpenAI adds it, RegenerateFM will offer it.",
+             "OpenAI: Sign in with ChatGPT limitations",
+             "https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations"),
+        };
+
+        private void ShowKeyFaq(VisualElement dialog)
+        {
+            // Hide the dialog's controls (the typed key stays in its field) and show the answers.
+            var hidden = new List<VisualElement>();
+            for (int i = 0; i < dialog.childCount; i++)
+            {
+                var child = dialog[i];
+                if (child.resolvedStyle.display != DisplayStyle.None)
+                {
+                    hidden.Add(child);
+                    child.style.display = DisplayStyle.None;
+                }
+            }
+            var faq = new ScrollView { name = "regeneratefm-key-faq" };
+            faq.style.maxHeight = 460;
+            Func<string, int, bool, Label> add = (value, size, bold) =>
+            {
+                var label = new Label(value) { pickingMode = PickingMode.Ignore };
+                label.style.color = bold ? Color.white : new Color(0.82f, 0.80f, 0.88f, 1f);
+                label.style.whiteSpace = WhiteSpace.Normal;
+                label.style.fontSize = size;
+                label.style.marginBottom = bold ? 4 : 6;
+                if (bold)
+                    label.style.unityFontStyleAndWeight = FontStyle.Bold;
+                faq.Add(label);
+                return label;
+            };
+            add("Questions", 18, true);
+            foreach (var item in KeyFaq)
+            {
+                add(item.Question, 14, true).style.marginTop = 8;
+                add(item.Answer, 13, false);
+                if (item.Link != null)
+                {
+                    string url = item.Link;
+                    var link = new Button((Il2CppSystem.Action)(System.Action)(() => Application.OpenURL(url)))
+                    { text = item.LinkText + " \u2197", focusable = false };
+                    link.style.alignSelf = Align.FlexStart;
+                    link.style.height = 24;
+                    link.style.fontSize = 12;
+                    faq.Add(link);
+                }
+            }
+            dialog.Add(faq);
+            var back = new Button((Il2CppSystem.Action)(System.Action)(() =>
+            {
+                faq.RemoveFromHierarchy();
+                foreach (var child in hidden)
+                    child.style.display = StyleKeyword.Null;
+            }))
+            { text = "Back", focusable = false };
+            back.style.height = 32;
+            back.style.marginTop = 10;
+            faq.Add(back);
+        }
+
+        // A failed face whose key needs attention: sign in again, or buy more credits.
+        private void ShowKeyProblem(GenerationResult result)
+        {
+            string key = null;
+            try { key = KeyStore.Load(KeyStore.DefaultPath); } catch (Exception) { }
+            if (result.OutOfCredits)
+                ShowKeyDialog("You've used all your RegenerateFM credits. Buy more to carry on.", null, signedIn: Credits.IsToken(key));
+            else if (result.KeyRejected)
+                ShowKeyDialog(Credits.IsToken(key)
+                    ? "Your RegenerateFM sign-in isn't valid any more. Sign in again."
+                    : "OpenAI didn't accept the saved key. Paste a new one.", null);
+        }
+
+        // Buy credits / Sign in: a signed-in game opens the credits page in the
+        // browser; otherwise a device sign-in starts, and PollCreditsSignIn
+        // saves the token once the player has finished in the browser.
+        private void BuyCredits()
+        {
+            if (_creditsStart != null || _creditsSignIn != null)
+                return;
+            if (_keyDialogSignedIn)
+            {
+                Application.OpenURL(CreditsServiceUrl() + "/link");
+                _keyStatus.text = "The credits page is open in your browser. Your new credits work as soon as you've paid.";
+                return;
+            }
+            _keyStatus.text = "Opening your browser…";
+            _creditsStart = Credits.Start(CreditsServiceUrl());
+        }
+
+        private void PollCreditsSignIn()
+        {
+            if (_creditsStart != null && _creditsStart.IsCompleted)
+            {
+                var start = _creditsStart;
+                _creditsStart = null;
+                try
+                {
+                    _creditsSignIn = start.GetAwaiter().GetResult();
+                }
+                catch (Exception error)
+                {
+                    Log.LogWarning("RegenerateFM credits sign-in didn't start: " + error.Message);
+                    if (_keyStatus != null)
+                        _keyStatus.text = "RegenerateFM credits can't be reached right now. Try again in a moment.";
+                    return;
+                }
+                Application.OpenURL(_creditsSignIn.Link);
+                _creditsNextPollUtc = System.DateTime.UtcNow.AddSeconds(_creditsSignIn.Interval);
+                if (_keyStatus != null)
+                    _keyStatus.text = "In your browser, sign in and confirm the code " + _creditsSignIn.UserCode +
+                                      ". RegenerateFM is waiting…";
+            }
+            var signIn = _creditsSignIn;
+            if (signIn == null)
+                return;
+            if (_keyDialog == null || _keyDialog.parent == null || System.DateTime.UtcNow > signIn.ExpiresUtc)
+            {
+                // Closed, or the code expired: stop waiting.
+                if (_keyStatus != null && System.DateTime.UtcNow > signIn.ExpiresUtc)
+                    _keyStatus.text = "The sign-in expired. Choose Buy credits / Sign in again.";
+                _creditsSignIn = null;
+                _creditsPoll = null;
+                return;
+            }
+            if (_creditsPoll == null)
+            {
+                if (System.DateTime.UtcNow >= _creditsNextPollUtc)
+                    _creditsPoll = Credits.Check(CreditsServiceUrl(), signIn.DeviceCode);
+                return;
+            }
+            if (!_creditsPoll.IsCompleted)
+                return;
+            Credits.Poll poll;
+            try
+            {
+                poll = _creditsPoll.GetAwaiter().GetResult();
+            }
+            catch (Exception error)
+            {
+                Log.LogWarning("RegenerateFM credits sign-in check failed: " + error.Message);
+                poll = new Credits.Poll { Status = "pending" };
+            }
+            _creditsPoll = null;
+            _creditsNextPollUtc = System.DateTime.UtcNow.AddSeconds(signIn.Interval * (poll.Status == "slow_down" ? 2 : 1));
+            if (poll.Status == "expired")
+            {
+                _creditsSignIn = null;
+                _keyStatus.text = "The sign-in expired. Choose Buy credits / Sign in again.";
+                return;
+            }
+            if (poll.Status != "approved")
+                return;
+            _creditsSignIn = null;
+            try
+            {
+                KeyStore.Save(KeyStore.DefaultPath, poll.Token);
+            }
+            catch (Exception error)
+            {
+                _keyStatus.text = "Could not save the sign-in: " + error.Message;
+                Log.LogError("Could not save the RegenerateFM credits token: " + error);
+                return;
+            }
+            Log.LogInfo("Signed in to RegenerateFM credits (" + poll.Credits + " credits); token saved to " + KeyStore.DefaultPath);
+            if (poll.Credits == 0)
+            {
+                // Signed in but nothing bought yet: keep the dialog so the player can buy.
+                _keyStatus.text = "Signed in as " + poll.Email + ". You have no credits yet: choose a pack in your browser, " +
+                                  "then choose the face again.";
+                _keyDialogSignedIn = true;
+                return;
+            }
+            var next = _afterKeySaved;
+            CloseKeyDialog();
+            try
+            {
+                next?.Invoke();
+            }
+            catch (Exception error)
+            {
+                Log.LogError("Could not continue after signing in: " + error);
+            }
+        }
+
         private void CloseKeyDialog()
         {
             if (_keyDialog != null && _keyDialog.parent != null)
@@ -1682,7 +1936,7 @@ namespace FMFaceHotReload
         {
             CancelSquadScan();
             var root = CurrentRoot();
-            var dialog = new VisualElement { name = "fmface-squad-dialog" };
+            var dialog = new VisualElement { name = "regeneratefm-squad-dialog" };
             dialog.style.position = Position.Absolute;
             // Centred over the page.
             dialog.style.left = Math.Max(0f, (root.layout.width - 360f) / 2f);
@@ -1777,11 +2031,11 @@ namespace FMFaceHotReload
             }
             if (_portraitMenu != null && (_portraitMenu.parent == null || _portraitMenuPersonId != personId))
                 ClosePortraitMenu();
-            if (picture.Q<VisualElement>("fmface-portrait-trigger") != null)
+            if (picture.Q<VisualElement>("regeneratefm-portrait-trigger") != null)
                 return;
             var trigger = new Button((Il2CppSystem.Action)(System.Action)(() => ShowPortraitMenu()))
             {
-                name = "fmface-portrait-trigger",
+                name = "regeneratefm-portrait-trigger",
                 text = "",
                 focusable = false
             };
@@ -1792,7 +2046,7 @@ namespace FMFaceHotReload
             trigger.style.height = Length.Percent(100);
             trigger.style.opacity = 0.01f;
             picture.Add(trigger);
-            Log.LogInfo("FM Face portrait click enabled for " + personId);
+            Log.LogInfo("RegenerateFM portrait click enabled for " + personId);
         }
 
         private void ShowPortraitMenu()
@@ -1813,7 +2067,7 @@ namespace FMFaceHotReload
             // either the menu action or controls behind it. The menu is added last.
             var dismissLayer = new Button((Il2CppSystem.Action)(System.Action)(() => ClosePortraitMenu()))
             {
-                name = "fmface-portrait-dismiss",
+                name = "regeneratefm-portrait-dismiss",
                 text = "",
                 focusable = false
             };
@@ -1824,7 +2078,7 @@ namespace FMFaceHotReload
             dismissLayer.style.height = Length.Percent(100);
             dismissLayer.style.opacity = 0f;
             root.Add(dismissLayer);
-            var menu = new VisualElement { name = "fmface-portrait-menu" };
+            var menu = new VisualElement { name = "regeneratefm-portrait-menu" };
             menu.style.position = Position.Absolute;
             menu.style.left = Math.Max(0f, picture.worldBound.x - root.worldBound.x);
             menu.style.top = Math.Max(0f, picture.worldBound.yMax - root.worldBound.y + 3f);
@@ -1840,8 +2094,8 @@ namespace FMFaceHotReload
             menu.style.borderLeftColor = Color.gray;
             menu.style.borderRightColor = Color.gray;
             bool hasFace = HasFace(picture);
-            menu.Add(PortraitMenuItem("fmface-portrait-generate", "Generate new face", personId, false, true));
-            menu.Add(PortraitMenuItem("fmface-portrait-update", "Update face", personId, true, hasFace));
+            menu.Add(PortraitMenuItem("regeneratefm-portrait-generate", "Generate new face", personId, false, true));
+            menu.Add(PortraitMenuItem("regeneratefm-portrait-update", "Update face", personId, true, hasFace));
             root.Add(menu);
             _portraitDismissLayer = dismissLayer;
             _portraitMenu = menu;
@@ -2008,10 +2262,10 @@ namespace FMFaceHotReload
                 var picture = FindNamed(FindNamed(CurrentRoot(), "ReportHeader"), "PersonPicture");
                 if (picture == null)
                     return;
-                var previous = picture.Q<VisualElement>("fmface-busy-notice");
+                var previous = picture.Q<VisualElement>("regeneratefm-busy-notice");
                 if (previous != null)
                     previous.RemoveFromHierarchy();
-                var notice = new VisualElement { name = "fmface-busy-notice", pickingMode = PickingMode.Ignore };
+                var notice = new VisualElement { name = "regeneratefm-busy-notice", pickingMode = PickingMode.Ignore };
                 notice.style.position = Position.Absolute;
                 notice.style.left = 0;
                 notice.style.top = 0;
@@ -2074,7 +2328,7 @@ namespace FMFaceHotReload
         }
 
         // The face FM26 is showing, as a PNG, for "Update face". The generator
-        // prefers FM Face's own saved file when this is a generated face.
+        // prefers RegenerateFM's own saved file when this is a generated face.
         private byte[] CaptureReferencePng(VisualElement picture)
         {
             var image = FindNamed(picture, "PersonImage")?.TryCast<SI.UI.Image>();
@@ -2138,10 +2392,10 @@ namespace FMFaceHotReload
         {
             if (picture == null)
                 throw new InvalidOperationException("FM26 player picture was not found.");
-            var previous = picture.Q<VisualElement>("fmface-generating-overlay");
+            var previous = picture.Q<VisualElement>("regeneratefm-generating-overlay");
             if (previous != null)
                 previous.RemoveFromHierarchy();
-            var overlay = new VisualElement { name = "fmface-generating-overlay", pickingMode = PickingMode.Ignore };
+            var overlay = new VisualElement { name = "regeneratefm-generating-overlay", pickingMode = PickingMode.Ignore };
             overlay.style.position = Position.Absolute;
             overlay.style.left = 0;
             overlay.style.top = 0;
@@ -2185,6 +2439,7 @@ namespace FMFaceHotReload
             public string Error;
             public string GraphicsDir;
             public bool KeyRejected;
+            public bool OutOfCredits;
         }
 
         private static async Task<GenerationResult> RequestPortrait(long playerId, ProfileSnapshot profile,
@@ -2203,6 +2458,10 @@ namespace FMFaceHotReload
             {
                 return new GenerationResult { Error = error.Message, KeyRejected = true };
             }
+            catch (OutOfCreditsException error)
+            {
+                return new GenerationResult { Error = error.Message, OutOfCredits = true };
+            }
             catch (Exception error)
             {
                 return new GenerationResult { Error = error.Message };
@@ -2215,7 +2474,7 @@ namespace FMFaceHotReload
             string userData = OperatingSystem.IsMacOS()
                 ? KeyStore.ApplicationSupport
                 : Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-            return Path.Combine(userData, "Sports Interactive", UserDataName, "graphics", "fmface");
+            return Path.Combine(userData, "Sports Interactive", UserDataName, "graphics", "regeneratefm");
         }
 
         // The game's folder under Sports Interactive; SupportedGameBuild sets it for the Demo.
@@ -2231,7 +2490,7 @@ namespace FMFaceHotReload
             string folder = GraphicsFolder();
             if (!Directory.Exists(folder) || !File.Exists(Path.Combine(folder, "config.xml")))
             {
-                Log.LogWarning("FM Face graphics folder or config.xml was not found: " + folder);
+                Log.LogWarning("RegenerateFM graphics folder or config.xml was not found: " + folder);
                 return false;
             }
             var resources = Resources.FindObjectsOfTypeAll<ResourcesSubsystem>();
@@ -2246,13 +2505,13 @@ namespace FMFaceHotReload
                 _lastLocatorUtc = null;
                 _refreshStartedUtc = System.DateTime.UtcNow;
                 resources[0].RegisterLocalPath(folder, null);
-                Log.LogInfo("Requested FM Face graphics reload from " + folder);
+                Log.LogInfo("Requested RegenerateFM graphics reload from " + folder);
                 return true;
             }
             catch (Exception error)
             {
                 WaitingForGraphics = false;
-                Log.LogError("Could not register FM Face graphics: " + error);
+                Log.LogError("Could not register RegenerateFM graphics: " + error);
                 return false;
             }
         }
@@ -2264,7 +2523,7 @@ namespace FMFaceHotReload
             {
                 WaitingForGraphics = false;
                 _lastLocatorUtc = null;
-                Log.LogInfo("FM Face graphics registered after " +
+                Log.LogInfo("RegenerateFM graphics registered after " +
                             (System.DateTime.UtcNow - _refreshStartedUtc).TotalSeconds.ToString("0.0") + " s");
                 GraphicsLoaded();
                 return;
@@ -2276,7 +2535,7 @@ namespace FMFaceHotReload
                 "Portrait saved, but graphics reload timed out. Restart FM26 to load it.");
             _refreshOverlay = null;
             _refreshMessage = null;
-            Log.LogWarning("FM Face graphics reload timed out after 30 seconds; refresh lock released");
+            Log.LogWarning("RegenerateFM graphics reload timed out after 30 seconds; refresh lock released");
         }
 
         private void GraphicsLoaded()
@@ -2290,7 +2549,7 @@ namespace FMFaceHotReload
                 _graphicsLoadSerial++;
                 if (_refreshOverlay != null && _refreshOverlay.parent != null)
                     _refreshOverlay.RemoveFromHierarchy();
-                Log.LogInfo("FM Face graphics loaded and panels refreshed");
+                Log.LogInfo("RegenerateFM graphics loaded and panels refreshed");
             }
             catch (Exception error)
             {
@@ -2356,7 +2615,7 @@ namespace FMFaceHotReload
                 }
                 catch (Exception error)
                 {
-                    Instance.Log.LogWarning("Could not add FM Face Actions item: " + error);
+                    Instance.Log.LogWarning("Could not add RegenerateFM Actions item: " + error);
                 }
             }
 
@@ -2375,7 +2634,7 @@ namespace FMFaceHotReload
                             if (row?.parent?.name == "View")
                                 row.BringToFront();
                         }
-                        Instance.Log.LogInfo("FM Face actions moved to bottom of Actions menu");
+                        Instance.Log.LogInfo("RegenerateFM actions moved to bottom of Actions menu");
                     })).ExecuteLater(1500);
             }
 
@@ -2409,7 +2668,7 @@ namespace FMFaceHotReload
                 if (FaceState(FindNamed(header, "PersonPicture")) == false)
                     context.Description.SetEnabled(update, false);
                 _bound = true;
-                Instance.Log.LogInfo("FM Face actions contributed to the Actions menu for " +
+                Instance.Log.LogInfo("RegenerateFM actions contributed to the Actions menu for " +
                                      (personId?.ToString() ?? "a profile still loading"));
             }
 

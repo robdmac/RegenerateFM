@@ -2,7 +2,7 @@
 """Install/remove the build-pinned experimental FM24 native menu integration.
 
 On Windows and Proton it is winmm.dll beside fm.exe. On macOS it is
-libfmface24.dylib beside fm.app, which FM24 loads through run_fmface24.sh
+libregeneratefm24.dylib beside fm.app, which FM24 loads through run_regeneratefm24.sh
 (its Steam launch option)."""
 
 from __future__ import annotations
@@ -32,9 +32,9 @@ def use_system(macos: bool) -> None:
     SUPPORTED_SHA256 = json.loads((HERE / ("supported_build_macos.json" if macos else "supported_build.json"))
                                   .read_text())["sha256"]
     EXECUTABLE = "fm.app/Contents/MacOS/fm" if macos else "fm.exe"
-    LIBRARY = "libfmface24.dylib" if macos else "winmm.dll"
-    DEFAULT_LIBRARY = HERE / ("build-macos/libfmface24.dylib" if macos else "build/winmm.dll")
-    LAUNCHER = "run_fmface24.sh" if macos else None
+    LIBRARY = "libregeneratefm24.dylib" if macos else "winmm.dll"
+    DEFAULT_LIBRARY = HERE / ("build-macos/libregeneratefm24.dylib" if macos else "build/winmm.dll")
+    LAUNCHER = "run_regeneratefm24.sh" if macos else None
 
 
 use_system(sys.platform == "darwin")
@@ -43,7 +43,7 @@ PANEL_FILES = {"player": "panels/player/player overview panel.xml",
 # Earlier versions added a Squad screen "Faces" button here. The squad command
 # now lives in FM24's own Squad menu, so an upgrade removes that panel change.
 LEGACY_SQUAD_PANEL = "panels/team/team squad.xml"
-BACKUP_SUFFIX = ".fmface-native-backup"
+BACKUP_SUFFIX = ".regeneratefm-native-backup"
 
 
 def digest(path: Path) -> str:
@@ -111,7 +111,7 @@ class Transaction:
 
 
 def _atomic_write(path: Path, data: bytes, mode: int) -> None:
-    descriptor, name = tempfile.mkstemp(prefix=f".{path.name}.fmface-", suffix=".tmp", dir=path.parent)
+    descriptor, name = tempfile.mkstemp(prefix=f".{path.name}.regeneratefm-", suffix=".tmp", dir=path.parent)
     temporary = Path(name)
     try:
         with os.fdopen(descriptor, "wb") as handle:
@@ -135,7 +135,7 @@ def load_manifest(path: Path) -> dict | None:
                     "panels": {PANEL_FILES[kind]: {"sha256": value, "created": False}
                                for kind, value in zip(("player", "staff"), metadata["panelSha256"])}}
     if metadata.get("version") != 2:
-        raise ValueError("Unsupported native FM Face installation manifest.")
+        raise ValueError("Unsupported native RegenerateFM installation manifest.")
     return metadata
 
 
@@ -145,12 +145,12 @@ def has_popup(panel: Path) -> bool:
 
 def config_text(port: int, token: str, companion: str | None, python: str | None = None,
                 python_arch: str | None = None) -> bytes:
-    """fmface24.ini. The DLL reads it with GetPrivateProfileString, which
+    """regeneratefm24.ini. The DLL reads it with GetPrivateProfileString, which
     takes UTF-16 with a byte-order mark, so any companion path works. On
     macOS it is UTF-8: the library reads only its port and token, and
-    run_fmface24.sh starts the companion (companion.py) with ``python``,
+    run_regeneratefm24.sh starts the companion (companion.py) with ``python``,
     as ``python_arch`` (arm64 or x86_64, which its packages are built for)."""
-    text = f"[fmface]\nenabled=1\nport={port}\ntoken={token}\n"
+    text = f"[regeneratefm]\nenabled=1\nport={port}\ntoken={token}\n"
     for key, value in (("companion", companion), ("python", python if MACOS else None),
                        ("python_arch", python_arch if MACOS else None)):
         if value:
@@ -163,7 +163,7 @@ def config_text(port: int, token: str, companion: str | None, python: str | None
 
 
 def read_config(path: Path) -> dict[str, str]:
-    """fmface24.ini's settings, in either encoding."""
+    """regeneratefm24.ini's settings, in either encoding."""
     data = path.read_bytes()
     text = data.decode("utf-16") if data[:2] in (b"\xff\xfe", b"\xfe\xff") else data.decode("utf-8")
     return dict(line.split("=", 1) for line in text.splitlines() if "=" in line)
@@ -179,9 +179,9 @@ def game_running(game: Path) -> bool:
 
 
 def _is_library(data: bytes) -> bool:
-    """An FM Face build of the native library for this system."""
+    """A RegenerateFM build of the native library for this system."""
     magic = data[:4] in (b"\xcf\xfa\xed\xfe",) if MACOS else data[:2] == b"MZ"
-    return magic and b"FMFACE24_NATIVE_MENU_HOOK_INSTALLED" in data
+    return magic and b"REGENERATEFM24_NATIVE_MENU_HOOK_INSTALLED" in data
 
 
 def _restore_panel(skin: Path, name: str, entry: dict, transaction: Transaction) -> None:
@@ -209,12 +209,12 @@ def main(argv: list[str] | None = None) -> None:
     # Accepted for old scripts; the squad command no longer needs a panel.
     parser.add_argument("--squad-panel-source", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--dll", type=Path, default=DEFAULT_LIBRARY,
-                        help=f"the FM Face library to install (default: {DEFAULT_LIBRARY})")
+                        help=f"the RegenerateFM library to install (default: {DEFAULT_LIBRARY})")
     parser.add_argument("--auth-file", type=Path)
     parser.add_argument("--port", type=int, default=8769)
-    parser.add_argument("--companion", help="the companion FM24 starts: fmface-fm24.exe as Windows sees it, "
+    parser.add_argument("--companion", help="the companion FM24 starts: regeneratefm-fm24.exe as Windows sees it, "
                                             "or on macOS fm24/companion.py")
-    parser.add_argument("--python", help="macOS: the Python run_fmface24.sh starts the companion with")
+    parser.add_argument("--python", help="macOS: the Python run_regeneratefm24.sh starts the companion with")
     parser.add_argument("--python-arch", choices=("arm64", "x86_64"), help="macOS: the architecture to run it as")
     parser.add_argument("--remove", action="store_true")
     args = parser.parse_args(argv)
@@ -224,8 +224,8 @@ def main(argv: list[str] | None = None) -> None:
         parser.error("Close FM24 before installing or removing its native DLL.")
     target = game / LIBRARY
     launcher = game / LAUNCHER if LAUNCHER else None
-    config = game / "fmface24.ini"
-    manifest = game / "fmface24-install.json"
+    config = game / "regeneratefm24.ini"
+    manifest = game / "regeneratefm24-install.json"
     try:
         metadata = load_manifest(manifest)
     except (ValueError, KeyError, json.JSONDecodeError) as exc:
@@ -244,9 +244,9 @@ def main(argv: list[str] | None = None) -> None:
     try:
         if args.remove:
             if not metadata:
-                parser.error("No native FM Face installation was found in this folder.")
+                parser.error("No native RegenerateFM installation was found in this folder.")
             _remove(skin, metadata, transaction, [target, config, manifest] + ([launcher] if launcher else []))
-            print("Removed the native library and configuration and restored the original FM Face panels.")
+            print("Removed the native library and configuration and restored the original RegenerateFM panels.")
             if launcher:
                 print("FM24's Steam launch option is removed by fm24/setup_fm24.py --remove "
                       "(or steam_launch.py fm24 --remove).")
@@ -261,7 +261,7 @@ def main(argv: list[str] | None = None) -> None:
             parser.error("Invalid private token or bridge port.")
         dll = args.dll.read_bytes()
         if not _is_library(dll):
-            parser.error("--dll is not an FM Face native menu build for this system.")
+            parser.error("--dll is not a RegenerateFM native menu build for this system.")
 
         # Work out every panel's original text before writing anything.
         installed = metadata["panels"] if metadata else {}
@@ -308,10 +308,10 @@ def main(argv: list[str] | None = None) -> None:
             raise
         failures = transaction.rollback()
         if failures:
-            print("FM Face could not undo every change. Restore these files manually:\n  " +
+            print("RegenerateFM could not undo every change. Restore these files manually:\n  " +
                   "\n  ".join(failures), file=sys.stderr)
         else:
-            print("The native FM Face change failed; all files were restored.", file=sys.stderr)
+            print("The native RegenerateFM change failed; all files were restored.", file=sys.stderr)
         raise
     print("Installed the FM24 native portrait menus and the Squad menu's "
           "\"Generate missing squad faces...\" item with an authenticated loopback bridge.")
@@ -324,7 +324,7 @@ def main(argv: list[str] | None = None) -> None:
     elif not args.companion:
         print('Proton launch option: WINEDLLOVERRIDES="winmm=n,b" %command%')
     if args.companion:
-        print("FM24 starts the FM Face companion itself.")
+        print("FM24 starts the RegenerateFM companion itself.")
     else:
         print("Start the companion while you play (add --preview-only for no-charge tests).")
 

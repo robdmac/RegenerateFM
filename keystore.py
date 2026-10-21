@@ -1,10 +1,10 @@
-"""The player's OpenAI key, kept outside the game and FM Face folders.
+"""The player's OpenAI key, kept outside the game and RegenerateFM folders.
 
 On Windows it is encrypted with DPAPI for the current Windows user, in
-%APPDATA%\\FM Face\\openai-key. On macOS it is in ~/Library/Application
-Support/FM Face/openai-key, readable only by the user. The FM26 plugin
+%APPDATA%\\RegenerateFM\\openai-key. On macOS it is in ~/Library/Application
+Support/RegenerateFM/openai-key, readable only by the user. The FM26 plugin
 (hotreload/FaceGenerator.cs, KeyStore) reads and writes the same file in the
-same format, so the plugin and fmface.py share one key.
+same format, so the plugin and regeneratefm.py share one key.
 """
 
 from __future__ import annotations
@@ -18,9 +18,9 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-PROTECTED = b"FMFK1\n"
-PLAIN = b"FMFK0\n"
-ENTROPY = b"FM Face OpenAI API key"
+PROTECTED = b"RFMK1\n"
+PLAIN = b"RFMK0\n"
+ENTROPY = b"RegenerateFM OpenAI API key"
 KEY_RE = re.compile(r"sk-[A-Za-z0-9_\-]{16,300}")
 KEYS_PAGE = "https://platform.openai.com/api-keys"
 DEFAULT_API = "https://api.openai.com/v1"
@@ -30,11 +30,11 @@ REJECTED = "OpenAI didn't accept this key. Check that you copied all of it."
 def default_path() -> Path | None:
     """The key file on Windows and macOS, or None on Linux (which keeps the key in .env)."""
     if sys.platform == "darwin":
-        return Path.home() / "Library" / "Application Support" / "FM Face" / "openai-key"
+        return Path.home() / "Library" / "Application Support" / "RegenerateFM" / "openai-key"
     if sys.platform != "win32":
         return None
     appdata = os.environ.get("APPDATA")
-    return Path(appdata) / "FM Face" / "openai-key" if appdata else None
+    return Path(appdata) / "RegenerateFM" / "openai-key" if appdata else None
 
 
 def clean(key: str) -> str:
@@ -57,7 +57,7 @@ def load(path: Path) -> str | None:
     elif data.startswith(PLAIN):
         payload = data[len(PLAIN):]
     else:
-        raise ValueError(f"The saved OpenAI key file is not in FM Face's format: {path}")
+        raise ValueError(f"The saved OpenAI key file is not in RegenerateFM's format: {path}")
     return payload.decode("utf-8").strip() or None
 
 
@@ -125,7 +125,7 @@ def _dpapi(data: bytes, protect: bool) -> bytes:
     crypt32 = ctypes.windll.crypt32
     ui_forbidden = 0x1
     if protect:
-        ok = crypt32.CryptProtectData(ctypes.byref(source), "FM Face OpenAI API key", ctypes.byref(entropy),
+        ok = crypt32.CryptProtectData(ctypes.byref(source), "RegenerateFM OpenAI API key", ctypes.byref(entropy),
                                       None, None, ui_forbidden, ctypes.byref(result))
     else:
         ok = crypt32.CryptUnprotectData(ctypes.byref(source), None, ctypes.byref(entropy),

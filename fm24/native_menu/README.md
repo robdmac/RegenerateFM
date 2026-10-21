@@ -48,12 +48,12 @@ Close FM24, then install. `fm24/setup_fm24.py` (and the packaged companion) does
 ```sh
 .venv-fm24/bin/python fm24/native_menu/install.py \
   --game-dir '/path/to/Football Manager 2024' \
-  --skin-dir '/path/to/user-data/Football Manager 2024/skins/fmface' \
+  --skin-dir '/path/to/user-data/Football Manager 2024/skins/regeneratefm' \
   --auth-file .fm24-auth
 ```
 
-This installs `winmm.dll`, a private `fmface24.ini`, and an installation manifest
-beside `fm.exe`. It backs up both FM Face panels before adding the native popup.
+This installs `winmm.dll`, a private `regeneratefm24.ini`, and an installation manifest
+beside `fm.exe`. It backs up both RegenerateFM panels before adding the native popup.
 The Squad menu item needs no skin change. Running the installer again over an
 existing installation upgrades it in place; an earlier installation's Squad
 screen **Faces** button is removed (its panel copy deleted, or your own squad
@@ -66,16 +66,16 @@ paths are derived from the DLL's own location; the network destination is always
 loopback. `--port` changes the native bridge port, default 8769.
 
 **Starting the companion.** `--companion '<path>'` (the packaged
-`fmface-fm24.exe`, as Windows sees it: `Z:\...` under Proton) adds a
-`companion=` line; `fmface24.ini` is then written as UTF-16 with a byte-order
+`regeneratefm-fm24.exe`, as Windows sees it: `Z:\...` under Proton) adds a
+`companion=` line; `regeneratefm24.ini` is then written as UTF-16 with a byte-order
 mark, which `GetPrivateProfileStringW` reads, so any path works. Once its
 hooks are in, the DLL starts that program on a thread of its own with
 `CreateProcessW` (`DETACHED_PROCESS`, so no window), passing
 `--started-by-fm24 <FM24's process ID> --game-dir "<FM24's folder>"`, and logs
-`FMFACE24_COMPANION_STARTED`, `_MISSING`, `_NOT_CONFIGURED` or
-`_START_FAILED error=<n>`. The companion logs to `fmface-fm24.log` beside
+`REGENERATEFM24_COMPANION_STARTED`, `_MISSING`, `_NOT_CONFIGURED` or
+`_START_FAILED error=<n>`. The companion logs to `regeneratefm-fm24.log` beside
 itself, waits on FM24's process handle and exits with it, and exits at once
-if another companion holds its port. With no key saved it shows FM Face's
+if another companion holds its port. With no key saved it shows RegenerateFM's
 key dialog ([key_dialog.py](../key_dialog.py), a Win32 window with a password
 edit box; a Wine console can't take a paste from the desktop clipboard, but
 an edit box can). Under Proton, Wine ends the companion with FM24's session anyway. The
@@ -97,7 +97,7 @@ first test, include `--preview-only`:
 ```sh
 .venv-fm24/bin/python fm24/companion.py \
   --auth-file .fm24-auth \
-  --graphics-dir '/path/to/Football Manager 2024/graphics/fmface' \
+  --graphics-dir '/path/to/Football Manager 2024/graphics/regeneratefm' \
   --preview-only
 ```
 
@@ -110,7 +110,7 @@ On the Squad screen, open the **Overview** menu and choose **Generate missing
 squad faces…**. FM24 builds that menu from provider objects; the DLL replaces
 two validated vtable entries of the provider that adds **Export Team for Versus
 Competition**. Its item-adding method calls the original and then appends the
-FM Face item through the same game functions, and its command handler queues
+RegenerateFM item through the same game functions, and its command handler queues
 `FMFS` and passes every other command to the original.
 
 The same item is added to a team's tab menu: a tab of FM24's tab-button class
@@ -161,7 +161,7 @@ opens no profiles and reads no screenshots:
   squad command refuses; nothing is scrolled.
 - **Portrait state:** FM24's graphics index, read in the same pass. A player
   is missing when no `graphics/pictures/person/<id>/portrait` key is indexed.
-  The index keeps a key after its FM Face mapping is deleted, so such a
+  The index keeps a key after its RegenerateFM mapping is deleted, so such a
   player is treated as having a portrait (no request is made).
 - **Prompts:** each missing player's record (birth date, nationality,
   position ratings, height and attributes), the row's display name, the
@@ -223,7 +223,7 @@ its own `FMDY`/`FMDN` events, which the hook consumes.
   after each face destroys open dialogs without any event, so a finished
   reload marks the dialog closed and the companion opens a new one for the
   next face. At the end the dialog becomes the result message.
-- **Portrait progress:** the text of FM Face's portrait popup (`fmnP`/`fmnS`)
+- **Portrait progress:** the text of RegenerateFM's portrait popup (`fmnP`/`fmnS`)
   is set the same way: Generating…, Updating…, Loading…, Failed. The reload
   that loads the new face rebuilds the popup, which clears it. With another
   skin there is no popup, so the companion opens an OK dialog ("Generating a
@@ -237,8 +237,8 @@ navigation or a reload. If FM24 cannot show a dialog or set progress, the
 message goes to the companion terminal, and an unanswered squad confirmation
 counts as Cancel. The companion's
 commands use the authenticated loopback listener on bridge port + 1:
-`FMFACE24D` (dialogs; replies queued, busy, shown, yes, no, closed, failed)
-and `FMFACE24P` (progress text), with base64 UTF-8 text.
+`REGENERATEFM24D` (dialogs; replies queued, busy, shown, yes, no, closed, failed)
+and `REGENERATEFM24P` (progress text), with base64 UTF-8 text.
 
 The event keeps its properties as a vector of `{fourcc key, value pointer}` at
 offset 0; the `slct` value holds the chosen row's ID at +8 and must have the
@@ -250,16 +250,16 @@ a message. The bridge then sends `update` instead of `profile`.
 When either row is chosen, the DLL reads the person ID from game
 memory inside FM24's menu callback, on the game's UI thread, before returning
 to the game. FM24 cannot navigate while that callback runs. It starts from the
-event's source widget, which must be FM Face's `fmnP` (player) or `fmnS`
+event's source widget, which must be RegenerateFM's `fmnP` (player) or `fmnS`
 (staff) menu button belonging to the UI manager the callback receives. It
 walks up the widget parents until one has the sidebar (`side`, of the
 sidebar's own class) as a child, reads the screen's object from it, and looks
 the person up in FM24's person table, as the companion does. The layout
-constants are in `fmface24.c` and are pinned to the validated executable. The
+constants are in `regeneratefm24.c` and are pinned to the validated executable. The
 source and exactly one sidebar must be found, within bounded searches. All
 reads use `ReadProcessMemory` on the
 game's own process, so a stale pointer cannot crash FM24. If anything does not
-match, the command carries ID 0 and the companion refuses it. `fmface24.log`
+match, the command carries ID 0 and the companion refuses it. `regeneratefm24.log`
 records the ID and the read time for each click.
 
 The request is bound to that ID. Before any image request, the companion reads
@@ -293,11 +293,11 @@ manual Preferences > Reload Skin is needed.
 If the companion is not running, the DLL retries for about two seconds and then
 shows a message; the next click tries again, so the companion can be started or
 restarted while FM24 is running. Failures also appear in a dialog, not only in
-the companion terminal. `fmface24.log` beside `fm.exe` records timestamped
+the companion terminal. `regeneratefm24.log` beside `fm.exe` records timestamped
 bridge events.
 
 To uninstall, close FM24 and run the installer with the same game and skin paths
-and `--remove`; then remove the Steam DLL override. The original FM Face panels
+and `--remove`; then remove the Steam DLL override. The original RegenerateFM panels
 are restored. The installer only removes the DLL whose checksum it recorded.
 
 ## Profile menus
@@ -323,8 +323,8 @@ the rows. The DLL then:
   used: FM24 loads it from `actions.fmf` and ignores a skin copy.
 - **Update face greyed out:** for the portrait popup (`fmnP`/`fmnS`) and the
   Overview tab menu, the DLL reads the person ID and asks the companion
-  `FMFACE24F 1 <serial> <person> <token>` on the bridge port; the reply is
-  `FMFACE24F <serial> yes|no`. On `no` it sets the `FMFU` row's `disa`
+  `REGENERATEFM24F 1 <serial> <person> <token>` on the bridge port; the reply is
+  `REGENERATEFM24F <serial> yes|no`. On `no` it sets the `FMFU` row's `disa`
   property, which FM24 draws greyed out and ignores clicks on; on `yes` it
   clears it. The UI thread waits at most 30 ms. Without an answer (no
   companion, an older companion, a failed check) the row stays enabled and
@@ -342,12 +342,12 @@ the rows. The DLL then:
   at most every 30 seconds. FM24's bundled pictures take about half a second
   to index, so that runs in the background on the first check (or at
   companion start if FM24 is running), and until it finishes there is no
-  answer. `fmface24.log` records each check
-  (`FMFACE24_POPUP` or `FMFACE24_OVERVIEW_MENU`, the person, the answer, and
+  answer. `regeneratefm24.log` records each check
+  (`REGENERATEFM24_POPUP` or `REGENERATEFM24_OVERVIEW_MENU`, the person, the answer, and
   the microseconds spent reading the ID and waiting for the answer). Measured
   on 2026-10-16: the ID read takes 1–2 ms and the answer about 0.5 ms (8 ms
   for the first check after FM24 starts), so a menu opens about 2–3 ms later
-  than without FM Face. Without a companion the first menu pauses 30 ms and
+  than without RegenerateFM. Without a companion the first menu pauses 30 ms and
   later ones about 0.2 ms; after the companion starts, one check goes
   unanswered and the rest are answered in about 0.3 ms.
 
@@ -393,13 +393,13 @@ separate validation before making this the default release integration.
 
 ## Performance
 
-`build.py --perf` builds a DLL that times FM Face's own work on FM24's UI
-thread (excluding the game's handler) and logs it to `fmface24.log` once a
-minute as `FMFACE24_PERF`. A normal build contains none of this code.
+`build.py --perf` builds a DLL that times RegenerateFM's own work on FM24's UI
+thread (excluding the game's handler) and logs it to `regeneratefm24.log` once a
+minute as `REGENERATEFM24_PERF`. A normal build contains none of this code.
 
 Measured on 2026-10-15 with the tested save:
 
-| Activity | Events/min | FM Face time/min | Worst single event |
+| Activity | Events/min | RegenerateFM time/min | Worst single event |
 |---|---|---|---|
 | Idle on Home | 1,200–1,700 | about 0.35 ms | under 0.02 ms |
 | Clicking through screens and popups | about 2,600 | about 0.6 ms | under 0.01 ms |
@@ -434,9 +434,9 @@ byte searches. The companion now avoids repeat passes:
 
 FM24 24.4.2 for Mac is a universal clang build with the hardened runtime. Its
 entitlements allow `DYLD_INSERT_LIBRARIES` and libraries of other teams, so
-`run_fmface24.sh` (FM24's Steam launch option) loads `libfmface24.dylib` into
+`run_regeneratefm24.sh` (FM24's Steam launch option) loads `libregeneratefm24.dylib` into
 the arm64 game without touching `fm.app`. `build_macos.py` builds it from
-[fmface24_macos.c](fmface24_macos.c), the same logic as `fmface24.c` with
+[regeneratefm24_macos.c](regeneratefm24_macos.c), the same logic as `regeneratefm24.c` with
 pthreads and BSD sockets. The library checks the arm64 slice's LC_UUID and
 the original vtable pointers before hooking, and the installer checks the
 executable's SHA-256, both pinned in
@@ -464,7 +464,7 @@ offsets as in fm.exe.
 **Memory.** The companion can't read FM24's memory on macOS: the hardened
 runtime without get-task-allow makes `task_for_pid` fail, even as root. The
 library listens on loopback TCP at the bridge port + 2. After
-`FMFACE24M 1 <token>` it answers three requests: the image header and UUID,
+`REGENERATEFM24M 1 <token>` it answers three requests: the image header and UUID,
 the read/write regions not backed by a file, and guarded reads
 (`mach_vm_read_overwrite` on its own task), up to 16 MB each. It writes
 nothing. `process_memory_macos.py` gives the companion the same functions as
@@ -514,25 +514,25 @@ sends the ID, so the companion needs no `r<reference>`.
 
 **Key prompt.** On the Mac, FM24 asks for the OpenAI key itself, like the
 FM26 plugin. When a face command finds no saved key (or one OpenAI rejected),
-the companion sends `FMFACE24K 1 <serial> <token> <base64 text>` to the
+the companion sends `REGENERATEFM24K 1 <serial> <token> <base64 text>` to the
 bridge port + 1, and the library shows [key_prompt_macos.m](key_prompt_macos.m)'s
 prompt as a sheet on FM24's window: a secure field (Cmd+V pastes, though
 FM24 has no Edit menu), Save key, Cancel and Get a key…, which opens OpenAI's
 key page. Polling the same serial answers `shown`, `key <base64>` or
 `cancel`; the typed key stays in the library only until the next request.
 The companion checks the key with OpenAI (free), asks again with the reason
-if it fails, and saves it in `~/Library/Application Support/FM Face`.
+if it fails, and saves it in `~/Library/Application Support/RegenerateFM`.
 
-**Companion.** `run_fmface24.sh` starts the companion, as the Windows DLL
+**Companion.** `run_regeneratefm24.sh` starts the companion, as the Windows DLL
 does: `setup_fm24.py` records `companion=` (this source's `companion.py`),
 `python=` (the Python it ran with, which has the companion's packages) and
-`python_arch=` in `fmface24.ini`. Steam runs the launcher under Rosetta, so
+`python_arch=` in `regeneratefm24.ini`. Steam runs the launcher under Rosetta, so
 the companion is started as that Python's architecture (`arch -arm64`). It
 gets the launcher's process ID, which `exec` hands to FM24, stops when FM24
 does or at once if a companion is already running, and logs to
-`fmface24-companion.log` beside `fm.app`. The launcher's Apple Silicon check
+`regeneratefm24-companion.log` beside `fm.app`. The launcher's Apple Silicon check
 is `sysctl hw.optional.arm64`, not `uname -m`, which says x86_64 under
-Steam's Rosetta (the check made FM24 start without FM Face from Steam).
+Steam's Rosetta (the check made FM24 start without RegenerateFM from Steam).
 
 Checked on 2026-10-17 on an Apple M2 (macOS 26) with a copy of a real save,
 in preview mode: a player (Sly) and a staff member (Terry McPhillips) read

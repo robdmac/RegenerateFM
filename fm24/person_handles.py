@@ -209,7 +209,7 @@ def person_record_for_reference(pid: int, reference: int, *, wait: bool = True) 
     if last is None or time.monotonic() - last > _REBUILD_AFTER:
         if not wait:
             build_in_background(pid)
-            raise RuntimeError("FM Face is still indexing FM24's people.")
+            raise RuntimeError("RegenerateFM is still indexing FM24's people.")
         build(pid)
         with _lock:
             record = _index.get(pid, {}).get(handle)

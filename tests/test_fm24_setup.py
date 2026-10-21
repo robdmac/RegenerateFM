@@ -60,14 +60,14 @@ class SetupTests(unittest.TestCase):
 
     def test_installed_token_is_read_from_the_dll_settings(self):
         self.assertIsNone(setup_fm24.installed_token(self.root))
-        (self.root / "fmface24.ini").write_text(f"[fmface]\nenabled=1\nport=8769\ntoken={TOKEN}\n", encoding="ascii")
+        (self.root / "regeneratefm24.ini").write_text(f"[regeneratefm]\nenabled=1\nport=8769\ntoken={TOKEN}\n", encoding="ascii")
         self.assertEqual(setup_fm24.installed_token(self.root), TOKEN)
 
     def test_setup_keeps_the_token_fm24_already_has(self):
         game, user_data = self.root / "game", self.root / "user"
         game.mkdir()
         user_data.mkdir()
-        (game / "fmface24.ini").write_text(f"token={TOKEN}\n", encoding="ascii")
+        (game / "regeneratefm24.ini").write_text(f"token={TOKEN}\n", encoding="ascii")
         dll = self.root / "winmm.dll"
         dll.write_bytes(b"MZ")
         auth = self.root / "new-folder" / ".fm24-auth"
@@ -78,9 +78,9 @@ class SetupTests(unittest.TestCase):
                 mock.patch("builtins.print"):
             setup_fm24.setup(game, user_data, auth)
         self.assertEqual(auth.read_text(encoding="ascii").strip(), TOKEN)
-        build.assert_called_once_with(game, user_data / "skins" / "fmface")
+        build.assert_called_once_with(game, user_data / "skins" / "regeneratefm")
         self.assertIn(str(auth), install.call_args.args[0])
-        self.assertTrue((user_data / "graphics" / "fmface").is_dir())
+        self.assertTrue((user_data / "graphics" / "regeneratefm").is_dir())
 
     def test_refuses_while_steam_runs_until_the_launch_option_is_set(self):
         with mock.patch.object(setup_fm24.steam_launch, "steam_running", return_value=True), \
@@ -97,7 +97,7 @@ class SetupTests(unittest.TestCase):
             setup_fm24.setup(self.root, self.root, self.root / "auth")
 
     def test_linux_setup_names_the_packaged_companion_as_wine_sees_it(self):
-        companion = self.root / "FM Face" / "FM24" / "fmface-fm24.exe"
+        companion = self.root / "RegenerateFM" / "FM24" / "regeneratefm-fm24.exe"
         dll = companion.parent / "_internal" / "fm24-dll" / "winmm.dll"
         dll.parent.mkdir(parents=True)
         dll.write_bytes(b"MZ")
@@ -130,8 +130,8 @@ class SetupTests(unittest.TestCase):
         dll.write_bytes(b"MZ dll")
         (game / "winmm.dll").write_bytes(b"MZ dll")
         digest = setup_fm24.native_install.digest(dll)
-        (game / "fmface24-install.json").write_text('{"version": 2, "dllSha256": "%s", "panels": {}}' % digest)
-        (game / "fmface24.ini").write_text(f"token={TOKEN}\n", encoding="ascii")
+        (game / "regeneratefm24-install.json").write_text('{"version": 2, "dllSha256": "%s", "panels": {}}' % digest)
+        (game / "regeneratefm24.ini").write_text(f"token={TOKEN}\n", encoding="ascii")
         auth = self.root / ".fm24-auth"
         auth.write_text(TOKEN + "\n", encoding="ascii")
         with mock.patch.object(setup_fm24, "bundled_dll", return_value=dll):

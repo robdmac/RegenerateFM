@@ -1,4 +1,4 @@
-"""The FM26 plugin's C# generator must build the same prompts and files as fmface.py."""
+"""The FM26 plugin's C# generator must build the same prompts and files as regeneratefm.py."""
 
 import io
 import json
@@ -14,7 +14,7 @@ from pathlib import Path
 
 from PIL import Image
 
-import fmface
+import regeneratefm
 
 ROOT = Path(__file__).resolve().parent.parent
 PROJECT = ROOT / "tests" / "fm26_generator" / "GeneratorCheck.csproj"
@@ -120,8 +120,8 @@ class GeneratorParityTests(unittest.TestCase):
     def python_prompt(self, action, profile, **kwargs):
         try:
             if action == "update":
-                return {"prompt": fmface.update_prompt(profile)}
-            return {"prompt": fmface.profile_prompt(profile, **kwargs)}
+                return {"prompt": regeneratefm.update_prompt(profile)}
+            return {"prompt": regeneratefm.profile_prompt(profile, **kwargs)}
         except ValueError as exc:
             return {"error": str(exc)}
 
@@ -161,19 +161,19 @@ class GeneratorParityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             # Python saves the traits for one person and C# saves them for another;
             # each reads the other's file and builds the same prompt.
-            python_first = fmface.profile_prompt(PLAYER, person_id="111", appearance_dir=Path(tmp))
+            python_first = regeneratefm.profile_prompt(PLAYER, person_id="111", appearance_dir=Path(tmp))
             csharp = self.run_cases([
                 {"action": "profile", "profile": PLAYER, "personId": "111", "directory": tmp},
                 {"action": "profile", "profile": PLAYER, "personId": "222", "directory": tmp},
                 {"action": "profile", "profile": PLAYER, "personId": "x", "directory": tmp},
             ])
             self.assertEqual(csharp[0], {"prompt": python_first})
-            self.assertTrue((Path(tmp) / ".fmface-appearances" / "222.json").is_file())
-            self.assertEqual(csharp[1], {"prompt": fmface.profile_prompt(PLAYER, person_id="222", appearance_dir=Path(tmp))})
+            self.assertTrue((Path(tmp) / ".regeneratefm-appearances" / "222.json").is_file())
+            self.assertEqual(csharp[1], {"prompt": regeneratefm.profile_prompt(PLAYER, person_id="222", appearance_dir=Path(tmp))})
             self.assertEqual(csharp[2], {"error": "Player ID must contain only digits (up to 20)."})
             for age in (16, 30, 50):
                 for seed in ("5118334", "name:jak stewart"):
-                    self.assertEqual(fmface.appearance_traits(seed, age),
+                    self.assertEqual(regeneratefm.appearance_traits(seed, age),
                                      self.traits(seed, age), (seed, age))
 
     def traits(self, seed, age):
@@ -182,14 +182,14 @@ class GeneratorParityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             if seed.startswith("name:"):
                 result = self.run_cases([{"action": "profile", "profile": dict(profile, name="Jak Stewart")}])[0]
-                expected = fmface.profile_prompt(dict(profile, name="Jak Stewart"))
+                expected = regeneratefm.profile_prompt(dict(profile, name="Jak Stewart"))
             else:
                 result = self.run_cases([{"action": "profile", "profile": profile, "personId": seed, "directory": tmp}])[0]
-                saved = json.loads((Path(tmp) / ".fmface-appearances" / f"{seed}.json").read_text())
+                saved = json.loads((Path(tmp) / ".regeneratefm-appearances" / f"{seed}.json").read_text())
                 self.assertEqual(saved["schemaVersion"], 1)
                 return saved["traits"]
         self.assertEqual(result["prompt"], expected)
-        return fmface.appearance_traits(seed, age)
+        return regeneratefm.appearance_traits(seed, age)
 
     def test_portraits_are_scaled_like_pillow_and_saved_compatibly(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -202,7 +202,7 @@ class GeneratorParityTests(unittest.TestCase):
                 {"action": "current", "directory": str(graphics), "personId": "5"},
             ])
             self.assertEqual(results, [{}, {"found": False}])
-            with Image.open(fitted) as ours, Image.open(io.BytesIO(fmface.fit_portrait(source.read_bytes()))) as pillow:
+            with Image.open(fitted) as ours, Image.open(io.BytesIO(regeneratefm.fit_portrait(source.read_bytes()))) as pillow:
                 self.assertEqual((ours.size, ours.mode), ((256, 256), "RGBA"))
                 # Compare premultiplied colour: a nearly transparent pixel's colour is invisible.
                 diff = [abs(a * p[3] - b * q[3]) / 255 if i < 3 else abs(a - b)
@@ -210,7 +210,7 @@ class GeneratorParityTests(unittest.TestCase):
             self.assertLess(sum(diff) / len(diff), 1.0)
             self.assertLessEqual(max(diff), 8)
             # C# saves into a folder Python already mapped another person in.
-            fmface.save_portrait(graphics, "7", fitted.read_bytes(), newgen=None, replace=True)
+            regeneratefm.save_portrait(graphics, "7", fitted.read_bytes(), newgen=None, replace=True)
             results = self.run_cases([
                 {"action": "save", "directory": str(graphics), "personId": "5", "input": str(fitted)},
                 {"action": "save", "directory": str(graphics), "personId": "5", "input": str(fitted)},
@@ -227,7 +227,7 @@ class GeneratorParityTests(unittest.TestCase):
             self.assertFalse(first.exists())  # replaced by the second
             self.assertEqual(results[2:4], [{"found": True}, {"found": True}])
             self.assertIn("error", results[4])
-            _, maps = fmface.load_graphics_maps(graphics)
+            _, maps = regeneratefm.load_graphics_maps(graphics)
             self.assertEqual(sorted((r.get("from"), r.get("to")) for r in maps), [
                 (second.stem, "graphics/pictures/person/5/portrait"), (second.stem, "graphics/pictures/person/r-5/portrait"),
                 ("7", "graphics/pictures/person/7/portrait"), ("7", "graphics/pictures/person/r-7/portrait"),
@@ -246,7 +246,7 @@ class GeneratorParityTests(unittest.TestCase):
         requests, image, base = self.requests, self.image, self.base
         with tempfile.TemporaryDirectory() as tmp:
             reference = Path(tmp) / "reference.png"
-            reference_png = fmface.fit_portrait(image)
+            reference_png = regeneratefm.fit_portrait(image)
             reference.write_bytes(reference_png)
             out = Path(tmp) / "out.png"
             results = self.run_cases([
@@ -268,7 +268,7 @@ class GeneratorParityTests(unittest.TestCase):
         self.assertEqual(len(requests), 3)
         path, auth, content_type, body = requests[0]
         self.assertEqual((path, auth, content_type.split(";")[0]), ("/v1/images/generations", "Bearer sk-test", "application/json"))
-        _, settings = fmface._image_settings({"OPENAI_API_KEY": "sk-test", "OPENAI_IMAGE_QUALITY": "low"})
+        _, settings = regeneratefm._image_settings({"OPENAI_API_KEY": "sk-test", "OPENAI_IMAGE_QUALITY": "low"})
         self.assertEqual(json.loads(body), dict(settings, prompt="A face"))
         path, auth, content_type, body = requests[1]
         self.assertEqual((path, content_type.split(";")[0]), ("/v1/images/edits", "multipart/form-data"))
@@ -281,7 +281,7 @@ class GeneratorParityTests(unittest.TestCase):
     def test_key_is_checked_for_free_and_kept_outside_the_game_folder(self):
         good = "sk-good-key-0123456789abcdef"
         with tempfile.TemporaryDirectory() as tmp:
-            path = str(Path(tmp) / "FM Face" / "openai-key")
+            path = str(Path(tmp) / "RegenerateFM" / "openai-key")
             results = self.run_cases([
                 {"action": "loadkey", "path": path},
                 {"action": "checkkey", "baseUrl": self.base, "apiKey": good},
@@ -293,7 +293,7 @@ class GeneratorParityTests(unittest.TestCase):
                 {"action": "loadkey", "path": path},
             ])
             # Off Windows the file is marked unencrypted; on Windows it is DPAPI-encrypted.
-            marker = b"FMFK1\n" if sys.platform == "win32" else b"FMFK0\n"
+            marker = b"RFMK1\n" if sys.platform == "win32" else b"RFMK0\n"
             self.assertTrue(Path(path).read_bytes().startswith(marker))
         self.assertEqual(results[0], {"apiKey": None})
         self.assertEqual(results[1], {"problem": None})
@@ -311,7 +311,7 @@ class GeneratorParityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             graphics = Path(tmp) / "graphics"
             shown = Path(tmp) / "shown.png"
-            shown_png = fmface.fit_portrait(_png(512))
+            shown_png = regeneratefm.fit_portrait(_png(512))
             shown.write_bytes(shown_png)
             ok = {"apiKey": "sk-test", "baseUrl": self.base, "directory": str(graphics)}
             results = self.run_cases([
@@ -336,7 +336,7 @@ class GeneratorParityTests(unittest.TestCase):
         self.assertEqual(failed[1], {"error": "Staff age is missing or invalid."})
         paths = [request[0] for request in self.requests]
         self.assertEqual(paths, ["/v1/images/edits", "/v1/images/edits", "/v1/images/generations", "/v1/images/generations"])
-        # The first update starts from the game's picture, the second from FM Face's saved face.
+        # The first update starts from the game's picture, the second from RegenerateFM's saved face.
         self.assertIn(shown_png, self.requests[0][3])
         self.assertNotIn(shown_png, self.requests[1][3])
         self.assertIn(saved, self.requests[1][3])

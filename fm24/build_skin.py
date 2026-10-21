@@ -10,12 +10,12 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 SKIN_CONFIG = """<record>
-  <translation id="name" type="new" value="FM Face"/>
-  <string id="author" value="FM Face"/>
+  <translation id="name" type="new" value="RegenerateFM"/>
+  <string id="author" value="RegenerateFM"/>
   <translation id="description" type="new" value="FM24 on-demand portraits"/>
   <string id="version" value="0.1"/>
   <flags id="parent" value="fm"/>
-  <string id="skin_name" value="FM Face"/>
+  <string id="skin_name" value="RegenerateFM"/>
   <string id="required_version" value="24.0.0"/>
 </record>
 """

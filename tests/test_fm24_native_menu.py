@@ -65,7 +65,7 @@ class Bridge:
         clicked = round((time.time() - age) * 1000)
         if person is None:
             person = "123" if action == "profile" else "0"
-        self.client.sendto(f"FMFACE24 5 {pid} {serial} {action} {clicked} {person} {token}".encode(),
+        self.client.sendto(f"REGENERATEFM24 5 {pid} {serial} {action} {clicked} {person} {token}".encode(),
                            self.address)
 
     def reply(self):
@@ -84,11 +84,11 @@ class NativeBridgeTests(unittest.TestCase):
         with patch.object(native_listener.threading.Thread, "start", side_effect=RuntimeError("thread limit")), \
                 patch.object(native_listener, "request_generation") as request:
             bridge.send(1)
-            self.assertEqual(bridge.reply(), b"FMFACE24 ACK 1 accepted")
+            self.assertEqual(bridge.reply(), b"REGENERATEFM24 ACK 1 accepted")
             self.assertTrue(notified.wait(2))
             notified.clear()
             bridge.send(2)
-            self.assertEqual(bridge.reply(), b"FMFACE24 ACK 2 accepted")
+            self.assertEqual(bridge.reply(), b"REGENERATEFM24 ACK 2 accepted")
             self.assertTrue(notified.wait(2))
             request.assert_not_called()
         self.assertTrue(all("thread limit" in message for message in failures))
@@ -110,13 +110,13 @@ class NativeBridgeTests(unittest.TestCase):
                     bridge.reply()
                 self.assertFalse(started.is_set())
                 bridge.send(1)
-                self.assertEqual(bridge.reply(), b"FMFACE24 ACK 1 accepted")
+                self.assertEqual(bridge.reply(), b"REGENERATEFM24 ACK 1 accepted")
                 self.assertTrue(started.wait(1))
                 # A retransmission gets the same answer and starts nothing new.
                 bridge.send(1)
-                self.assertEqual(bridge.reply(), b"FMFACE24 ACK 1 accepted")
+                self.assertEqual(bridge.reply(), b"REGENERATEFM24 ACK 1 accepted")
                 bridge.send(2)
-                self.assertEqual(bridge.reply(), b"FMFACE24 ACK 2 busy")
+                self.assertEqual(bridge.reply(), b"REGENERATEFM24 ACK 2 busy")
                 bridge.send(1)
                 with self.assertRaises(socket.timeout):
                     bridge.reply()
@@ -145,7 +145,7 @@ class NativeBridgeTests(unittest.TestCase):
         with patch.object(native_listener, "request_generation", side_effect=generate):
             bridge = Bridge(self, notify=failures.append)
             bridge.send(1, person="14240979", age=.53)
-            self.assertEqual(bridge.reply(), b"FMFACE24 ACK 1 accepted")
+            self.assertEqual(bridge.reply(), b"REGENERATEFM24 ACK 1 accepted")
             self.assertTrue(done.wait(2))
         self.assertEqual(seen, ["14240979"])
 
@@ -161,7 +161,7 @@ class NativeBridgeTests(unittest.TestCase):
         with patch.object(native_listener, "request_generation", side_effect=generate):
             bridge = Bridge(self)
             bridge.send(1, action="update", person="7458500")
-            self.assertEqual(bridge.reply(), b"FMFACE24 ACK 1 accepted")
+            self.assertEqual(bridge.reply(), b"REGENERATEFM24 ACK 1 accepted")
             self.assertTrue(done.wait(2))
         self.assertEqual(seen, [("7458500", "update")])
 
@@ -177,12 +177,12 @@ class NativeBridgeTests(unittest.TestCase):
         with patch.object(native_listener, "request_generation") as request:
             bridge = Bridge(self, notify=lambda message: (failures.append(message), done.set()))
             bridge.send(1, person="0")
-            self.assertEqual(bridge.reply(), b"FMFACE24 ACK 1 accepted")
+            self.assertEqual(bridge.reply(), b"REGENERATEFM24 ACK 1 accepted")
             self.assertTrue(done.wait(2))
             request.assert_not_called()
             request.side_effect = generate
             bridge.send(2)  # The refusal released the busy lock.
-            self.assertEqual(bridge.reply(), b"FMFACE24 ACK 2 accepted")
+            self.assertEqual(bridge.reply(), b"REGENERATEFM24 ACK 2 accepted")
             self.assertTrue(generated.wait(2))
         self.assertIn("did not report which person", failures[0])
         self.assertEqual(request.call_args.kwargs["expected_id"], "123")
@@ -197,7 +197,7 @@ class NativeBridgeTests(unittest.TestCase):
                  patch.object(native_listener, "describe_result", side_effect=lambda value: done.set() or ""):
                 bridge = Bridge(self, notify=notices.append)
                 bridge.send(1)
-                self.assertEqual(bridge.reply(), b"FMFACE24 ACK 1 accepted")
+                self.assertEqual(bridge.reply(), b"REGENERATEFM24 ACK 1 accepted")
                 self.assertTrue(done.wait(2))
                 time.sleep(.1)
                 bridge.close()
@@ -207,20 +207,20 @@ class NativeBridgeTests(unittest.TestCase):
         with patch.object(native_listener, "request_generation") as request:
             bridge = Bridge(self)
             bridge.send(1, age=5)
-            self.assertEqual(bridge.reply(), b"FMFACE24 ACK 1 stale")
+            self.assertEqual(bridge.reply(), b"REGENERATEFM24 ACK 1 stale")
             # The retransmission gets the same refusal.
             bridge.send(1, age=5.7)
-            self.assertEqual(bridge.reply(), b"FMFACE24 ACK 1 stale")
+            self.assertEqual(bridge.reply(), b"REGENERATEFM24 ACK 1 stale")
             bridge.send(2, action="squad", age=3)
-            self.assertEqual(bridge.reply(), b"FMFACE24 ACK 2 stale")
+            self.assertEqual(bridge.reply(), b"REGENERATEFM24 ACK 2 stale")
             # Future-dated (clock jump) commands are refused too.
             bridge.send(3, age=-2)
-            self.assertEqual(bridge.reply(), b"FMFACE24 ACK 3 stale")
+            self.assertEqual(bridge.reply(), b"REGENERATEFM24 ACK 3 stale")
             # A fresh click is still accepted: the refusal never takes the busy lock.
             done = threading.Event()
             request.side_effect = lambda *args, **kwargs: (done.set(), {"ok": True, "preview": True})[1]
             bridge.send(4, person="456")
-            self.assertEqual(bridge.reply(), b"FMFACE24 ACK 4 accepted")
+            self.assertEqual(bridge.reply(), b"REGENERATEFM24 ACK 4 accepted")
             self.assertTrue(done.wait(2))
         self.assertEqual(request.call_args.kwargs["expected_id"], "456")
 
@@ -229,15 +229,15 @@ class NativeBridgeTests(unittest.TestCase):
         with patch.object(native_listener, "run_native_squad_batch", side_effect=lambda *args, **kwargs: done.set()) as batch:
             bridge = Bridge(self)
             bridge.send(1, action="squad")
-            self.assertEqual(bridge.reply(), b"FMFACE24 ACK 1 accepted")
+            self.assertEqual(bridge.reply(), b"REGENERATEFM24 ACK 1 accepted")
             self.assertTrue(done.wait(2))
         batch.assert_called_once()
 
     def test_old_protocol_packets_are_ignored(self):
         bridge = Bridge(self)
         clicked = round(time.time() * 1000)
-        for packet in (f"FMFACE24 1 77 1 profile {KEY}", f"FMFACE24 2 77 1 profile {clicked} {KEY}",
-                       f"FMFACE24 3 77 1 profile {clicked} 123 {KEY}"):
+        for packet in (f"REGENERATEFM24 1 77 1 profile {KEY}", f"REGENERATEFM24 2 77 1 profile {clicked} {KEY}",
+                       f"REGENERATEFM24 3 77 1 profile {clicked} 123 {KEY}"):
             bridge.client.sendto(packet.encode(), bridge.address)
             with self.assertRaises(socket.timeout):
                 bridge.reply()
@@ -245,11 +245,11 @@ class NativeBridgeTests(unittest.TestCase):
     def test_face_check_answers_for_the_popup(self):
         asked = []
         bridge = Bridge(self, has_face=lambda person: asked.append(person) or person == "123")
-        for serial, person, answer in ((1, "123", b"FMFACE24F 1 yes"), (2, "456", b"FMFACE24F 2 no")):
-            bridge.client.sendto(f"FMFACE24F 1 {serial} {person} {KEY}".encode(), bridge.address)
+        for serial, person, answer in ((1, "123", b"REGENERATEFM24F 1 yes"), (2, "456", b"REGENERATEFM24F 2 no")):
+            bridge.client.sendto(f"REGENERATEFM24F 1 {serial} {person} {KEY}".encode(), bridge.address)
             self.assertEqual(bridge.reply(), answer)
-        for packet in ("FMFACE24F 1 3 123 incorrect", f"FMFACE24F 2 3 123 {KEY}", f"FMFACE24F 1 3 ../1 {KEY}",
-                       f"FMFACE24F 1 3 123 {KEY} extra"):
+        for packet in ("REGENERATEFM24F 1 3 123 incorrect", f"REGENERATEFM24F 2 3 123 {KEY}", f"REGENERATEFM24F 1 3 ../1 {KEY}",
+                       f"REGENERATEFM24F 1 3 123 {KEY} extra"):
             bridge.client.sendto(packet.encode(), bridge.address)
             with self.assertRaises(socket.timeout):
                 bridge.reply()
@@ -257,7 +257,7 @@ class NativeBridgeTests(unittest.TestCase):
         # Clicks still work on the same port.
         with patch.object(native_listener, "run_native_squad_batch"):
             bridge.send(1, action="squad")
-            self.assertEqual(bridge.reply(), b"FMFACE24 ACK 1 accepted")
+            self.assertEqual(bridge.reply(), b"REGENERATEFM24 ACK 1 accepted")
 
     def test_references_resolve_to_the_person_without_screen_ids(self):
         # The macOS library sends "r<reference>" when the header shows no ID.
@@ -267,14 +267,14 @@ class NativeBridgeTests(unittest.TestCase):
             resolved.append((reference, wait))
             return "123"
         bridge = Bridge(self, has_face=lambda person: person == "123", resolve=resolve)
-        bridge.client.sendto(f"FMFACE24F 1 1 r16780302 {KEY}".encode(), bridge.address)
-        self.assertEqual(bridge.reply(), b"FMFACE24F 1 yes")
+        bridge.client.sendto(f"REGENERATEFM24F 1 1 r16780302 {KEY}".encode(), bridge.address)
+        self.assertEqual(bridge.reply(), b"REGENERATEFM24F 1 yes")
         self.assertEqual(resolved, [(16780302, False)])  # a menu never waits for the index
         done = threading.Event()
         with patch.object(native_listener, "request_generation",
                           side_effect=lambda *a, **k: (done.set(), {"ok": True, "preview": True})[1]) as request:
             bridge.send(1, person="r16780302")
-            self.assertEqual(bridge.reply(), b"FMFACE24 ACK 1 accepted")
+            self.assertEqual(bridge.reply(), b"REGENERATEFM24 ACK 1 accepted")
             self.assertTrue(done.wait(2))
         self.assertEqual(request.call_args.kwargs["expected_id"], "123")
         self.assertEqual(resolved[-1], (16780302, True))
@@ -283,7 +283,7 @@ class NativeBridgeTests(unittest.TestCase):
         plain = Bridge(self, notify=notices.append)
         with patch.object(native_listener, "request_generation") as request:
             plain.send(1, person="r16780302")
-            self.assertEqual(plain.reply(), b"FMFACE24 ACK 1 accepted")
+            self.assertEqual(plain.reply(), b"REGENERATEFM24 ACK 1 accepted")
             for _ in range(20):
                 if notices:
                     break
@@ -297,11 +297,11 @@ class NativeBridgeTests(unittest.TestCase):
     def test_failed_face_check_sends_no_answer(self):
         # The DLL then leaves "Update face" enabled; the update is refused later.
         bridge = Bridge(self, has_face=lambda person: (_ for _ in ()).throw(OSError("unreadable")))
-        bridge.client.sendto(f"FMFACE24F 1 1 123 {KEY}".encode(), bridge.address)
+        bridge.client.sendto(f"REGENERATEFM24F 1 1 123 {KEY}".encode(), bridge.address)
         with self.assertRaises(socket.timeout):
             bridge.reply()
         no_check = Bridge(self)
-        no_check.client.sendto(f"FMFACE24F 1 1 123 {KEY}".encode(), no_check.address)
+        no_check.client.sendto(f"REGENERATEFM24F 1 1 123 {KEY}".encode(), no_check.address)
         with self.assertRaises(socket.timeout):
             no_check.reply()
 
@@ -318,7 +318,7 @@ class NativeBridgeTests(unittest.TestCase):
 class NativeDllSourceTests(unittest.TestCase):
     """The DLL source against the build data and the companion's protocol."""
 
-    source = (Path(__file__).resolve().parents[1] / "fm24" / "native_menu" / "fmface24.c").read_text()
+    source = (Path(__file__).resolve().parents[1] / "fm24" / "native_menu" / "regeneratefm24.c").read_text()
 
     def test_every_game_address_comes_from_the_supported_build(self):
         supported = json.loads((Path(install.__file__).with_name("supported_build.json")).read_text())
@@ -354,9 +354,9 @@ class NativeDllSourceTests(unittest.TestCase):
                          set(layout.WINDOWS["person_vtables"]))
 
     def test_face_check_packets_match_the_listener(self):
-        self.assertIn('"FMFACE24F 1 %ld %ld %s", (long)serial, (long)person, bridge_token', self.source)
-        self.assertIn('"FMFACE24F %ld yes"', self.source)
-        self.assertIn('"FMFACE24F %ld no"', self.source)
+        self.assertIn('"REGENERATEFM24F 1 %ld %ld %s", (long)serial, (long)person, bridge_token', self.source)
+        self.assertIn('"REGENERATEFM24F %ld yes"', self.source)
+        self.assertIn('"REGENERATEFM24F %ld no"', self.source)
 
 
 class NativeSkinTests(unittest.TestCase):
@@ -383,7 +383,7 @@ class NativeInstallerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as name:
             root = Path(name)
             destination = root / "config.ini"
-            unrelated = root / ".config.ini.fmface-tmp"
+            unrelated = root / ".config.ini.regeneratefm-tmp"
             unrelated.write_bytes(b"keep this file")
             install._atomic_write(destination, b"new configuration", 0o600)
             self.assertEqual(unrelated.read_bytes(), b"keep this file")
@@ -420,7 +420,7 @@ class NativeInstallerTests(unittest.TestCase):
         self.squad_source = root / "team squad.xml"
         self.squad_source.write_text(SQUAD_PANEL)
         self.dll = root / "winmm.dll"
-        self.dll.write_bytes(b"MZ...FMFACE24_NATIVE_MENU_HOOK_INSTALLED...")
+        self.dll.write_bytes(b"MZ...REGENERATEFM24_NATIVE_MENU_HOOK_INSTALLED...")
         self.auth = root / "auth"
         self.auth.write_text(KEY + "\n")
         for name, value in (("game_running", False), ("SUPPORTED_SHA256", sha(self.game / "fm.exe"))):
@@ -441,36 +441,36 @@ class NativeInstallerTests(unittest.TestCase):
         before = self.snapshot()
         # An old script's --squad-panel-source is accepted and ignored.
         self.run_installer("--auth-file", str(self.auth), "--squad-panel-source", str(self.squad_source))
-        manifest = json.loads((self.game / "fmface24-install.json").read_text())
+        manifest = json.loads((self.game / "regeneratefm24-install.json").read_text())
         self.assertEqual(set(manifest["panels"]), {install.PANEL_FILES["player"], install.PANEL_FILES["staff"]})
         self.assertFalse((self.skin / install.LEGACY_SQUAD_PANEL).exists())
         self.run_installer("--remove")
         self.assertEqual(self.snapshot(), before)
 
     def test_the_companion_fm24_starts_is_in_a_utf16_config(self):
-        companion = r"C:\Users\Zoë\FM Face\fmface-fm24.exe"
+        companion = r"C:\Users\Zoë\RegenerateFM\regeneratefm-fm24.exe"
         self.run_installer("--auth-file", str(self.auth), "--companion", companion)
-        data = (self.game / "fmface24.ini").read_bytes()
+        data = (self.game / "regeneratefm24.ini").read_bytes()
         self.assertEqual(data[:2], b"\xff\xfe")  # GetPrivateProfileStringW needs the byte-order mark.
-        self.assertEqual(install.read_config(self.game / "fmface24.ini"),
+        self.assertEqual(install.read_config(self.game / "regeneratefm24.ini"),
                          {"enabled": "1", "port": "8769", "token": KEY, "companion": companion})
-        # Without --companion (FM Face from source) there is nothing for FM24 to start.
+        # Without --companion (RegenerateFM from source) there is nothing for FM24 to start.
         self.run_installer("--auth-file", str(self.auth))
-        self.assertNotIn("companion", install.read_config(self.game / "fmface24.ini"))
+        self.assertNotIn("companion", install.read_config(self.game / "regeneratefm24.ini"))
 
     def test_on_macos_the_launcher_finds_the_companion_and_its_python_in_the_config(self):
         install.use_system(True)
-        text = install.config_text(8769, KEY, "/Users/Zoë/FM Face/fm24/companion.py",
-                                   "/Users/Zoë/FM Face/.venv-fm24/bin/python", "arm64")
+        text = install.config_text(8769, KEY, "/Users/Zoë/RegenerateFM/fm24/companion.py",
+                                   "/Users/Zoë/RegenerateFM/.venv-fm24/bin/python", "arm64")
         # UTF-8: the library reads only its port and token, line by line.
         self.assertIn(b"\nport=8769\ntoken=" + KEY.encode() + b"\n", text)
         with tempfile.TemporaryDirectory() as name:
-            config = Path(name) / "fmface24.ini"
+            config = Path(name) / "regeneratefm24.ini"
             config.write_bytes(text)
             self.assertEqual(install.read_config(config),
                              {"enabled": "1", "port": "8769", "token": KEY,
-                              "companion": "/Users/Zoë/FM Face/fm24/companion.py",
-                              "python": "/Users/Zoë/FM Face/.venv-fm24/bin/python", "python_arch": "arm64"})
+                              "companion": "/Users/Zoë/RegenerateFM/fm24/companion.py",
+                              "python": "/Users/Zoë/RegenerateFM/.venv-fm24/bin/python", "python_arch": "arm64"})
         with self.assertRaises(ValueError):
             install.config_text(8769, KEY, "/tmp/a\nport=1", "/usr/bin/python3")
 
@@ -478,13 +478,13 @@ class NativeInstallerTests(unittest.TestCase):
         for kind in ("player", "staff"):
             (self.skin / install.PANEL_FILES[kind]).unlink()
         self.run_installer("--auth-file", str(self.auth))
-        self.assertEqual(json.loads((self.game / "fmface24-install.json").read_text())["panels"], {})
+        self.assertEqual(json.loads((self.game / "regeneratefm24-install.json").read_text())["panels"], {})
         self.assertTrue((self.game / "winmm.dll").is_file())
         # The companion FM24 started then built the skin with its popups.
         for kind, text in (("player", PLAYER_PANEL), ("staff", STAFF_PANEL)):
             (self.skin / install.PANEL_FILES[kind]).write_text(skin.modify_panel(text, kind))
         self.run_installer("--auth-file", str(self.auth))
-        panels = json.loads((self.game / "fmface24-install.json").read_text())["panels"]
+        panels = json.loads((self.game / "regeneratefm24-install.json").read_text())["panels"]
         self.assertEqual({entry["created"] for entry in panels.values()}, {True})
         self.run_installer("--remove")
         self.assertFalse((self.skin / install.PANEL_FILES["player"]).exists())
@@ -502,14 +502,14 @@ class NativeInstallerTests(unittest.TestCase):
         squad.write_text(SQUAD_PANEL.replace("<!-- quick pick -->", '<widget id="fmnQ"/><!-- quick pick -->'))
         (self.game / "winmm.dll").write_bytes(self.dll.read_bytes())
         names = [install.PANEL_FILES["player"], install.PANEL_FILES["staff"], install.LEGACY_SQUAD_PANEL]
-        (self.game / "fmface24-install.json").write_text(json.dumps({"version": 2, "dllSha256": sha(self.dll),
+        (self.game / "regeneratefm24-install.json").write_text(json.dumps({"version": 2, "dllSha256": sha(self.dll),
             "panels": {name: {"sha256": sha(self.skin / name), "created": name == names[2] and not existing_panel}
                        for name in names}}))
 
     def test_upgrade_removes_created_squad_faces_panel(self):
         self._legacy_squad_install(existing_panel=False)
         self.run_installer("--auth-file", str(self.auth))
-        manifest = json.loads((self.game / "fmface24-install.json").read_text())
+        manifest = json.loads((self.game / "regeneratefm24-install.json").read_text())
         self.assertNotIn(install.LEGACY_SQUAD_PANEL, manifest["panels"])
         self.assertFalse((self.skin / "panels" / "team").exists())
         self.run_installer("--remove")
@@ -540,7 +540,7 @@ class NativeInstallerTests(unittest.TestCase):
         self.assertEqual(self.snapshot(), before)
         # A clean retry is possible: no stray backups or manifest block it.
         self.run_installer("--auth-file", str(self.auth))
-        self.assertTrue((self.game / "fmface24-install.json").exists())
+        self.assertTrue((self.game / "regeneratefm24-install.json").exists())
 
     def test_failed_removal_rolls_back(self):
         self.run_installer("--auth-file", str(self.auth))
@@ -548,7 +548,7 @@ class NativeInstallerTests(unittest.TestCase):
         real_unlink = Path.unlink
 
         def fail_on_config(path, *args, **kwargs):
-            if path.name == "fmface24.ini":
+            if path.name == "regeneratefm24.ini":
                 raise OSError("permission denied")
             return real_unlink(path, *args, **kwargs)
 
@@ -564,10 +564,10 @@ class NativeInstallerTests(unittest.TestCase):
             Path(str(panel) + install.BACKUP_SUFFIX).write_bytes(panel.read_bytes())
             panel.write_text(skin.modify_panel(panel.read_text(), kind))
         (self.game / "winmm.dll").write_bytes(self.dll.read_bytes())
-        (self.game / "fmface24-install.json").write_text(json.dumps({
+        (self.game / "regeneratefm24-install.json").write_text(json.dumps({
             "dllSha256": sha(self.dll), "panelSha256": [sha(self.skin / name) for name in names]}))
         self.run_installer("--auth-file", str(self.auth))
-        manifest = json.loads((self.game / "fmface24-install.json").read_text())
+        manifest = json.loads((self.game / "regeneratefm24-install.json").read_text())
         self.assertEqual(manifest["version"], 2)
         self.assertEqual(len(manifest["panels"]), 2)
         self.run_installer("--remove")

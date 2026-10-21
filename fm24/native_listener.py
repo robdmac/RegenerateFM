@@ -22,7 +22,7 @@ CLOCK_TOLERANCE = .25
 
 
 def _print_error(message: str) -> None:
-    print(f"FM Face: {message}", flush=True)
+    print(f"RegenerateFM: {message}", flush=True)
 
 
 def _person_field(value: str) -> bool:
@@ -78,7 +78,7 @@ def start_native_listener(port, bridge_port, token, handler, *,
             if result.get("shown"):
                 pass  # Already in FM24's progress dialog.
             elif not result.get("ok") and not result.get("cancelled"):
-                notify(result.get("error", "FM Face could not generate this portrait."))
+                notify(result.get("error", "RegenerateFM could not generate this portrait."))
             elif not result.get("preview") and not result.get("refreshed"):
                 notify(result.get("warning", "The portrait was saved, but FM24 did not reload it."))
         except Exception as exc:
@@ -88,7 +88,7 @@ def start_native_listener(port, bridge_port, token, handler, *,
             busy.release()
 
     def answer_face(fields, peer):
-        """"FMFACE24F 1 <serial> <person> <token>": does the person shown in
+        """"REGENERATEFM24F 1 <serial> <person> <token>": does the person shown in
         FM24's portrait popup have a face? The DLL greys out "Update face"
         on "no" and leaves it enabled without an answer."""
         magic, version, serial, person, key = fields
@@ -104,15 +104,15 @@ def start_native_listener(port, bridge_port, token, handler, *,
         except (OSError, ValueError, RuntimeError) as exc:
             print(f"FM24 face check failed (Update face stays enabled): {exc}", flush=True)
             return
-        server.sendto(f"FMFACE24F {serial} {answer}".encode(), peer)
+        server.sendto(f"REGENERATEFM24F {serial} {answer}".encode(), peer)
 
     def handle(packet, peer):
         fields = packet.decode("ascii").split()
-        if fields and fields[0] == "FMFACE24F":
+        if fields and fields[0] == "REGENERATEFM24F":
             answer_face(fields, peer)
             return
         magic, version, pid, serial, action, clicked, person, key = fields
-        if (peer[0] != "127.0.0.1" or magic != "FMFACE24" or version != "5" or
+        if (peer[0] != "127.0.0.1" or magic != "REGENERATEFM24" or version != "5" or
                 not pid.isdecimal() or not serial.isdecimal() or not clicked.isdecimal() or
                 not _person_field(person) or
                 action not in ("profile", "update", "squad") or not hmac.compare_digest(key, token)):
@@ -134,7 +134,7 @@ def start_native_listener(port, bridge_port, token, handler, *,
         if stale:
             print(f"FM24 native {action} command arrived {age:.2f}s after the click; "
                   "refused because the screen may have changed. No image request was made.", flush=True)
-        reply = f"FMFACE24 ACK {serial} {status}".encode()
+        reply = f"REGENERATEFM24 ACK {serial} {status}".encode()
         last_reply[pid] = (sequence, reply)
         try:
             server.sendto(reply, peer)

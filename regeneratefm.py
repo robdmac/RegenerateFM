@@ -82,7 +82,7 @@ def load_env(path: Path = ROOT / ".env", use_key_file: bool = True) -> dict[str,
             key = key.strip()
             if not values.get(key):
                 values[key] = value.strip().strip('"').strip("'")
-    # On Windows the FM24 companion saves the key it asks for in FM Face's key
+    # On Windows the FM24 companion saves the key it asks for in RegenerateFM's key
     # file, which the FM26 plugin shares.
     store = keystore.default_path()
     if use_key_file and store and not values.get("OPENAI_API_KEY", "").strip():
@@ -173,7 +173,7 @@ def _appearance_prompt(name: str, age: int, person_id: str | None,
             raise ValueError("A person ID is required to save an appearance profile.")
         return appearance_instruction(appearance_traits("name:" + name.casefold(), age))
     person_id = validate_id(person_id)
-    path = Path(directory) / ".fmface-appearances" / f"{person_id}.json" if directory is not None else None
+    path = Path(directory) / ".regeneratefm-appearances" / f"{person_id}.json" if directory is not None else None
     if path is not None and path.exists():
         saved = json.loads(path.read_text(encoding="utf-8"))
         if (not isinstance(saved, dict) or saved.get("schemaVersion") != 1
@@ -399,7 +399,7 @@ def edit_png(env: dict[str, str], prompt: str, reference: bytes, *,
     if len(reference) > MAX_REFERENCE:
         raise ValueError("The existing portrait is too large to send.")
     key, settings = _image_settings(env)
-    boundary = "fmface-" + secrets.token_hex(16)
+    boundary = "regeneratefm-" + secrets.token_hex(16)
     parts = []
     for name, value in dict(settings, prompt=prompt).items():
         parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n'
@@ -414,7 +414,7 @@ def edit_png(env: dict[str, str], prompt: str, reference: bytes, *,
 
 def _atomic_write(path: Path, content: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(dir=path.parent, prefix=".fmface-", delete=False) as tmp:
+    with tempfile.NamedTemporaryFile(dir=path.parent, prefix=".regeneratefm-", delete=False) as tmp:
         tmp.write(content)
         tmp_path = Path(tmp.name)
     try:
@@ -480,8 +480,8 @@ def save_portrait(directory: Path, player_id: str, png: bytes, *, newgen: bool |
 
 
 PAGE = """<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>FM Face</title><style>body{font:16px system-ui,sans-serif;max-width:650px;margin:2rem auto;padding:0 1rem;background:#15191d;color:#f2f3f4}label{display:block;margin:1rem 0 .35rem}input,textarea,button{font:inherit}input[type=text],textarea{box-sizing:border-box;width:100%;padding:.7rem;background:#252d34;color:white;border:1px solid #5c6870;border-radius:5px}textarea{min-height:6rem}button{padding:.7rem 1rem;margin-top:1rem;cursor:pointer}small{color:#b9c2c8}img{max-width:320px;display:block;margin-top:1rem;background:#444}a{color:#8ed4ff}.message{padding:1rem;background:#26343b;border-radius:5px}</style>
-<h1>FM Face</h1><p>Generate a portrait for the player currently open in FM26, or enter an ID yourself.</p>
+<title>RegenerateFM</title><style>body{font:16px system-ui,sans-serif;max-width:650px;margin:2rem auto;padding:0 1rem;background:#15191d;color:#f2f3f4}label{display:block;margin:1rem 0 .35rem}input,textarea,button{font:inherit}input[type=text],textarea{box-sizing:border-box;width:100%;padding:.7rem;background:#252d34;color:white;border:1px solid #5c6870;border-radius:5px}textarea{min-height:6rem}button{padding:.7rem 1rem;margin-top:1rem;cursor:pointer}small{color:#b9c2c8}img{max-width:320px;display:block;margin-top:1rem;background:#444}a{color:#8ed4ff}.message{padding:1rem;background:#26343b;border-radius:5px}</style>
+<h1>RegenerateFM</h1><p>Generate a portrait for the player currently open in FM26, or enter an ID yourself.</p>
 {message}<form method="post" action="/generate"><input type="hidden" name="csrf_token" value="{csrf_token}"><label for="player_id">Player ID</label><input id="player_id" name="player_id" type="text" inputmode="numeric" required value="{player_id}"><label for="description">Appearance</label><textarea id="description" name="description" maxlength="800" required placeholder="For example: 23-year-old British-Asian man, short black hair, warm brown skin, clean-shaven">{description}</textarea><label><input type="checkbox" name="newgen" {newgen_checked}> Generated player (newgen)</label><label><input type="checkbox" name="replace"> Replace an existing portrait for this ID</label><button type="submit">Generate portrait</button></form><p><small>One click makes one billed image API request. Existing portraits are protected unless Replace is ticked.</small></p>{preview}</html>"""
 
 
@@ -565,7 +565,7 @@ class FaceHandler(BaseHTTPRequestHandler):
         if self.path == "/fm-events":
             try:
                 event = json.loads(body)
-                if event.get("event") != "button.click" or event.get("buttonId") != "fmface":
+                if event.get("event") != "button.click" or event.get("buttonId") != "regeneratefm":
                     raise ValueError("Unexpected event")
                 player_id = validate_id(str(event["playerId"]))
             except (ValueError, KeyError, TypeError):
@@ -628,7 +628,7 @@ def main() -> None:
         FaceHandler.reload_env = True
         FaceHandler.port = args.port
         server = ThreadingHTTPServer(("127.0.0.1", args.port), FaceHandler)
-        print(f"FM Face listening at http://127.0.0.1:{args.port}/", flush=True)
+        print(f"RegenerateFM listening at http://127.0.0.1:{args.port}/", flush=True)
         try:
             server.serve_forever()
         except KeyboardInterrupt:

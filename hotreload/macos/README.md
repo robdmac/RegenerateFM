@@ -12,14 +12,14 @@ Checked on FM26 26.3.2 (Steam, universal `fm.app`) on an Apple M2 with macOS 26:
 | `BepInEx/core/libfunchook.dylib` | funchook 1.1.3 with `patches/funchook-rosetta.patch`, built by `build.py` |
 | `BepInEx/core/Il2CppInterop.Runtime.dll`, `Il2CppInterop.Common.dll` | Il2CppInterop 1.5.3 (be.789's version) with `patches/il2cppinterop-macos.patch`, built by `build.py` |
 | `BepInEx/config/BepInEx.cfg` | Only `[Detours] DetourProviderType = Funchook`; BepInEx adds the rest |
-| `BepInEx/plugins/FMFaceHotReload/` | The plugin |
-| `run_fmface.sh` | The launcher, used as FM26's Steam launch option: `"<game folder>/run_fmface.sh" %command%` |
+| `BepInEx/plugins/RegenerateFMHotReload/` | The plugin |
+| `run_regeneratefm.sh` | The launcher, used as FM26's Steam launch option: `"<game folder>/run_regeneratefm.sh" %command%` |
 
 Nothing inside `fm.app` changes, so SEGA's signature and notarisation stay intact. FM26's hardened runtime already allows what's needed: its entitlements include `allow-dyld-environment-variables` and `disable-library-validation`.
 
 ## The launcher
 
-`run_fmface.sh` starts the game with doorstop's environment, as BepInEx's own script does, but:
+`run_regeneratefm.sh` starts the game with doorstop's environment, as BepInEx's own script does, but:
 
 - **Rosetta 2.** BepInEx's macOS CoreCLR, Dobby and Cpp2IL are x86_64 only. BepInEx's script prefers arm64 on Apple Silicon, which starts FM26 natively and CoreCLR then can't load. The launcher runs `arch -x86_64`, and passes `DYLD_INSERT_LIBRARIES` and `DYLD_LIBRARY_PATH` with `-e` because `arch` is SIP-protected and drops `DYLD_*` variables.
 - **Paths.** BepInEx looks for the game's data in `<game folder>/Data` and for `GameAssembly.dylib` in the game folder. The launcher makes a `Data` symlink to `fm.app/Contents/Resources/Data` and sets `BEPINEX_GAME_ASSEMBLY_PATH` to `fm.app/Contents/Frameworks/GameAssembly.dylib`. That must be the loaded file itself, not a copy: BepInEx resolves every Il2CppInterop `[DllImport("GameAssembly")]` to that path, and a second copy is an uninitialised il2cpp that crashes the game. Cpp2IL reads the universal binary directly.
@@ -41,7 +41,7 @@ BepInEx hooks `il2cpp_runtime_invoke` to start the chainloader. With Dobby, BepI
 - **Finding GameAssembly.** .NET 6's `Process.Modules` lists only the main executable on macOS, with a zero base address, so class injection (`ClassInjector`, which the plugin and BepInEx's Unity log hook use) failed with "Sequence contains no matching element". `GameAssemblyModule` asks dyld for `GameAssembly.dylib` and scans only its `__TEXT` segment for signatures; elsewhere it uses `Process.Modules` as before. `XrefScanMethodDb` uses it too.
 - **`MetadataCache::GetTypeInfoFromTypeDefinitionIndex`.** Il2CppInterop finds this function by following calls from `il2cpp_image_get_class`. FM26's clang build pads functions with `nop`s, not `int3`, so the xref scanner ran past `Image::GetType`'s tail call into the next function, picked `MetadataCache::GetAssemblyTypeHandle` and hooked it with the wrong signature: the game crashed as soon as start-up finished. On macOS it now follows the tail calls (`Image::GetType` → `MetadataCache::GetTypeInfoFromHandle` → `GlobalMetadata::GetTypeInfoFromHandle` → `GetTypeInfoFromTypeDefinitionIndex`), with `XrefScannerLowLevel.TailCallTarget` and `FollowTailCalls`. In 26.3.2 that is offset `0x5ea0d0` of the x86_64 slice, which the disassembly confirms (the `index == -1` check and `s_TypeInfoTable[index]` lookup).
 
-- **`Class::GetFieldDefaultValue`.** Il2CppInterop takes the last of `Field::StaticGetValueInternal`'s three calls. In this build that is `BlobReader::GetConstantValueFromBlob`, which the literal-field branch calls after `GetFieldDefaultValue(field, &type)`, so the hook took the wrong arguments and FM26 crashed as soon as a career's home screen opened, with or without FM Face. On macOS it now takes the call made right after `lea rsi, [rbp-…]`, the out parameter (`XrefScannerLowLevel.CallWithStackAddressArgument`), and follows its thunk to the function (offset `0x5e9760`).
+- **`Class::GetFieldDefaultValue`.** Il2CppInterop takes the last of `Field::StaticGetValueInternal`'s three calls. In this build that is `BlobReader::GetConstantValueFromBlob`, which the literal-field branch calls after `GetFieldDefaultValue(field, &type)`, so the hook took the wrong arguments and FM26 crashed as soon as a career's home screen opened, with or without RegenerateFM. On macOS it now takes the call made right after `lea rsi, [rbp-…]`, the out parameter (`XrefScannerLowLevel.CallWithStackAddressArgument`), and follows its thunk to the function (offset `0x5e9760`).
 
 The other hooks found their targets: `GenericMethod::GetMethod`, `Class::FromIl2CppType` and `Class::FromName`. `Class::Init` uses the `mono_class_instance_size` substitute, with a warning in the log. Upstream Il2CppInterop already matches `GameAssembly.dylib` by name, but that doesn't help with .NET 6's module list.
 

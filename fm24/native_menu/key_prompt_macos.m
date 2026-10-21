@@ -1,5 +1,5 @@
-/* MIT. FM Face's OpenAI key prompt for FM24 on macOS, part of libfmface24.dylib.
-   The companion asks for it (FMFACE24K in fmface24_macos.c) when no key is
+/* MIT. RegenerateFM's OpenAI key prompt for FM24 on macOS, part of libregeneratefm24.dylib.
+   The companion asks for it (REGENERATEFM24K in regeneratefm24_macos.c) when no key is
    saved. It is a sheet on FM24's window with a secure field: the key isn't
    shown, and Cmd+V pastes even though FM24 has no Edit menu. */
 #import <AppKit/AppKit.h>
@@ -24,7 +24,7 @@ static SEL edit_action(NSEvent *event)
 static void show_prompt(NSString *text, key_answer_function answer)
 {
     NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"FM Face: your OpenAI API key";
+    alert.messageText = @"RegenerateFM: your OpenAI API key";
     alert.informativeText = text;
     [alert addButtonWithTitle:@"Save key"];
     [alert addButtonWithTitle:@"Cancel"];
@@ -88,7 +88,7 @@ static void show_prompt(NSString *text, key_answer_function answer)
 
 /* Any thread: shows the prompt on the main thread; answer gets the typed
    text, or NULL for Cancel, also on the main thread. */
-void fmface_key_prompt(const char *text, key_answer_function answer)
+void regeneratefm_key_prompt(const char *text, key_answer_function answer)
 {
     NSString *shown = [NSString stringWithUTF8String:text] ?: @"";
     dispatch_async(dispatch_get_main_queue(), ^{ show_prompt(shown, answer); });

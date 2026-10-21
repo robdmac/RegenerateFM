@@ -306,7 +306,7 @@ class NoContract(MemoryUnavailable):
     """The person has no contract: a free agent, or unemployed staff."""
 
 
-# What the prompt calls a player with no club (fmface._kit_text: a plain shirt).
+# What the prompt calls a player with no club (regeneratefm._kit_text: a plain shirt).
 FREE_AGENT = "Free agent"
 
 

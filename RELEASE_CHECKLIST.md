@@ -3,19 +3,19 @@
 Automated tests and the Wine bridge harness cover protocol, installer, and
 binding logic. The checks below need the real game. Run them on the pinned
 FM24 24.4.2 executable at 1854×1011 with screen IDs enabled. Record the date,
-result, and `fmface24.log` excerpt for each.
+result, and `regeneratefm24.log` excerpt for each.
 
 Steps marked **billed** make one image API request each.
 
 ## Install and upgrade
 
 1. With FM24 closed, run `fm24/native_menu/install.py` over the existing
-   installation. Expect a version 2 `fmface24-install.json` listing the two
+   installation. Expect a version 2 `regeneratefm24-install.json` listing the two
    portrait panels, and (for an install that had it) the message that the
    Squad screen Faces button was removed.
 2. Start FM24 with `WINEDLLOVERRIDES="winmm=n,b"`. Expect
-   `FMFACE24_NATIVE_MENU_HOOK_INSTALLED`, `FMFACE24_SQUAD_MENU_INSTALLED`,
-   `FMFACE24_BRIDGE_READY` and `FMFACE24_RELOAD_READY` in `fmface24.log`.
+   `REGENERATEFM24_NATIVE_MENU_HOOK_INSTALLED`, `REGENERATEFM24_SQUAD_MENU_INSTALLED`,
+   `REGENERATEFM24_BRIDGE_READY` and `REGENERATEFM24_RELOAD_READY` in `regeneratefm24.log`.
 
 ## Preview mode (`--native-menu --preview-only`)
 
@@ -30,7 +30,7 @@ Steps marked **billed** make one image API request each.
    A pause exceeding the DLL's reply timeout may instead show "companion is
    unavailable". Also test a pause below 0.75 seconds using the next-person
    arrow: expect "Generate new face was chosen for person X, but FM24 now
-   shows person Y", with X the clicked person, and no preview. `fmface24.log`
+   shows person Y", with X the clicked person, and no preview. `regeneratefm24.log`
    and the companion line must name the clicked person's ID.
 5b. On a player and a staff profile, open the **Overview** tab menu: it ends
    with Generate new face and Update face. Each sends the preview for the
@@ -67,14 +67,14 @@ Steps marked **billed** make one image API request each.
 16. Restart FM24 and the companion. Repeat step 3.
 17. Re-run the installer (idempotent reinstall). Expect panels and the manifest
     to be unchanged apart from the DLL.
-18. `install.py --remove`. Expect the original FM Face panels to be restored,
+18. `install.py --remove`. Expect the original RegenerateFM panels to be restored,
     the squad panel and the empty `panels/team` directory to be removed, and
     the game to start without the hook once the launch option is cleared.
 
 ## Independent review: 2026-10-14
 
 **Release status: not ready.** Tests below used FM24 24.4.2, Proton 9, the
-FM Face skin, English UI, enabled screen IDs and a 1854×1011 game window.
+RegenerateFM skin, English UI, enabled screen IDs and a 1854×1011 game window.
 All companion runs were preview-only; no image API request was made. The
 production native DLL is installed, FM24 is running, and the companion is
 left in preview mode. Temporary diagnostic DLLs were removed before final
@@ -148,7 +148,7 @@ repeating in game.
 | Check | Result |
 | --- | --- |
 | Automated suite | Original 52 passed; 55 passed after fixes |
-| pyflakes | Passed for `fm24` and `fmface.py` |
+| pyflakes | Passed for `fm24` and `regeneratefm.py` |
 | FM24 native DLL build | Passed with `-Werror`; 189 forwarding exports |
 | Wine harness, current native C source | Passed normal ACK, dropped first packet, stale ACK, busy reply and no-reply cases |
 | FM26 plugin Release build | Passed with .NET SDK 6.0.428; zero warnings/errors |
@@ -168,7 +168,7 @@ repeating in game.
 | Checklist 17, reinstall | Passed on real files; DLL/config/manifest/skin/backups byte-identical |
 | Checklist 18, uninstall | Passed; original panels byte-identical, squad directory removed, unhooked game started |
 
-Session evidence is under `/tmp/fmface-review-*`: final test/build/harness
+Session evidence is under `/tmp/regeneratefm-review-*`: final test/build/harness
 logs, preview logs, screenshots, and a private pre-install backup. These are
 local review artifacts, not release contents. The release archive produced
 during review is a test artifact, not an approved release.
@@ -223,7 +223,7 @@ One additional limit observed: Ian Fray's native profile reader found no
 validated record and used OCR fallback; its prompt spelled his first name
 "lan". This retest does not establish native profile coverage for every person.
 
-Evidence is in `/tmp/fmface-retest-*`, including original/final preview logs,
+Evidence is in `/tmp/regeneratefm-retest-*`, including original/final preview logs,
 screenshots, test/build/harness logs and graphics checksums. The test dialogs
 were dismissed, and the updated companion was restarted in preview mode for
 the running game window. Nothing was billed. This section supersedes the
@@ -266,7 +266,7 @@ Addresses the short-delay wrong-person race (Facundo Farías → Ian Fray).
   FM24 and restart the companion; a protocol 2 DLL and the new companion
   ignore each other. Then repeat step 5, including the sub-0.75 s
   next-person case, plus step 4 for a staff profile. Check that
-  `fmface24.log` shows no crash and that the refusal names the clicked ID.
+  `regeneratefm24.log` shows no crash and that the refusal names the clicked ID.
 
 ## Protocol 3 independent live retest: 2026-10-14
 
@@ -275,7 +275,7 @@ correctly, but the native ID reader does not cover staff and all players.**
 
 The game was closed, the current source rebuilt, and the new DLL installed
 over protocol 2. All skin XML files remained byte-identical. A private backup
-is at `/tmp/fmface-binding-preinstall.tgz`. FM24 and the companion were then
+is at `/tmp/regeneratefm-binding-preinstall.tgz`. FM24 and the companion were then
 restarted with protocol 3 in preview mode, on the same validated build/skin,
 English UI, screen IDs and 1854×1011 window.
 
@@ -329,7 +329,7 @@ starting the worker, so `request.call_args` could still be `None`. The test
 now asserts no request for person 0, then waits for the valid request worker
 before inspecting its bound ID. Product behavior was unchanged by this fix.
 
-Evidence is under `/tmp/fmface-binding-*`: preview/test/build logs, screenshots,
+Evidence is under `/tmp/regeneratefm-binding-*`: preview/test/build logs, screenshots,
 graphics checksums and the harness's results. Temporary harness memory was
 simulated in its own process; the live game memory inspection was read-only.
 The test dialogs were dismissed. The protocol 3 DLL remains installed and the
@@ -342,11 +342,11 @@ coverage or approve a release.
 Replaces protocol 3's drawing-stack reader, which refused Theiler and Tyler
 Hall. A screenshot-based alternative (unreleased "protocol 4") was tried and
 withdrawn, because the goal is binding from game memory. The tree is back on
-the protocol 3 sources from `dist/fmface-0.7.0.zip`, with only the changes
+the protocol 3 sources from `dist/regeneratefm-0.7.0.zip`, with only the changes
 below.
 
 - **How the ID is found.** In the menu callback, on FM24's UI thread:
-  1. Start at the event's source, which must be FM Face's `fmnP`/`fmnS`
+  1. Start at the event's source, which must be RegenerateFM's `fmnP`/`fmnS`
      button and belong to the callback's UI manager. With FM24 paused at a
      real click, gdb showed the source at event+0x20.
   2. Walk up the parents to the screen's unique `head` widget.
@@ -377,7 +377,7 @@ below.
   companion, then repeat checklist steps 3–5 on Theiler, Tyler Hall, Franco
   and Farías. Include Farías → Ian Fray with the companion paused for under
   0.75 s: expect "now person 2000045865, not the requested person 14240979".
-  Check `person=` and `read_ms=` in `fmface24.log` for each click.
+  Check `person=` and `read_ms=` in `regeneratefm24.log` for each click.
 
 ### In-game retest: 2026-10-14
 
@@ -388,7 +388,7 @@ request was made and graphics were not written.
 
 | Check | Result |
 | --- | --- |
-| Players, Generate new face | **Passed, 8 of 8.** `fmface24.log` `person=` matched the on-screen ID and the preview was for that ID: Tyler Hall 2000251984, Franco Negri 14080606, Facundo Farías 14240979, Ian Fray 2000045865, Nicolás Freire 14036721, Diego Gómez 2000036372, Julian Gressel 72048236. Tyler Hall was refused by protocol 3. |
+| Players, Generate new face | **Passed, 8 of 8.** `regeneratefm24.log` `person=` matched the on-screen ID and the preview was for that ID: Tyler Hall 2000251984, Franco Negri 14080606, Facundo Farías 14240979, Ian Fray 2000045865, Nicolás Freire 14036721, Diego Gómez 2000036372, Julian Gressel 72048236. Tyler Hall was refused by protocol 3. |
 | Staff, Generate new face | **Passed, 5 of 5:** Jorge Theiler 14008037 (refused by protocol 3), Damian Silvero 72049827, Erik Marquis 2000214125, Tom Jobe 2000218221 (twice). Theiler's preview used the correct "Club Atlético Newell's Old Boys icon…" headline. |
 | Read time | `read_ms=0` on every click, i.e. below the 15 ms tick resolution |
 | Farías → Ian Fray, binding check alone | **Passed.** Test-only companion with the late-click limit raised to 30 s; companion paused 1.9 s; next-person arrow opened Ian Fray. DLL sent `person=14240979`; companion refused: "The open FM24 profile is now person 2000045865, not the requested person 14240979; no image request was made." |
@@ -411,7 +411,7 @@ here.
 
 **The previously observed Theiler/Tyler binding regression and the original
 Farías-to-Ian navigation case passed this independent retest.** This is still
-the pinned FM24 24.4.2 build, English FM Face skin, enabled screen IDs,
+the pinned FM24 24.4.2 build, English RegenerateFM skin, enabled screen IDs,
 1854×1011 X11 window and Proton 9. Broader builds/layouts are not established.
 
 FM24 was closed when this run started. The source was independently rebuilt
@@ -480,7 +480,7 @@ unchanged; this retest does not establish broader dialog/navigation behavior.
 
 The normal companion is running in preview mode with the production cutoff
 unchanged. Original graphics are restored. Evidence, fixtures and private
-backups are under `/tmp/fmface-p5-*` and are excluded from the release archive.
+backups are under `/tmp/regeneratefm-p5-*` and are excluded from the release archive.
 No product source changes were needed during this retest.
 
 
@@ -497,7 +497,7 @@ input.
 
 ## In-process skin reload and biography fix: 2026-10-15
 
-**In-process reload (DLL):** the companion sends `FMFACE24R 1 <serial> <token>`
+**In-process reload (DLL):** the companion sends `REGENERATEFM24R 1 <serial> <token>`
 to the bridge port + 1, and the DLL repeats FM24's own reload-current-skin
 command on the UI thread (details in the native menu README). Live results on
 the pinned build:
@@ -537,7 +537,7 @@ providers the Squad screen uses.
 | Check | Result |
 | --- | --- |
 | Menu | "Generate missing squad faces..." is the last item, below Export Team for Versus Competition |
-| Selection | Log `FMFACE24_SQUAD_CLICK`, `CLICK_ACCEPTED`; companion started the squad scan (preview; stopped by restarting the companion) |
+| Selection | Log `REGENERATEFM24_SQUAD_CLICK`, `CLICK_ACCEPTED`; companion started the squad scan (preview; stopped by restarting the companion) |
 | Upgrade | Reinstall removed the created `team squad.xml`; manifest lists two panels; the Faces button is gone from the Squad screen |
 | Portrait menu after upgrade | Drake Callender previewed as 72056318, `read_ms=0` |
 
@@ -556,7 +556,7 @@ on the pinned build, preview mode only (nothing billed):
 | Roster completeness | Table row count (29) and visible range drive scrolling; reads opened mid-table and at the bottom both completed |
 | Another club (LA Galaxy, run directly) | 22 of 22 rows; 4 not indexed; prompts built by ID for all 4 (e.g. Mauricio Cuevas, 19, American, Defender (Right), LA Galaxy) |
 | Prompt fields | All 29 own-squad players produced valid prompts, including loanee Freire (club Inter Miami) and previously OCR-only Tyler Hall |
-| Stale index | With Tyler's FM Face mapping removed and the skin reloaded, his profile showed the silhouette but his key stayed indexed: treated as present (safe direction). Mapping restored, graphics byte-identical |
+| Stale index | With Tyler's RegenerateFM mapping removed and the skin reloaded, his profile showed the silhouette but his key stayed indexed: treated as present (safe direction). Mapping restored, graphics byte-identical |
 | Timing | About 7 s for the first pass (cells, portrait index, date), about 5 s per extra pass after a scroll; 22-33 s overall |
 
 Also fixed: alternate-name records for first names of any length (Tyler,
@@ -582,10 +582,10 @@ through it yet.
 - [x] FM24 preview, Messi (7458500): DLL `item=update`. The companion built the
       update prompt (age 35, Inter Miami kit) and found the bundled photo
       `pictures/players/normal/usa/inter miami/lionel messi.jpg` with its mask.
-- [x] FM24 preview, Edison Azcona (2000045863): the existing FM Face portrait
+- [x] FM24 preview, Edison Azcona (2000045863): the existing RegenerateFM portrait
       was found. **Generate new face** still sent the full profile prompt.
 - [x] Lookup: 12,295 bundled person mappings in `graphics.fmf`, about 0.4 s
-      for the first lookup and then cached. FM Face's folder wins, then the
+      for the first lookup and then cached. RegenerateFM's folder wins, then the
       user's other graphics, then the bundled photos.
 - [x] FM26 (stand-in server, no API): **Update face** appears below
       **Generate face** in Actions and below **Generate new face** in the
@@ -605,7 +605,7 @@ through it yet.
 
 ## In-game dialogs and progress (native DLL): 2026-10-15
 
-FM24 itself now shows FM Face's progress, confirmations, results and errors
+FM24 itself now shows RegenerateFM's progress, confirmations, results and errors
 (see the native README). All checks were in preview mode with no API
 requests. Each was live on the Inter Miami save, plus LA Galaxy's squad
 table, which has 4 players with no face.
@@ -614,7 +614,7 @@ table, which has 4 players with no face.
       with record keys titl/text/acte/noet/widt/heig and the manager as
       owner. A gdb trace showed No posts `NOEX` to the manager.
 - [x] Yes/No question: Yes and No each returned to the companion
-      (`FMFACE24_DIALOG_YES`/`_NO`).
+      (`REGENERATEFM24_DIALOG_YES`/`_NO`).
 - [x] OK message: the No button is hidden and Yes is relabelled OK. The squad
       command on Inter Miami showed "All 29 squad players already have
       portraits." in FM24.
@@ -628,7 +628,7 @@ table, which has 4 players with no face.
 - [x] Text updates fail safely after a skin reload: the dialog is gone, so
       `PROGRESS_NOT_SET` is logged; no crash.
 - [x] Portrait progress on Messi: Generating…, Loading…, Failed, then
-      cleared, all inside the FM Face popup. When no profile was open, the
+      cleared, all inside the RegenerateFM popup. When no profile was open, the
       companion fell back to the X11 overlay.
 - [x] Companion error, from Update face on another club's player, shown in
       an FM24 OK dialog.
@@ -675,7 +675,7 @@ raise; it started without a window and logged no X11 call.
       global superstars…"), identical to what FM24 shows.
 - [x] Generate preview, Jorge Theiler (14008037, staff): biography headline
       "Club Atlético Newell's Old Boys icon Jorge Walter Theiler was born…".
-- [x] Update face preview for Messi (bundled photo) and Theiler (FM Face
+- [x] Update face preview for Messi (bundled photo) and Theiler (RegenerateFM
       portrait), name/age/club from memory.
 - [ ] "All Players" on another club's Players screen includes a row the squad
       reader refuses ("does not show a validated FM24 player"); unchanged.
@@ -714,7 +714,7 @@ The FM24 companion now requires the native DLL and has no X11 code.
       X11 or ONNX libraries.
       - **Generate** on Gabriel Pec: the prompt includes the biography shown
         ("Gabriel Pec is a name that will probably be more familiar…").
-      - **Update face:** used his new FM Face portrait.
+      - **Update face:** used his new RegenerateFM portrait.
       - **Generate missing squad faces…** from FM24's Squad menu: 0 of 29
         missing, shown in FM24's dialog.
 
@@ -727,14 +727,14 @@ The FM24 companion now requires the native DLL and has no X11 code.
 - [x] **FM24, Drake Callender (bundled photo):** a close likeness, now in a green
       goalkeeper kit, reloaded in game.
 - [x] **FM26, Max Crocombe (game photo copied from memory, 191×250):** a close
-      likeness in a green goalkeeper kit, saved by `fmface.service` and reloaded
+      likeness in a green goalkeeper kit, saved by `regeneratefm.service` and reloaded
       in game. This also ran the final plugin build in game for the first time.
 - [x] **Refused, FM24, Lionel Messi (bundled photo):** OpenAI returned "HTTP 400:
       Your request was rejected by the safety system." The error showed in an
       FM24 dialog, and nothing was saved. Edits of very famous people's real
       photos are refused; lesser-known players' photos were accepted.
 - [ ] **FM26 Actions menu timing:** opened about 5 s after the profile, the menu
-      had no FM Face items (the header ID was not yet readable); reopening it
+      had no RegenerateFM items (the header ID was not yet readable); reopening it
       showed them.
 
 ## Loan club kit (FM24): 2026-10-15
@@ -797,7 +797,7 @@ The FM24 companion now requires the native DLL and has no X11 code.
 
 ## FM26 Actions menu timing: 2026-10-16
 
-- [x] The FM Face items are added whenever the profile header exists. The
+- [x] The RegenerateFM items are added whenever the profile header exists. The
       person ID is read when an item is chosen (and must match the ID shown
       when the menu opened, if one was shown); a profile still loading gets
       "The profile is still loading. Choose it again." Update face is greyed
@@ -813,17 +813,17 @@ All checks ran live in FM24 24.4.2 with a `--preview-only` companion. No API
 requests were made.
 
 - [x] **Update face greyed out:** when a menu opens (`meop`), the DLL asks the
-      companion `FMFACE24F` whether the person has a face and sets the row's
+      companion `REGENERATEFM24F` whether the person has a face and sets the row's
       `disa` property. Portrait popup: Edison Azcona (2000045863) and Ryan
       Sailor (2000155624) showed `face=yes` with the row enabled. Federico
       Higuaín (956737, staff, silhouette) showed `face=no` with the row greyed
       out, and clicking it sent nothing.
 - [x] **Overview tab menu:** Generate new face and Update face are appended
       below Follow, on the first opening. Azcona: Generate and Update sent
-      the profile and update previews (the update preview named his FM Face
+      the profile and update previews (the update preview named his RegenerateFM
       portrait). Jorge Theiler (14008037, staff): Generate sent the staff
       preview. Higuaín: Update face greyed out and ignored. Clicking the tab
-      label itself sends nothing. `fmface24.log` names the person for each.
+      label itself sends nothing. `regeneratefm24.log` names the person for each.
 - [x] New pinned layout: popup root item `+0x4f8` with rows at `+0x38`, and
       the Overview tab class vtable `0x5679168`
       (`profileMenu.overviewTabVtableRva`).
