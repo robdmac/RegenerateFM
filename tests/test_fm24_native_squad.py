@@ -211,6 +211,23 @@ class FakeMemory:
         return iter([(start, data)])
 
 
+class WidgetChildrenTests(unittest.TestCase):
+    def test_reads_more_children_than_one_read_holds(self):
+        # Lionel Messi's FM24 profile has a widget with more than 512 children,
+        # and the process readers refuse reads over 4 KB.
+        memory, widget, children = FakeMemory(), 0x1000, 0x10000
+        memory.q(widget + native_squad.WIDGET_CHILDREN, children, children + 8 * 600)
+        memory.q(children, *range(1, 601))
+
+        def read(pid, address, size):
+            if not 1 <= size <= 4096:
+                raise ValueError("Invalid process, address, or read size.")
+            return memory.read(pid, address, size)
+
+        with patch.object(native_squad, "read_process_bytes", read):
+            self.assertEqual(native_squad._children(1, widget), list(range(1, 601)))
+
+
 class RowModelTests(unittest.TestCase):
     TABLE, MODEL, ROWS, PERSONS = 0x10000, 0x11000, 0x12000, 0x20000
 

@@ -107,7 +107,9 @@ def _children(pid: int, widget: int) -> list[int]:
     begin, end = _u64(pid, widget + WIDGET_CHILDREN), _u64(pid, widget + WIDGET_CHILDREN + 8)
     if end < begin or (end - begin) % 8 or end - begin > 8 * 8192:
         raise MemoryUnavailable("Invalid FM24 widget children.")
-    data = read_process_bytes(pid, begin, end - begin) if end > begin else b""
+    # Reads are at most 4 KB (512 children); Lionel Messi's profile has a widget with more.
+    data = b"".join(read_process_bytes(pid, begin + start, min(4096, end - begin - start))
+                    for start in range(0, end - begin, 4096))
     return list(struct.unpack(f"<{len(data) // 8}Q", data))
 
 
