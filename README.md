@@ -10,7 +10,7 @@ The images come from OpenAI's image API, using your own API key. Each face costs
 | | Windows | Linux (Steam/Proton) | macOS (Apple Silicon) |
 |---|---|---|---|
 | **FM26** 26.3.2 | Supported | Supported | Supported (runs under Rosetta 2) |
-| **FM26 Demo** 26.3.2 | Supported | Untested | Supported (runs under Rosetta 2) |
+| **FM26 Demo** 26.3.2 | Supported | Supported | Supported (runs under Rosetta 2) |
 | **FM24** 24.4.2 | Supported | Supported | Supported |
 
 Each supported combination has been checked in game; see [Platform support](#platform-support). FM Face is pinned to these builds and turns itself off on any other version until it is checked.
@@ -33,7 +33,7 @@ Treat the key like a password. Anyone who has it can spend your credit. FM Face 
 The plugin calls OpenAI itself from inside FM26, so nothing else needs to run while you play. Setup is copying one folder; there's no installer.
 
 1. **Copy the files.** Close FM26. Find its game folder (in Steam: right-click Football Manager 26 > **Manage > Browse local files**). Copy everything inside the release ZIP's `FM26` folder into it. The FM26 Demo works the same way, in its own `Football Manager 26 Demo` folder. That adds [BepInEx 6.0.0-be.760](https://builds.bepinex.dev/projects/bepinex_be/), the mod loader, and the FM Face plugin. If you already use BepInEx for other mods, copy only `BepInEx/plugins/FMFaceHotReload`.
-2. **Linux only:** set FM26's Steam launch option to `WINEDLLOVERRIDES="winhttp=n,b" %command%`.
+2. **Linux only:** set FM26's Steam launch option to `WINEDLLOVERRIDES="winhttp=n,b" %command%` (or quit Steam and run `python3 steam_launch.py fm26`, or `fm26demo` for the Demo).
 
    **macOS:** copy the release ZIP's `FM26-macOS` folder's contents instead, into the folder that holds `fm.app` (in Steam: **Manage > Browse local files**). Then quit Steam and run `python3 steam_launch.py fm26`, which sets FM26's Steam launch option for you, so Play in Steam starts FM Face. Or set it yourself: the path of `run_fmface.sh` in that folder, in quotes, followed by `%command%`, for example `"/Users/you/Library/Application Support/Steam/steamapps/common/Football Manager 26/run_fmface.sh" %command%`. FM26 then runs under Rosetta 2 (BepInEx's macOS runtime is Intel-only); install Rosetta with `softwareupdate --install-rosetta` if macOS hasn't asked already. `fm.app` itself is never changed. See [hotreload/macos/README.md](hotreload/macos/README.md).
 3. **Start FM26.** The first start takes a few minutes longer while BepInEx prepares itself.
@@ -134,7 +134,7 @@ Everything has been tested on Linux with Steam/Proton. Status elsewhere:
   - A three-face billed batch generated and reloaded every missing portrait; a fresh scan afterwards found none missing. That run used the earlier separate server; the plugin now makes the request itself.
   - Its game-binary checks disable the buttons on other FM26 builds.
 - **Windows 10:** FM26 26.3.2 (a 23-player squad scan and a 10-face batch) and FM24 24.4.2 (a 28-player squad scan and a 9-face batch), each with one billed face; the other faces used a stand-in for the image API.
-- **FM26 Demo:** tested on Windows 10 with the vanilla skin and the same BepInEx. Its squad pages differ from the full game's: Overview is a dashboard, so the squad command is on **First Team**, where the scanner matched all 33 players.
+- **FM26 Demo:** tested on Windows 10 with the vanilla skin and the same BepInEx. Its squad pages differ from the full game's: Overview is a dashboard, so the squad command is on **First Team**, where the scanner matched all 33 players. On Linux (2026-10-21, with the image stand-in): BepInEx's first start, a First Team scan (8 of 33 missing) and an 8-face batch, and Update face for a player, each shown at once.
 - **FM24:** tested on 24.4.2 with its vanilla-based skin through the native DLL: previews of every command, a billed single face and a billed squad batch with Stop.
 - **Not yet checked:** other skins, resolutions, languages and game builds.
 
