@@ -154,10 +154,19 @@ namespace FMFaceHotReload
                 if (OperatingSystem.IsMacOS())
                 {
                     string contents = Path.Combine(Paths.GameRootPath, "fm.app", "Contents");
-                    return HasHash(Path.Combine(contents, "Frameworks", "GameAssembly.dylib"),
-                               "7886b66692c18504de32ad3973fe4c9afc3edfe12a6941b44e83627cb9563e26")
-                        && HasHash(Path.Combine(contents, "PlugIns", "game_plugin.bundle", "Contents", "MacOS", "game_plugin"),
-                               "de6b048ab1a95fd4ae683a7d751a33645183a9a570fa1c2fba32fd308ca87979");
+                    string macAssembly = Path.Combine(contents, "Frameworks", "GameAssembly.dylib");
+                    string macPlugin = Path.Combine(contents, "PlugIns", "game_plugin.bundle", "Contents", "MacOS", "game_plugin");
+                    if (HasHash(macAssembly, "7886b66692c18504de32ad3973fe4c9afc3edfe12a6941b44e83627cb9563e26")
+                        && HasHash(macPlugin, "de6b048ab1a95fd4ae683a7d751a33645183a9a570fa1c2fba32fd308ca87979"))
+                        return true;
+                    // The FM26 Demo for Mac, 26.3.2 too, with its own user data.
+                    if (HasHash(macAssembly, "b3f86da82f7ef5b24d5a0cae4d4cccd4f904d0e8b971d3e7b92c78500a14eda5")
+                        && HasHash(macPlugin, "ef6fb6078a5dfceaa325799caf00bb635f3a7dbd8cc4aa3021aa7beeccf8cc4d"))
+                    {
+                        UserDataName = "Football Manager 26 Demo";
+                        return true;
+                    }
+                    return false;
                 }
                 string gameAssembly = Path.Combine(Paths.GameRootPath, "GameAssembly.dll");
                 string gamePlugin = Path.Combine(Paths.GameRootPath, "fm_Data", "Plugins", "x86_64", "game_plugin.dll");

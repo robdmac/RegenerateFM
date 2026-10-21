@@ -1,4 +1,4 @@
-# FM26 on macOS (experimental)
+# FM26 on macOS
 
 The FM26 plugin is the same DLL on macOS. What differs is how BepInEx gets into the game, and four problems BepInEx 6 has with FM26 for Mac. This folder holds the fixes, and `make_release.py` packs them into the release's `FM26-macOS` folder.
 
@@ -67,4 +67,6 @@ Checked on 2026-10-18 through Steam's launch option, with a local stand-in for t
 
 - The squad batch on macOS.
 - The plugin DLL in a release is built once for both systems. The one tested here was built against be.789's macOS interop assemblies; the Windows release has been built against be.760's.
-- Intel Macs (the launcher should work, since x86_64 is native there), other macOS versions and other FM26 builds. On another build the plugin turns its buttons off, but BepInEx and the hooks still load.
+- Intel Macs (the launcher should work, since x86_64 is native there), other macOS versions and other FM26 builds.
+
+The **FM26 Demo** for Mac (Steam app 3551360, 26.3.2 with its own binaries) works the same way: copy the `FM26-macOS` folder into `Football Manager 26 Demo` and set its launch option (`python3 steam_launch.py fm26demo`). The launcher starts whichever executable `fm.app` names, and the plugin pins the Demo's hashes and saves faces in its user-data folder, `Football Manager 26 Demo`. Checked on 2026-10-21 with the image stand-in: BepInEx's first start, a 21-face First Team batch, and Generate and Update for a staff member. On another build the plugin turns its buttons off, but BepInEx and the hooks still load.

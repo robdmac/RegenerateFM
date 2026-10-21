@@ -143,24 +143,29 @@ def has_popup(panel: Path) -> bool:
     return any(f'id="{widget}"' in panel.read_text(encoding="utf-8-sig") for widget in ("fmnP", "fmnS"))
 
 
-def config_text(port: int, token: str, companion: str | None) -> bytes:
+def config_text(port: int, token: str, companion: str | None, python: str | None = None,
+                python_arch: str | None = None) -> bytes:
     """fmface24.ini. The DLL reads it with GetPrivateProfileString, which
-    takes UTF-16 with a byte-order mark, so any companion path works; the
-    macOS library reads plain ASCII and starts no companion."""
+    takes UTF-16 with a byte-order mark, so any companion path works. On
+    macOS it is UTF-8: the library reads only its port and token, and
+    run_fmface24.sh starts the companion (companion.py) with ``python``,
+    as ``python_arch`` (arm64 or x86_64, which its packages are built for)."""
     text = f"[fmface]\nenabled=1\nport={port}\ntoken={token}\n"
+    for key, value in (("companion", companion), ("python", python if MACOS else None),
+                       ("python_arch", python_arch if MACOS else None)):
+        if value:
+            if "\n" in value or "\r" in value:
+                raise ValueError(f"Invalid {key} path.")
+            text += f"{key}={value}\n"
     if MACOS:
-        return text.encode("ascii")
-    if companion:
-        if "\n" in companion or "\r" in companion:
-            raise ValueError("Invalid companion path.")
-        text += f"companion={companion}\n"
+        return text.encode("utf-8")
     return text.replace("\n", "\r\n").encode("utf-16")
 
 
 def read_config(path: Path) -> dict[str, str]:
     """fmface24.ini's settings, in either encoding."""
     data = path.read_bytes()
-    text = data.decode("utf-16") if data[:2] in (b"\xff\xfe", b"\xfe\xff") else data.decode("ascii")
+    text = data.decode("utf-16") if data[:2] in (b"\xff\xfe", b"\xfe\xff") else data.decode("utf-8")
     return dict(line.split("=", 1) for line in text.splitlines() if "=" in line)
 
 
@@ -207,7 +212,10 @@ def main(argv: list[str] | None = None) -> None:
                         help=f"the FM Face library to install (default: {DEFAULT_LIBRARY})")
     parser.add_argument("--auth-file", type=Path)
     parser.add_argument("--port", type=int, default=8769)
-    parser.add_argument("--companion", help="the companion FM24 starts (fmface-fm24.exe), as Windows sees it")
+    parser.add_argument("--companion", help="the companion FM24 starts: fmface-fm24.exe as Windows sees it, "
+                                            "or on macOS fm24/companion.py")
+    parser.add_argument("--python", help="macOS: the Python run_fmface24.sh starts the companion with")
+    parser.add_argument("--python-arch", choices=("arm64", "x86_64"), help="macOS: the architecture to run it as")
     parser.add_argument("--remove", action="store_true")
     args = parser.parse_args(argv)
     game = args.game_dir.expanduser().resolve()
@@ -292,7 +300,7 @@ def main(argv: list[str] | None = None) -> None:
         transaction.write(target, dll, private=False)
         if launcher:
             transaction.write(launcher, (HERE / LAUNCHER).read_bytes(), mode=0o755)
-        transaction.write(config, config_text(args.port, token, args.companion))
+        transaction.write(config, config_text(args.port, token, args.companion, args.python, args.python_arch))
         transaction.write(manifest, (json.dumps({"version": 2, "dllSha256": digest(target),
                                                  "panels": panels}, indent=2) + "\n").encode())
     except BaseException as exc:
@@ -315,7 +323,7 @@ def main(argv: list[str] | None = None) -> None:
         print("On Windows, FM24 loads the DLL from its folder; no launch option is needed.")
     elif not args.companion:
         print('Proton launch option: WINEDLLOVERRIDES="winmm=n,b" %command%')
-    if args.companion and not MACOS:
+    if args.companion:
         print("FM24 starts the FM Face companion itself.")
     else:
         print("Start the companion while you play (add --preview-only for no-charge tests).")

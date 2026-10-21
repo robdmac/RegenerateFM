@@ -302,7 +302,8 @@ def read_native_profile(*, identity_only: bool = False):
             profile["biographyHeadline"] = biography
         # The check read uses the header and the known record: no memory search.
         if (read_open_screen(pid) != screen or
-                reread_profile(pid, person_id, screen.title, profile["age"], identity_only=identity_only) !=
+                reread_profile(pid, person_id, screen.title, profile["age"], identity_only=identity_only,
+                               today=screen.today) !=
                 (person_id, {key: value for key, value in profile.items() if key != "biographyHeadline"})):
             raise ValueError("The open FM24 profile changed during capture; no image request was made.")
         return person_id, profile
@@ -602,15 +603,16 @@ def _exit_with_game(pid: int) -> None:
 
 def _first_start(handler, game_dir: Path | None, preview_only: bool) -> None:
     """In a companion FM24 started: build the optional skin if the setup
-    couldn't (plain python3 on Linux), then check the key, asking for one in
-    a window if none is saved."""
+    couldn't (plain python3 on Linux), then on Windows and Proton check the
+    key, asking for one in a window if none is saved."""
     if game_dir is not None:
         import setup_fm24
         user_data = setup_fm24.find_user_data_dir(game_dir)
         if user_data is not None and setup_fm24.build_skin_with_popups(game_dir, user_data / "skins" / "fmface"):
             print("Built the optional FM Face skin; choose it in FM24's Preferences > Interface "
                   "after restarting FM24.", flush=True)
-    if preview_only or _env_key():
+    # On macOS the key is asked for in the game when a face command needs it.
+    if preview_only or _env_key() or sys.platform == "darwin":
         return
     _check_saved_key(handler)
     if not load_env().get("OPENAI_API_KEY", "").strip() or handler.key_rejected:

@@ -28,6 +28,9 @@ GAMES = {
              "proton": 'WINEDLLOVERRIDES="winmm=n,b"'},
     "fm26": {"app": "3551340", "folder": "Football Manager 26", "launcher": "run_fmface.sh",
              "proton": 'WINEDLLOVERRIDES="winhttp=n,b"'},
+    # The FM26 Demo is its own Steam app and folder, set up as FM26.
+    "fm26demo": {"app": "3551360", "folder": "Football Manager 26 Demo", "launcher": "run_fmface.sh",
+                 "proton": 'WINEDLLOVERRIDES="winhttp=n,b"'},
 }
 APPS_PATH = ("userlocalconfigstore", "software", "valve", "steam", "apps")
 COMMAND = "%command%"

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Read-only survey of every person in a running FM24 save (Windows or Proton).
+"""Read-only survey of every person in a running FM24 save (Windows, Proton or macOS).
 
 For each entry in FM24's people vector it names the object's class from its
-MSVC RTTI, then runs every player and staff member through the companion's
+RTTI (MSVC's on fm.exe, the Itanium ABI's on the Mac build), then runs every player and staff member through the companion's
 record parser (live_memory._parse_record) and the readers its profile
 builder uses (nation, contract club, playing club, position). It also checks
 the handle index (person_handles._scan) against the vector, and finds a sample
@@ -34,7 +34,11 @@ from process_memory import MemoryScan, fm24_image_base, read_process_bytes  # no
 
 FACE_CLASSES = {".?AVACTUAL_PLAYER@db@@": "player",
                 ".?AVACTUAL_NON_PLAYER@db@@": "staff",
-                ".?AVACTUAL_PLAYER_AND_NON_PLAYER@db@@": "staff"}
+                ".?AVACTUAL_PLAYER_AND_NON_PLAYER@db@@": "staff",
+                # The Mac build's Itanium names.
+                "N2db13ACTUAL_PLAYERE": "player",
+                "N2db17ACTUAL_NON_PLAYERE": "staff",
+                "N2db28ACTUAL_PLAYER_AND_NON_PLAYERE": "staff"}
 
 
 def u64(pid: int, address: int) -> int:
@@ -42,8 +46,18 @@ def u64(pid: int, address: int) -> int:
 
 
 def rtti_name(pid: int, image: int, vtable: int, cache: dict[int, str]) -> str:
-    """The class name of an object with this vtable, from its MSVC complete object locator."""
+    """The class name of an object with this vtable, from its MSVC complete
+    object locator, or on macOS its Itanium type_info (the vtable's -8 entry,
+    whose +8 is the mangled name; arm64 sets the top bit of a name it doesn't
+    guarantee unique)."""
     if vtable in cache:
+        return cache[vtable]
+    if sys.platform == "darwin":
+        try:
+            name = u64(pid, u64(pid, vtable - 8) + 8) & 0x7FFFFFFFFFFFFFFF
+            cache[vtable] = read_process_bytes(pid, name, 96).split(b"\0", 1)[0].decode("ascii")
+        except (OSError, ValueError, UnicodeDecodeError, struct.error):
+            cache[vtable] = "?unreadable"
         return cache[vtable]
     try:
         locator = u64(pid, vtable - 8)
@@ -87,6 +101,8 @@ def main() -> None:
     print(f"People vector: {count} entries")
 
     classes: collections.Counter[str] = collections.Counter()
+    class_vtables: dict[str, set[int]] = collections.defaultdict(set)
+    linked: collections.Counter[str] = collections.Counter()   # classes of nations, contract clubs, playing clubs
     cache: dict[int, str] = {}
     results: collections.Counter[str] = collections.Counter()
     failures: dict[str, list[str]] = collections.defaultdict(list)
@@ -98,12 +114,15 @@ def main() -> None:
         if not obj:
             classes["(empty)"] += 1
             continue
-        name = rtti_name(pid, image, u64(pid, obj), cache)
+        vtable = u64(pid, obj)
+        name = rtti_name(pid, image, vtable, cache)
         classes[name] += 1
+        class_vtables[name].add(vtable - image)
         if name not in FACE_CLASSES:
             continue
         record = obj + 12
         vector_people[handle] = record
+        _linked_classes(pid, image, record, cache, linked, class_vtables)
         if index.get(handle) != record:
             index_mismatch.append(handle)
         try:
@@ -132,9 +151,14 @@ def main() -> None:
             if len(failures[key]) < 8:
                 failures[key].append(f"handle {handle} record {record:#x}")
 
-    print("\nClasses in the people vector:")
+    print("\nClasses in the people vector (vtable from the image header):")
     for name, number in classes.most_common():
+        print(f"  {number:7d}  {name}  {', '.join(hex(v) for v in sorted(class_vtables[name]))}")
+    print("\nClasses a person's record points to:")
+    for name, number in linked.most_common():
         print(f"  {number:7d}  {name}")
+    for name in sorted({key.split(" ", 1)[1] for key in linked}):
+        print(f"  {name}: {', '.join(hex(v) for v in sorted(class_vtables[name]))}")
     print(f"\nPlayers and staff: {sum(results.values())}; read in full: {results['read']}; failed: {results['failed']}")
     print(f"  kinds (class -> parsed kind): {dict(kinds)}")
     print(f"  no full-name string (read from name objects): {no_full_name}")
@@ -174,6 +198,35 @@ def main() -> None:
             "index_mismatch": index_mismatch[:200], "extra_index": sorted(extra)[:200],
             "id_search": {"sample": len(sample), "found": found, "wrong": wrong, "missing": missing},
         }, indent=2))
+
+
+def _linked_classes(pid: int, image: int, record: int, cache: dict[int, str],
+                    linked: collections.Counter, class_vtables: dict[str, set[int]]) -> None:
+    """Count the classes of the objects the profile readers follow from a
+    record: its nation, its contract's club and its playing club."""
+    def note(what: str, address: int) -> None:
+        if not address:
+            return
+        try:
+            vtable = u64(pid, address)
+        except (OSError, ValueError, struct.error):
+            linked[f"{what} ?unreadable"] += 1
+            return
+        name = rtti_name(pid, image, vtable, cache)
+        linked[f"{what} {name}"] += 1
+        class_vtables[name].add(vtable - image)
+
+    try:
+        note("nation", native_profile._pointer(pid, record + LAYOUT["nation"]))
+        note("playing", native_profile._pointer(pid, record + LAYOUT["playing_club"]))
+        contract = native_profile._pointer(pid, record + LAYOUT["contract"])
+        if contract:
+            club = native_profile._pointer(pid, contract + 0x10)
+            note("contract", club)
+            if club:
+                note("details", native_profile._pointer(pid, club + 0x30))
+    except (OSError, ValueError, struct.error):
+        linked["?unreadable"] += 1
 
 
 if __name__ == "__main__":

@@ -13,7 +13,7 @@ import re
 import struct
 
 from layout import LAYOUT
-from live_memory import (RECORD_TYPES, MemoryUnavailable, PersonIdentity, _record_addresses,
+from live_memory import (RECORD_TYPES, MemoryUnavailable, PersonIdentity, _parse_record, _record_addresses,
                          find_game_pid, is_person_record, person_kind, read_person_record,
                          record_dates)
 from process_memory import MemoryScan, fm24_image_base, read_process_bytes
@@ -157,7 +157,15 @@ _RECORD_HEADER = 0x40
 _records: dict[tuple[int, str], tuple[int, PersonIdentity, bytes]] = {}
 
 
-def _person_record(pid: int, person_id: str) -> tuple[int, PersonIdentity]:
+def _person_record(pid: int, person_id: str, known: int = 0) -> tuple[int, PersonIdentity]:
+    """The person's canonical record and identity. ``known`` is the record's
+    address if already known (from FM24's person table), which is checked
+    instead of searching memory for the ID."""
+    if known and (identity := _parse_record(pid, known, int(person_id))) is not None:
+        if len(_records) > 512:
+            _records.clear()
+        _records[(pid, person_id)] = (known, identity, read_process_bytes(pid, known, _RECORD_HEADER))
+        return known, identity
     cached = _records.get((pid, person_id))
     if cached:
         address, identity, header = cached
@@ -355,16 +363,20 @@ def read_open_profile(pid: int | None = None, *, identity_only: bool = False,
     verified name, age and club, which is all "Update face" needs; another
     club's player can have attributes that are not fully known. ``screen``
     (native_screen.OpenScreen) names the person and title shown, so the UI
-    texts aren't searched for "(ID:n)" titles, which need screen IDs.
+    texts aren't searched for "(ID:n)" titles, which need screen IDs. With
+    the record and the ages it shows too, FM24's memory isn't searched at all.
     """
     pid = pid or find_game_pid()
-    titles, ages = _scan_ui(pid)
+    if screen is not None and screen.ages:
+        titles, ages = {}, set(screen.ages)
+    else:
+        titles, ages = _scan_ui(pid)
     if screen is not None:
         titles = {screen.person_id: [screen.title]}
     people = []
     for person_id, names in titles.items():
         try:
-            address, identity = _person_record(pid, person_id)
+            address, identity = _person_record(pid, person_id, screen.record if screen is not None else 0)
         except (MemoryUnavailable, ValueError):
             continue  # Club/team IDs are also present in the title cache.
         if names:
@@ -372,22 +384,29 @@ def read_open_profile(pid: int | None = None, *, identity_only: bool = False,
     if len(people) != 1:
         raise MemoryUnavailable(f"Expected one open FM24 person profile; found {len(people)}.")
     person_id, record, identity, names = people[0]
-    matching_ages = ages.intersection(identity.possible_ages)
+    matching_ages = ages.intersection(_ages(identity, screen.today if screen is not None else None))
     if len(matching_ages) != 1:
         raise MemoryUnavailable("Could not verify the open FM24 person's age.")
     age = matching_ages.pop()
     return person_id, _profile(pid, record, identity, names, age, identity_only)
 
 
+def _ages(identity: PersonIdentity, today) -> set[int]:
+    """The ages the person can be: exactly, on the in-game date shown, else
+    the two the record's year allows."""
+    return {identity.age_on(today)} if today is not None else set(identity.possible_ages)
+
+
 def reread_profile(pid: int, person_id: str, title: str, age: int, *,
-                   identity_only: bool = False) -> tuple[str, dict]:
+                   identity_only: bool = False, today=None) -> tuple[str, dict]:
     """Read a person found by read_open_profile again, without a memory search.
 
-    ``title`` is the open screen's "Role - Club" header text and ``age`` the
-    age read the first time. Used to check that nothing changed during capture.
+    ``title`` is the open screen's "Role - Club" header text, ``age`` the
+    age read the first time and ``today`` the in-game date shown, if any.
+    Used to check that nothing changed during capture.
     """
     record, identity = _person_record(pid, person_id)
-    if age not in identity.possible_ages:
+    if age not in _ages(identity, today):
         raise MemoryUnavailable("The FM24 person's age changed during capture.")
     return person_id, _profile(pid, record, identity, [title], age, identity_only)
 

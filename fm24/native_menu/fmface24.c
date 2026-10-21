@@ -954,7 +954,8 @@ static void add_menu_row(unsigned char *root, unsigned int id, const char *label
 
 /* A team's tab menu (FM24's tab-button class) whose rows include its Squad
    view (TeSq): a reserve or youth team's tab in the Development Center, or
-   another club's Players tab. FM Face appends "Generate missing squad
+   another club's Players tab (its rows are the club's teams, All Players
+   (Capl) and Export Team for Versus Competition; TeSq in some saves). FM Face appends "Generate missing squad
    faces…" (FMFS) unless the menu has it already, as the first team's Squad
    menu does through its provider. Like the provider's, the command works on
    the Squad table shown; the companion refuses without one. */
@@ -971,7 +972,9 @@ static void add_squad_rows(unsigned char **children, int count)
         BOOL squad = FALSE, present = FALSE;
         for (int j = 0; j < rows_count; ++j) {
             unsigned int id = item_fourcc(rows[j], SKIN_ID('i','d',' ',' '));
-            squad |= id == SKIN_ID('T','e','S','q');
+            /* Its Squad view, or (another club's Players tab, whose rows are its
+               teams) All Players. */
+            squad |= id == SKIN_ID('T','e','S','q') || id == SKIN_ID('C','a','p','l');
             present |= id == SQUAD_EVENT;
         }
         if (squad && !present && rows_count < MAX_POPUP_ROWS) {

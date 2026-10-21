@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import platform
 import re
 import sys
 import tempfile
@@ -53,15 +54,29 @@ def bundled_dll(companion: Path | None = None) -> Path:
 
 
 def packaged_companion() -> Path | None:
-    """This packaged companion, which FM24 then starts itself."""
+    """This packaged companion, which FM24 then starts itself; on macOS, this
+    source's companion.py, which run_fmface24.sh starts with this Python."""
+    if sys.platform == "darwin":
+        return HERE / "companion.py"
     return Path(sys.executable).resolve() if getattr(sys, "frozen", False) and sys.platform == "win32" else None
 
 
 def windows_path(companion: Path) -> str:
-    """The companion's path as FM24 sees it: as is on Windows, under Wine's Z: drive on Linux."""
-    if sys.platform == "win32":
+    """The companion's path as FM24 sees it: as is on Windows and macOS, under
+    Wine's Z: drive on Linux."""
+    if sys.platform in ("win32", "darwin"):
         return str(companion)
     return "Z:" + str(companion).replace("/", "\\")
+
+
+# The companion's packages (fm24/requirements.txt), which the Python FM24
+# starts it with on macOS needs.
+COMPANION_MODULES = ("PIL", "zstandard")
+
+
+def missing_modules() -> list[str]:
+    import importlib.util
+    return [name for name in COMPANION_MODULES if importlib.util.find_spec(name) is None]
 
 
 def find_game_dir() -> Path | None:
@@ -147,6 +162,9 @@ def is_set_up(game: Path, skin_dir: Path, auth_file: Path, companion: Path | Non
                     native_install.digest(dll) == native_install.digest(bundled_dll(companion)) ==
                     metadata["dllSha256"] and
                     (companion is None or installed_config(game).get("companion") == windows_path(companion)) and
+                    (not native_install.MACOS or (installed_config(game).get("python"),
+                                                  installed_config(game).get("python_arch")) ==
+                     (sys.executable, platform.machine())) and
                     installed_token(game) == auth_file.read_text(encoding="ascii").strip() and
                     (not native_install.LAUNCHER or native_install.digest(game / native_install.LAUNCHER) ==
                      native_install.digest(native_install.HERE / native_install.LAUNCHER)))
@@ -196,6 +214,14 @@ def setup(game: Path, user_data: Path, auth_file: Path, companion: Path | None =
     command = ["--game-dir", str(game), "--skin-dir", str(skin_dir), "--auth-file", str(auth_file), "--dll", str(dll)]
     if companion is not None:
         command += ["--companion", windows_path(companion)]
+    if native_install.MACOS:
+        # Steam runs the launcher under Rosetta; the companion must run as this
+        # Python does now, which its packages were installed for.
+        command += ["--python", sys.executable, "--python-arch", platform.machine()]
+        if missing := missing_modules():
+            print(f"FM24 starts the companion with {sys.executable}, which lacks {', '.join(missing)}. "
+                  "Install them (pip install -r fm24/requirements.txt), or run this setup with a Python "
+                  "that has them.", flush=True)
     native_install.main(command)
     _launch_option(game)
     print("\nIn FM24, Generate new face and Update face are in a profile's Overview tab menu, with any skin.\n"
@@ -236,7 +262,9 @@ def main(argv: list[str] | None = None) -> None:
     companion = args.companion.expanduser().resolve() if args.companion else packaged_companion()
     if companion is not None and not companion.is_file():
         raise SystemExit(f"There is no FM Face companion at {companion}.")
-    auth_file = args.auth_file or (companion.parent if companion else ROOT) / ".fm24-auth"
+    # The packaged companion keeps its token beside itself; from source, beside FM Face.
+    packaged = companion is not None and companion.suffix != ".py"
+    auth_file = args.auth_file or (companion.parent if packaged else ROOT) / ".fm24-auth"
     game, user_data = resolve_dirs(args.game_dir, args.user_data_dir)
     print(f"FM24: {game}\nFM24 user data: {user_data}", flush=True)
     if args.remove:

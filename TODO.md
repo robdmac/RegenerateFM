@@ -221,3 +221,32 @@
   The person comes from the sidebar's object reference, looked up by handle
   in FM24's person table (`fm24/layout.py`). Checked live on Proton with the
   setting off and on; not yet on Windows itself.
+
+## macOS review (2026-10-21)
+
+- **FM24 person survey on the Mac:** done. With the Mac build's class
+  vtables, name objects, and team, club and nation classes mapped (from
+  Itanium RTTI), every one of 31,032 players and staff in an MK Dons save
+  reads; before, 13,958 did (most people without a full-name string, and
+  every player-coach, were refused). Details in
+  `fm24/native_menu/README.md` ("Person records").
+- **FM24 ages from the in-game date:** done. A record's year can be the
+  season before (738 people in that save), which refused a 16-year-old's
+  profile and stopped the Under 18s squad scan. Ages now come from the
+  date in the top bar, on every platform. Not yet checked on Windows.
+- **FM24 Steam launch on the Mac:** fixed. `run_fmface24.sh` checked
+  `uname -m`, which says x86_64 under Steam's Rosetta, so FM24 started
+  without FM Face. The launcher now also starts the companion.
+- **FM24 Mac squad batch:** the row model offset differs (+0x6C8); the
+  final dialog now ends on OK as on Windows; the profile read takes 0.6 s
+  instead of about 6 s, and the squad scan uses the people vector instead
+  of a memory search.
+- **FM24 another club's Players tab:** fixed. Its rows are the club's teams,
+  All Players (`Capl`) and Export, with no Squad view (`TeSq`) in this save,
+  so the item wasn't added (on Windows too: the same rule). A tab with All
+  Players now gets it; checked on the Mac with Huddersfield (6 of 35). The
+  Windows DLL has the same change but hasn't been rebuilt or checked.
+- **FM26 Demo on macOS:** done. The plugin pins the Demo's Mac binaries,
+  the launcher starts the app's own executable ("Football Manager 26 Demo"),
+  and `steam_launch.py fm26demo` sets its launch option. Checked with the
+  image stand-in: a 21-face batch and staff Generate and Update.

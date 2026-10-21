@@ -108,6 +108,12 @@ class LaunchOptionTests(unittest.TestCase):
                     mock.patch.object(steam_launch, "steam_running", return_value=True):
                 self.assertIn("already set", steam_launch.apply("fm26", game))
 
+    def test_the_fm26_demo_is_its_own_app_with_fm26s_launcher(self):
+        self.assertEqual(steam_launch.GAMES["fm26demo"]["app"], "3551360")
+        demo = Path("/Games/Football Manager 26 Demo")
+        self.assertEqual(steam_launch.fm_face_option("fm26demo", demo, "darwin"), f'"{demo / "run_fmface.sh"}"')
+        self.assertEqual(steam_launch.fm_face_option("fm26demo", demo, "linux"), 'WINEDLLOVERRIDES="winhttp=n,b"')
+
     def test_options_per_platform(self):
         game = Path("/Games/Football Manager 2024")
         self.assertEqual(steam_launch.fm_face_option("fm24", game, "darwin"), f'"{game / "run_fmface24.sh"}"')

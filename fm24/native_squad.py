@@ -24,6 +24,7 @@ from layout import LAYOUT
 from live_memory import (MemoryUnavailable, _parse_record, find_game_pid, is_person_record, object_class,
                          person_kind, record_marker)
 from native_profile import collect_object_names, _alternate_name
+from person_handles import people_vector
 from process_memory import MemoryScan, fm24_image_base, read_process_bytes
 
 MANAGER_GLOBAL_RVA = LAYOUT["manager_global"]
@@ -44,7 +45,7 @@ TABLE_VISIBLE = 0x394       # table widget: first and last visible row, 1-based
 # a vector of {fourcc key, value pointer} properties; its 'id  ' value holds
 # a u32 at +8. A person row's id is 0x01000000 | the person's handle, the u32
 # at person+8, and FM24 keeps person pointers in a heap table indexed by handle.
-TABLE_MODEL = 0x6E8
+TABLE_MODEL = LAYOUT["table_model"]  # 0x6E8 on fm.exe, 0x6C8 on the Mac build
 MODEL_ROWS = 0x18
 ROW_ID_KEY = int.from_bytes(b"id  ", "big")
 HEADER_ROW_ID = int.from_bytes(b"HROW", "big")
@@ -310,14 +311,19 @@ def read_squad(pid: int | None = None, attempts: int = 3, catalogue: bool = True
             "The open FM24 Squad table has no players.")
     today = dt.date.min
     if catalogue:
-        # Person records carry the current game year (layout "record_year").
-        years = {struct.unpack("<H", read_process_bytes(pid, row.record + LAYOUT["record_year"], 2))[0]
-                 for row in result}
-        if len(years) != 1 or not 1900 < min(years) < 2200:
-            raise MemoryUnavailable("Could not read FM24's current year.")
-        year = str(years.pop())
-        today = _today(collections.Counter({text: count for text, count in dates.items()
-                                            if text.endswith(" " + year)}))
+        from native_screen import screen_date
+        today = screen_date(pid)
+        if today is None:
+            # The date strings in memory for the current year. Person records
+            # carry the year they were last updated in (layout "record_year"):
+            # the current one, or for some youth players the one before.
+            years = {struct.unpack("<H", read_process_bytes(pid, row.record + LAYOUT["record_year"], 2))[0]
+                     for row in result}
+            if not 1900 < max(years) < 2200:
+                raise MemoryUnavailable("Could not read FM24's current year.")
+            year = str(max(years))
+            today = _today(collections.Counter({text: count for text, count in dates.items()
+                                                if text.endswith(" " + year)}))
     return SquadState(tuple(result), total, frozenset(indexed), today, visible, table, brief=tuple(brief),
                       coaches=coaches, others=others)
 
@@ -361,7 +367,15 @@ def _handle_table(pid: int, people: list[int]) -> int:
                 return cached
         except OSError:
             pass
-    _person_tables[pid] = base = _find_handle_table(pid, people, handles)
+    # The database's people vector (person_handles), else a memory search.
+    base = people_vector(pid, handles[0])
+    try:
+        if base is None or not all(_u64(pid, base + 8 * handle) == person
+                                   for person, handle in zip(people, handles)):
+            base = _find_handle_table(pid, people, handles)
+    except OSError:
+        base = _find_handle_table(pid, people, handles)
+    _person_tables[pid] = base
     return base
 
 
