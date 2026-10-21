@@ -5,7 +5,15 @@ FM Face makes new portraits for Football Manager players and staff who don't hav
 - **Football Manager 26** (26.3.2, and the FM26 Demo) through a BepInEx plugin.
 - **Football Manager 2024** (24.4.2), experimental, through a small DLL and a companion program.
 
-The images come from OpenAI's image API, using your own API key. Each face costs one request on your OpenAI account. FM Face is independent of Sports Interactive, SEGA and the BepInEx project. It has been tested on Linux with Steam/Proton, and on Windows 10 with FM26, the FM26 Demo and FM24 (see [Platform support](#platform-support)).
+The images come from OpenAI's image API, using your own API key. Each face costs one request on your OpenAI account. FM Face is independent of Sports Interactive, SEGA and the BepInEx project.
+
+| | Windows | Linux (Steam/Proton) | macOS (Apple Silicon) |
+|---|---|---|---|
+| **FM26** 26.3.2 | Supported | Supported | Experimental (Rosetta 2) |
+| **FM26 Demo** 26.3.2 | Supported | Should work; untested | Not supported (the plugin turns itself off) |
+| **FM24** 24.4.2 | Experimental | Experimental | Experimental |
+
+Supported and experimental builds have been tested in game, with billed faces; see [Platform support](#platform-support) for what was checked on each. Any other game version turns FM Face off until it is checked.
 
 ## 1. Get an OpenAI API key
 
@@ -114,9 +122,9 @@ Everything has been tested on Linux with Steam/Proton. Status elsewhere:
 
 | Part | Windows | macOS |
 |---|---|---|
-| FM26 plugin | Its native target: the build check pins the Windows game binaries that Proton also runs. On Windows 10, with FM26 26.3.2 and the FM26 Demo, the plugin loads and the portrait, Actions and squad commands work: billed single faces, Update face (on an FM Face portrait and a game photo), staff faces, a biography, and squad batches with Stop (the Demo's returns to First Team between faces). | Experimental, through the `FM26-macOS` folder: BepInEx be.789 under Rosetta 2, with a rebuilt hooking library and a patched Il2CppInterop ([hotreload/macos/README.md](hotreload/macos/README.md)). On FM26 26.3.2 for Mac the plugin loads, a career runs, and the Actions, portrait and squad commands open the key dialog; a billed face is not yet checked. |
-| FM24 DLL | The same Windows DLL; Windows loads it from the game folder without a launch option. On Windows 10 with FM24 24.4.2: the profile Overview menu's Generate new face and Update face (greyed for a person with no face), and the Squad menu's Generate missing squad faces…. | Experimental: a Mac library (`fm24/native_menu/fmface24_macos.c`) for FM24 24.4.2's Apple Silicon build, loaded by `run_fmface24.sh`. On the Mac it adds the same menus and dialogs, reloads the skin, and serves the companion's memory reads. Checked in game with preview faces; a billed face is not yet checked. |
-| FM24 companion | Has a Windows memory reader (`ReadProcessMemory`, `VirtualQueryEx`). On Windows 10, the packaged `fmface-fm24.exe` sets FM24 up, FM24 starts and stops it, and it reads the live game: profiles, staff, squad scans and batches, and a billed face. It also runs under Wine in the game's Proton prefix. | Refuses to start. |
+| FM26 plugin | Its native target: the build check pins the Windows game binaries that Proton also runs. On Windows 10, with FM26 26.3.2 and the FM26 Demo, the plugin loads and the portrait, Actions and squad commands work: billed single faces, Update face (on an FM Face portrait and a game photo), staff faces, a biography, and squad batches with Stop (the Demo's returns to First Team between faces). | Experimental, through the `FM26-macOS` folder: BepInEx be.789 under Rosetta 2, with a rebuilt hooking library and a patched Il2CppInterop ([hotreload/macos/README.md](hotreload/macos/README.md)). On FM26 26.3.2 for Mac (2026-10-21): Generate and Update for players and staff (a staff face shows at once), the scouting message, squad batches on First Team and a reserve team's page, and a billed face. The Demo's Mac build isn't pinned, so the plugin turns off there. |
+| FM24 DLL | The same Windows DLL; Windows loads it from the game folder without a launch option. On Windows 10 with FM24 24.4.2: the profile Overview menu's Generate new face and Update face (greyed for a person with no face), and the Squad menu's Generate missing squad faces…. | Experimental: a Mac library (`fm24/native_menu/fmface24_macos.c`) for FM24 24.4.2's Apple Silicon build, loaded by `run_fmface24.sh`. On the Mac it adds the same menus and dialogs, reloads the skin, serves the companion's memory reads and starts the companion. Checked in game on 2026-10-21: profiles, staff, squad batches (the first team, a Development Centre team and another club's), and billed Generate and Update. |
+| FM24 companion | Has a Windows memory reader (`ReadProcessMemory`, `VirtualQueryEx`). On Windows 10, the packaged `fmface-fm24.exe` sets FM24 up, FM24 starts and stops it, and it reads the live game: profiles, staff, squad scans and batches, and a billed face. It also runs under Wine in the game's Proton prefix. | Runs from source with Python (`.venv-fm24`), reading memory through the Mac library; FM24's launcher starts it. Every player and staff member of a surveyed save reads. |
 | Web app and import (`fmface.py`) | Standard-library Python plus Pillow, so it should run; untested. The test suite passes on Windows. `install_service.py` is Linux-only (systemd). | Should run; untested. |
 
 ## Release scope

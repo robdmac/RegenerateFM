@@ -850,7 +850,8 @@ static BOOL tab_button(unsigned char *object)
     return read_game(object, &vtable, sizeof(vtable)) && vtable == game_base + PROFILE_MENU_TAB_BUTTON_VTABLE;
 }
 
-/* A team's tab menu whose rows include its Squad view (TeSq): FM Face
+/* A team's tab menu whose rows include its Squad view (TeSq), or another
+   club's Players tab (All Players, Capl; see fmface24.c): FM Face
    appends "Generate missing squad faces…" (FMFS) unless it has it already. */
 static void add_squad_rows(unsigned char **children, int count)
 {
@@ -863,7 +864,9 @@ static void add_squad_rows(unsigned char **children, int count)
         BOOL squad = FALSE, present = FALSE;
         for (int j = 0; j < rows_count; ++j) {
             unsigned int id = item_fourcc(rows[j], SKIN_ID('i','d',' ',' '));
-            squad |= id == SKIN_ID('T','e','S','q');
+            /* Its Squad view, or (another club's Players tab, whose rows are its
+               teams) All Players. */
+            squad |= id == SKIN_ID('T','e','S','q') || id == SKIN_ID('C','a','p','l');
             present |= id == SQUAD_EVENT;
         }
         if (squad && !present && rows_count < MAX_POPUP_ROWS) {

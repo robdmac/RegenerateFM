@@ -116,8 +116,11 @@ FM Face item through the same game functions, and its command handler queues
 The same item is added to a team's tab menu: a tab of FM24's tab-button class
 (`profileMenu.tabButtonVtableRva` = `0x5679168`, the class of the profile's
 Overview tab too) whose rows include the team's Squad view (`TeSq`) and no
-`FMFS` row yet. These are the reserve and youth team tabs of the Development
-Center (Inter Miami II, IMCF Academy) and another club's Players tab. When any
+`FMFS` row yet, or whose rows include All Players (`Capl`). These are the
+reserve and youth team tabs of the Development Center (Inter Miami II, IMCF
+Academy) and another club's Players tab, whose rows are the club's teams,
+All Players and Export Team for Versus Competition (in a 2026-10-21 MK Dons
+save, Huddersfield's had no `TeSq`). When any
 popup opens (`meop`, see "Profile menus"), the DLL appends an `FMFS` row to
 each such tab under the same parent with FM24's `itemNew`; FM24 sends the
 chosen row to the tab button and on to the screen handler, which queues the

@@ -241,6 +241,8 @@
   final dialog now ends on OK as on Windows; the profile read takes 0.6 s
   instead of about 6 s, and the squad scan uses the people vector instead
   of a memory search.
-- Still open: another club's Players tab menu (Huddersfield's) showed no
-  "Generate missing squad faces…" on the Mac, where the Windows README says
-  it does; not yet looked into. MK Dons' own Development Centre tabs have it.
+- **FM24 another club's Players tab:** fixed. Its rows are the club's teams,
+  All Players (`Capl`) and Export, with no Squad view (`TeSq`) in this save,
+  so the item wasn't added (on Windows too: the same rule). A tab with All
+  Players now gets it; checked on the Mac with Huddersfield (6 of 35). The
+  Windows DLL has the same change but hasn't been rebuilt or checked.
