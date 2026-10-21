@@ -54,9 +54,6 @@ namespace FMFaceHotReload
         private VisualElement _portraitDismissLayer;
         private SquadScan _squadScan;
         private VisualElement _squadDialog;
-        // The dialog's buttons and what each does; see WatchSquadDialogClicks.
-        private readonly Dictionary<VisualElement, Action> _squadDialogActions = new Dictionary<VisualElement, Action>();
-        private VisualElement _squadClickRoot;
         private VisualElement _squadMenuButton;
         private VisualElement _squadMenuList;
         private SquadBatch _squadBatch;
@@ -971,7 +968,6 @@ namespace FMFaceHotReload
             generate.style.color = Color.white;
             generate.style.backgroundColor = new Color(0.38f, 0.10f, 0.60f, 1f);
             _squadDialog.Insert(1, generate);
-            _squadDialogActions[generate] = () => StartSquadBatch(missing);
             Log.LogInfo("FM Face squad confirmation ready: " + missing.Count + " missing portraits");
         }
 
@@ -1554,8 +1550,7 @@ namespace FMFaceHotReload
             var root = CurrentRoot();
             var dialog = new VisualElement { name = "fmface-squad-dialog" };
             dialog.style.position = Position.Absolute;
-            // Centred: on the Demo's squad pages another UI panel takes clicks in
-            // the top-right corner, where the key dialog sits on other screens.
+            // Centred over the page.
             dialog.style.left = Math.Max(0f, (root.layout.width - 360f) / 2f);
             dialog.style.top = Math.Max(0f, root.layout.height / 3f - 80f);
             dialog.style.width = 360;
@@ -1576,38 +1571,7 @@ namespace FMFaceHotReload
             dialog.Add(button);
             root.Add(dialog);
             _squadDialog = dialog;
-            _squadDialogActions.Clear();
-            _squadDialogActions[button] = buttonAction;
-            WatchSquadDialogClicks(root);
             return label;
-        }
-
-        // On the Demo's squad pages no pointer event reaches the dialog: something in
-        // FM handles it on the way down and stops it. A handler on the panel's top
-        // element runs first, so a press on one of the dialog's buttons is acted on
-        // there and goes no further.
-        private void WatchSquadDialogClicks(VisualElement root)
-        {
-            var top = root?.panel?.visualTree;
-            if (top == null || top == _squadClickRoot)
-                return;
-            _squadClickRoot = top;
-            top.RegisterCallback(DelegateSupport.ConvertDelegate<EventCallback<PointerDownEvent>>(
-                new Action<PointerDownEvent>(e =>
-                {
-                    if (_squadDialog == null || _squadDialog.parent == null || e.button != 0)
-                        return;
-                    foreach (var pair in new List<KeyValuePair<VisualElement, Action>>(_squadDialogActions))
-                    {
-                        if (pair.Key.parent == null || !pair.Key.enabledInHierarchy ||
-                            !pair.Key.worldBound.Contains(e.position))
-                            continue;
-                        e.StopPropagation();
-                        Log.LogInfo("Squad dialog button pressed: " + pair.Key.TryCast<TextElement>()?.text);
-                        pair.Value();
-                        return;
-                    }
-                })), TrickleDown.TrickleDown);
         }
 
         private void CheckPortraitTrigger()
