@@ -149,6 +149,11 @@ class GeneratorParityTests(unittest.TestCase):
             dict(PLAYER, technical={"Passing": 21}),
             dict(staff, jobTitle=None),
             dict(staff, type="fan"),
+            dict(PLAYER, gender="female"),
+            dict(PLAYER, gender="male"),
+            dict(staff, gender="female"),
+            dict(staff, gender="male"),
+            dict(PLAYER, gender="other"),
         ]
         cases, expected = [], []
         for profile in profiles:
@@ -171,6 +176,13 @@ class GeneratorParityTests(unittest.TestCase):
             self.assertTrue((Path(tmp) / ".regeneratefm-appearances" / "222.json").is_file())
             self.assertEqual(csharp[1], {"prompt": regeneratefm.profile_prompt(PLAYER, person_id="222", appearance_dir=Path(tmp))})
             self.assertEqual(csharp[2], {"error": "Player ID must contain only digits (up to 20)."})
+            # Traits saved before gender was known are chosen again for a woman.
+            regeneratefm.profile_prompt(dict(PLAYER), person_id="333", appearance_dir=Path(tmp))
+            csharp = self.run_cases([{"action": "profile", "profile": dict(PLAYER, gender="female"), "personId": "333", "directory": tmp}])
+            saved = json.loads((Path(tmp) / ".regeneratefm-appearances" / "333.json").read_text())
+            self.assertEqual(saved["gender"], "female")
+            self.assertEqual(csharp[0], {"prompt": regeneratefm.profile_prompt(dict(PLAYER, gender="female"), person_id="333",
+                                                                               appearance_dir=Path(tmp))})
             for age in (16, 30, 50):
                 for seed in ("5118334", "name:jak stewart"):
                     self.assertEqual(regeneratefm.appearance_traits(seed, age),

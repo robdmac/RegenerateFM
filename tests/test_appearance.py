@@ -53,11 +53,66 @@ class AppearanceTests(unittest.TestCase):
                     regeneratefm.profile_prompt(self.profile(), person_id="123", appearance_dir=directory)
 
     def test_minor_profiles_are_clean_shaven_and_population_has_variety(self):
-        young = [appearance_traits(str(i), 16) for i in range(100)]
+        young = [appearance_traits(str(i), 16, "male") for i in range(100)]
         self.assertTrue(all(p["facialHair"] == "clean-shaven" for p in young))
         self.assertGreater(len({p["face"] for p in young}), 50)
         self.assertGreater(len({p["hair"] for p in young}), 30)
         self.assertGreater(len({p["expression"] for p in young}), 3)
+
+    def test_only_men_get_facial_hair(self):
+        for age in (18, 25, 40, 60):
+            women = [appearance_traits(str(i), age, "female") for i in range(200)]
+            unknown = [appearance_traits(str(i), age) for i in range(200)]
+            self.assertEqual({p["facialHair"] for p in women + unknown}, {"no facial hair"})
+            # Women get their own hairstyles, never the men's cuts.
+            self.assertFalse([p["hair"] for p in women if "buzz cut" in p["hair"] or "receding" in p["hair"]
+                              or "shaved" in p["hair"]])
+            self.assertGreater(len({p["hair"].split(";")[0] for p in women}), 6)
+        men = [appearance_traits(str(i), 30, "male") for i in range(200)]
+        self.assertGreater(len({p["facialHair"] for p in men}), 3)
+
+    def test_prompts_say_who_is_a_woman_and_rule_out_facial_hair(self):
+        for kind in ("staff", "player"):
+            profile = self.profile(gender="female") if kind == "staff" else dict(PLAYER, gender="female")
+            for prompt in (regeneratefm.profile_prompt(profile, person_id="5"), regeneratefm.update_prompt(profile)):
+                self.assertIn(" is a woman.", prompt)
+                self.assertNotIn("age-appropriate facial hair", prompt)
+                for word in ("moustache", "beard", "stubble", "clean-shaven"):
+                    self.assertNotIn(word, prompt)
+            self.assertIn("no facial hair", regeneratefm.profile_prompt(profile, person_id="5"))
+            self.assertIn("Do not add any facial hair.", regeneratefm.update_prompt(profile))
+        man = regeneratefm.profile_prompt(self.profile(gender="male"), person_id="5")
+        self.assertIn("Alex is a man.", man.replace("Alex Morgan is", "Alex is"))
+        self.assertIn("age-appropriate facial hair", man)
+        with self.assertRaisesRegex(ValueError, "Gender"):
+            regeneratefm.profile_prompt(self.profile(gender="other"))
+
+    def test_saved_traits_from_before_gender_was_known_are_chosen_again(self):
+        with tempfile.TemporaryDirectory() as folder:
+            directory = Path(folder)
+            path = directory / ".regeneratefm-appearances/7.json"
+            path.parent.mkdir()
+            # As saved before gender was read: a man's facial hair and haircut.
+            path.write_text(json.dumps({"schemaVersion": 1, "personId": "7", "traits": dict(
+                appearance_traits("7", 40, "male"), facialHair="a modest moustache", hair="a close buzz cut")}))
+            unknown = regeneratefm.profile_prompt(self.profile(), person_id="7", appearance_dir=directory)
+            self.assertNotIn("moustache", unknown)  # not known: facial hair is dropped, the rest kept
+            self.assertIn("buzz cut", unknown)
+            woman = regeneratefm.profile_prompt(self.profile(gender="female"), person_id="7", appearance_dir=directory)
+            self.assertNotIn("moustache", woman)
+            self.assertNotIn("buzz cut", woman)
+            saved = json.loads(path.read_text())
+            self.assertEqual((saved["gender"], saved["traits"]), ("female", appearance_traits("7", 45, "female")))
+            # Read again for her, the saved traits are kept.
+            self.assertEqual(regeneratefm.profile_prompt(self.profile(gender="female", age=50), person_id="7",
+                                                         appearance_dir=directory).split("Individual appearance")[1].split(".")[0],
+                             woman.split("Individual appearance")[1].split(".")[0])
+
+
+PLAYER = {"type": "player", "name": "Ana Silva", "age": 24, "nationality": "Brazilian", "position": "Striker",
+          "club": "Example FC", "height": "5'7\"", "physical": {"Pace": 15},
+          "technical": {"Finishing": 14, "Dribbling": 13, "Passing": 11},
+          "mental": {"Composure": 12, "Vision": 10, "Work Rate": 15}}
 
 
 if __name__ == "__main__":

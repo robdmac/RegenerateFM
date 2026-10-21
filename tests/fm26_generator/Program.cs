@@ -84,7 +84,7 @@ namespace RegenerateFMHotReload
                 Name = Optional(value, "name"), Nationality = Optional(value, "nationality"),
                 JobTitle = Optional(value, "jobTitle"), Position = Optional(value, "position"),
                 Club = Optional(value, "club"), Height = Optional(value, "height"),
-                BiographyHeadline = Optional(value, "biographyHeadline"),
+                BiographyHeadline = Optional(value, "biographyHeadline"), Gender = Optional(value, "gender"),
                 Age = value.TryGetProperty("age", out var age) && age.ValueKind == JsonValueKind.Number ? age.GetInt32() : 0,
             };
             Stats(value, "physical", profile.Physical);
