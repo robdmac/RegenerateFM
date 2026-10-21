@@ -1164,7 +1164,7 @@ namespace RegenerateFMHotReload
             }
             if (batch.StopAfterCurrent && batch.Stage != SquadStage.Request && batch.Stage != SquadStage.Refresh)
             {
-                StopSquadBatch("Stopped after " + batch.Completed + " faces.");
+                StopSquadBatch("Stopped after " + batch.Completed + (batch.Completed == 1 ? " face." : " faces.") + ScoutingNote(batch));
                 return;
             }
             if (System.DateTime.UtcNow - batch.StageStartedUtc > TimeSpan.FromSeconds(45) &&
@@ -1206,10 +1206,7 @@ namespace RegenerateFMHotReload
                     {
                         batch.Index++;
                         if (batch.Index >= batch.Queue.Count)
-                            StopSquadBatch("Finished: " + batch.Completed + " squad faces generated." +
-                                (batch.NeedsScouting == 0 ? "" : " " + batch.NeedsScouting +
-                                 (batch.NeedsScouting == 1 ? " player needs" : " players need") +
-                                 " scouting before RegenerateFM can make their face."));
+                            StopSquadBatch("Finished: " + batch.Completed + " squad faces generated." + ScoutingNote(batch));
                         else
                         {
                             batch.List = list;
@@ -1429,6 +1426,11 @@ namespace RegenerateFMHotReload
             Log.LogInfo("Returned to Squad Overview after " + batch.Queue[batch.Index].Name);
         }
 
+        // How many players the batch skipped because they need scouting, if any.
+        private static string ScoutingNote(SquadBatch batch) =>
+            batch.NeedsScouting == 0 ? "" : " " + batch.NeedsScouting +
+            (batch.NeedsScouting == 1 ? " player needs" : " players need") + " scouting before RegenerateFM can make their face.";
+
         private void StopSquadBatch(string message)
         {
             if (_squadBatch == null)
@@ -1458,7 +1460,7 @@ namespace RegenerateFMHotReload
             }
             if (batch.Stage != SquadStage.Request && batch.Stage != SquadStage.Refresh)
             {
-                StopSquadBatch("Stopped after " + batch.Completed + " faces.");
+                StopSquadBatch("Stopped after " + batch.Completed + (batch.Completed == 1 ? " face." : " faces.") + ScoutingNote(batch));
                 return;
             }
             batch.StopAfterCurrent = true;
