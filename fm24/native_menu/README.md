@@ -476,10 +476,12 @@ keep fm.exe's internal offsets. Byte 12 of the marker is 0 for most people
 but 1, 2, 4, 5 or 6 for some, and byte 14 is 0x50 on some staff and reserve
 records. Where fm.exe keeps zeros for staff in the position-rating bytes, the
 Mac build has other data, so the person's kind comes from the object's
-vtable: `db::ACTUAL_PLAYER` or `db::ACTUAL_NON_PLAYER`. Player-coaches
-(`db::ACTUAL_PLAYER_AND_NON_PLAYER`) keep their player fields elsewhere and
-are refused. The Squad table, its row model and the person handle table are
-read at the same offsets as in fm.exe.
+vtable, as on fm.exe: `db::ACTUAL_PLAYER`, or `db::ACTUAL_NON_PLAYER` and
+`db::ACTUAL_PLAYER_AND_NON_PLAYER` (player-coaches, made as staff). Teams,
+club details and nations are checked by their classes too, and the
+first-name and surname objects are at the record's -0x124 and -0x11C (see
+"Person records"). The Squad table and the person handle table are read at
+fm.exe's offsets; the table's row model is at +0x6C8 (fm.exe +0x6E8).
 
 **Without screen IDs.** FM24 refers to the object a screen shows as
 `type << 24 | index`, `0x01000000 | handle` for a person. The sidebar menu
@@ -497,8 +499,10 @@ person pointers at +0x318 is indexed by handle (two reads, about 0.3 ms;
 every record carries its handle 4 bytes before it, which is checked). If
 that read fails it maps handles to people with one memory pass of about
 10 s (`person_handles.py`) and checks the mapping again before each use; `native_screen.py` uses the same
-reference for the open profile. Staff names then come from first/surname
-records, which on the Mac can start at any byte. fm.exe (Windows and
+reference for the open profile, and takes the person's record from the
+table and their age ("<n> years old") and the in-game date (the top bar's
+`dtam` widgets) from the screen, so a profile is read without searching
+FM24's memory: about 0.6 s on the Mac, where each search took 2–3 s. fm.exe (Windows and
 Proton) works the same way at its own offsets: the sidebar's class is
 `0x57e3b48` with the reference at +0x280, the browser (`0x56bae48`) holds it
 at +0x880 until a reload, and the database global is at image + 0x6426D90
@@ -516,14 +520,32 @@ key page. Polling the same serial answers `shown`, `key <base64>` or
 The companion checks the key with OpenAI (free), asks again with the reason
 if it fails, and saves it in `~/Library/Application Support/FM Face`.
 
+**Companion.** `run_fmface24.sh` starts the companion, as the Windows DLL
+does: `setup_fm24.py` records `companion=` (this source's `companion.py`),
+`python=` (the Python it ran with, which has the companion's packages) and
+`python_arch=` in `fmface24.ini`. Steam runs the launcher under Rosetta, so
+the companion is started as that Python's architecture (`arch -arm64`). It
+gets the launcher's process ID, which `exec` hands to FM24, stops when FM24
+does or at once if a companion is already running, and logs to
+`fmface24-companion.log` beside `fm.app`. The launcher's Apple Silicon check
+is `sysctl hw.optional.arm64`, not `uname -m`, which says x86_64 under
+Steam's Rosetta (the check made FM24 start without FM Face from Steam).
+
 Checked on 2026-10-17 on an Apple M2 (macOS 26) with a copy of a real save,
 in preview mode: a player (Sly) and a staff member (Terry McPhillips) read
 in full and matched their screens, the 25-row Squad table and its 8 players
 without a face, the squad count dialog and No, the greyed Update face, and
 an in-game skin reload. On 2026-10-18, with screen IDs turned off: player and
 staff previews from the portrait popup and the Overview tab menu, and Update
-face greyed for a person without a face. No billed face has been made on macOS
-yet.
+face greyed for a person without a face. On 2026-10-21, started from Steam
+(the companion with it, and stopping with it): Generate and Update from the
+Overview tab menu for a player with no full-name string (Lewis Wing), a
+loanee (Liam Shaw), an Under 21s player, a free agent, a player-coach (Matty
+Lund), the person at handle 0 (René Henriksen, an unemployed scout) and a
+16-year-old whose record holds the year before (Scott McGowan); the First
+Team batch of 7 and the Under 18s batch of 19 from the Development Centre
+tab, each ending on OK; the in-game progress dialog for skins without the
+popup; and two billed requests (Generate and Update for Scott McGowan).
 
 ## Person records (survey, 2026-10-19)
 
@@ -579,7 +601,22 @@ With the people vector's own index as reference, the companion's handle
 index (person objects found by their vtables, 29,329 people in 6 s) agreed
 on 2,000 of 2,000 sampled handles.
 
-`fm24/research/survey_people.py` repeats the survey on a running FM24. On
+**Record year.** The u16 at layout `record_year` is the year the record was
+last updated, not always the current one: in a 2026-10-21 MK Dons save on
+the Mac, 738 of 31,032 players and staff (mostly youth players FM made
+before the game started) held 2022 on 16 Sep 2023, so a 16-year-old's age
+was taken as 14 or 15 and refused ("Could not verify the open FM24 person's
+age"), and the Under 18s squad scan stopped ("Could not read FM24's current
+year"). Ages are now worked out from the birth date and the in-game date in
+the top bar, and the squad scan uses that date too.
+
+`fm24/research/survey_people.py` repeats the survey on a running FM24
+(macOS too, naming classes from their Itanium RTTI). On macOS (2026-10-21),
+in an MK Dons save: 68,241 entries; all 31,032 players, staff and
+player-coaches read (15,512 with no full-name string, 5,231 free agents),
+where before the class checks and name objects were mapped for the Mac
+build 13,958 did; the handle index agreed on all of them; and 300 of 300
+sampled IDs found their own record (156 before). On
 Windows 10 (2026-10-21), in an Atlanta United save: 72,045 entries; all
 45,940 players, staff and player-coaches read through the companion's record
 parser and profile readers (33,850 with no full-name string, 9,966 free

@@ -5,19 +5,21 @@ walked through each widget's children vector, keeping only widgets of this
 manager. The header ('head') holds the subtitle ('subs') whose text ends in
 "(ID:n)" when screen IDs are enabled; without them, the person comes from the
 screen's object browser (person_handles). The biography panel's 'biot'
-widget holds the rich-text biography FM24 is displaying. Read-only; layouts are those
+widget holds the rich-text biography FM24 is displaying, a text widget the
+person's "<n> years old", and the top bar's 'dtam' widgets the in-game date. Read-only; layouts are those
 of the pinned 24.4.2 build, and anything unexpected raises MemoryUnavailable.
 """
 
 from __future__ import annotations
 
+import datetime as dt
 import re
 import struct
 from dataclasses import dataclass
 
 from layout import LAYOUT
 from live_memory import MemoryUnavailable, find_game_pid
-from person_handles import person_for_reference, screen_reference
+from person_handles import person_record_for_reference, screen_reference
 from native_profile import _RICH_LINK
 from native_squad import WIDGET_ID, WIDGET_MANAGER, _children, _u32, _u64, ui_manager
 from process_memory import read_process_bytes
@@ -25,8 +27,12 @@ from process_memory import read_process_bytes
 SCREEN_ROOT = 0x58
 SUBTITLE_TEXT = 0x190      # widget part +0x158: {u32 length, UTF-8}
 BIOGRAPHY_TEXT = 0x188     # 'biot' widget: {u32 length, rich text}
+WIDGET_TEXT = 0x188        # a text widget's {u32 length, UTF-8}, as the biography's
 MAX_WIDGETS = 20000
 _ID = re.compile(r"\(ID:([1-9][0-9]{0,9})\)$")
+_AGE = re.compile(rb"([1-9][0-9]?) years old")
+_DATE = re.compile(rb"([1-9]|[12][0-9]|3[01]) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) ((?:19|20)[0-9]{2})")
+_MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
 
 @dataclass(frozen=True)
@@ -34,6 +40,9 @@ class OpenScreen:
     person_id: str
     biography: str          # first paragraph shown, or "" when none is shown
     title: str = ""         # the header's "Role - Club" text, without its ID
+    record: int = 0         # the person's record, when FM24's person table gave the person
+    ages: frozenset[int] = frozenset()  # the "<n> years old" texts shown
+    today: dt.date | None = None  # the in-game date in the top bar
 
 
 def _skin_id(name: bytes) -> int:
@@ -105,9 +114,10 @@ def read_open_screen(pid: int | None = None) -> OpenScreen:
         subtitle = _string(pid, subtitles[0], SUBTITLE_TEXT, 256).decode("utf-8")
         match = _ID.search(subtitle)
         if match:
-            person_id, title = match.group(1), subtitle[:match.start()].strip()
+            person_id, title, record = match.group(1), subtitle[:match.start()].strip(), 0
         elif LAYOUT["browser_reference"] is not None:
-            person_id, title = person_for_reference(pid, screen_reference(pid, manager, widgets)), subtitle.strip()
+            person_id, record = person_record_for_reference(pid, screen_reference(pid, manager, widgets))
+            title = subtitle.strip()
         else:
             raise MemoryUnavailable("The FM24 profile header shows no ID; enable screen IDs.")
         biographies = widgets.get(_skin_id(b"biot"), [])
@@ -117,4 +127,43 @@ def read_open_screen(pid: int | None = None) -> OpenScreen:
                      if biographies else "")
     except (OSError, ValueError, struct.error) as exc:
         raise MemoryUnavailable(f"Could not read the open FM24 screen: {exc}") from exc
-    return OpenScreen(person_id, biography, title)
+    return OpenScreen(person_id, biography, title, record, _ages(pid, widgets), shown_date(pid, widgets))
+
+
+def shown_date(pid: int, widgets: dict[int, list[int]]) -> dt.date | None:
+    """The in-game date FM24's top bar shows ("16 Sep 2023", its 'dtam'
+    widgets), or None if it isn't shown or its widgets disagree."""
+    dates = set()
+    for widget in widgets.get(_skin_id(b"dtam"), []):
+        try:
+            text = _u64(pid, widget + WIDGET_TEXT)
+            if text and 10 <= _u32(pid, text) <= 11:
+                if match := _DATE.fullmatch(read_process_bytes(pid, text + 4, _u32(pid, text))):
+                    day, month, year = match.groups()
+                    dates.add(dt.date(int(year), _MONTHS.index(month.decode()) + 1, int(day)))
+        except (OSError, ValueError, struct.error):
+            continue
+    return dates.pop() if len(dates) == 1 else None
+
+
+def screen_date(pid: int) -> dt.date | None:
+    """The in-game date shown on the open screen, or None."""
+    try:
+        manager = ui_manager(pid)
+        return shown_date(pid, _tree(pid, manager, _u64(pid, manager + SCREEN_ROOT)))
+    except (MemoryUnavailable, OSError, ValueError, struct.error):
+        return None
+
+def _ages(pid: int, widgets: dict[int, list[int]]) -> frozenset[int]:
+    """The ages in the screen's "<n> years old" texts: the profile's, so its
+    age needn't be found by searching all of FM24's memory (seconds on macOS)."""
+    ages = set()
+    for widget in (widget for group in widgets.values() for widget in group):
+        try:
+            text = _u64(pid, widget + WIDGET_TEXT)
+            if text and 10 <= _u32(pid, text) <= 16:
+                if match := _AGE.fullmatch(read_process_bytes(pid, text + 4, _u32(pid, text))):
+                    ages.add(int(match.group(1)))
+        except (OSError, ValueError, struct.error):
+            continue
+    return frozenset(ages)

@@ -458,6 +458,22 @@ class NativeInstallerTests(unittest.TestCase):
         self.run_installer("--auth-file", str(self.auth))
         self.assertNotIn("companion", install.read_config(self.game / "fmface24.ini"))
 
+    def test_on_macos_the_launcher_finds_the_companion_and_its_python_in_the_config(self):
+        install.use_system(True)
+        text = install.config_text(8769, KEY, "/Users/Zoë/FM Face/fm24/companion.py",
+                                   "/Users/Zoë/FM Face/.venv-fm24/bin/python", "arm64")
+        # UTF-8: the library reads only its port and token, line by line.
+        self.assertIn(b"\nport=8769\ntoken=" + KEY.encode() + b"\n", text)
+        with tempfile.TemporaryDirectory() as name:
+            config = Path(name) / "fmface24.ini"
+            config.write_bytes(text)
+            self.assertEqual(install.read_config(config),
+                             {"enabled": "1", "port": "8769", "token": KEY,
+                              "companion": "/Users/Zoë/FM Face/fm24/companion.py",
+                              "python": "/Users/Zoë/FM Face/.venv-fm24/bin/python", "python_arch": "arm64"})
+        with self.assertRaises(ValueError):
+            install.config_text(8769, KEY, "/tmp/a\nport=1", "/usr/bin/python3")
+
     def test_the_skin_is_optional_and_a_companion_built_one_is_adopted(self):
         for kind in ("player", "staff"):
             (self.skin / install.PANEL_FILES[kind]).unlink()

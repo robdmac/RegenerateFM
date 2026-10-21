@@ -550,7 +550,12 @@ static int ok_dialog_tries;
 
 static BOOL apply_progress(void *manager)
 {
-    if (progress_target == 3 && !make_ok_dialog(manager, "OK")) return FALSE;
+    if (progress_target == 3) {
+        if (!make_ok_dialog(manager, "OK")) return FALSE;
+        /* Now an OK message: a pending relabel must not bring back "Stop after this face". */
+        dialog_kind = 2;
+        ok_dialog_tries = 0;
+    }
     unsigned char *widget = progress_target == 1 ?
         find_widget(manager, SKIN_ID('f','m','n','P'), SKIN_ID('f','m','n','S'), NULL) :
         get_state(&dialog_state) == DIALOG_SHOWN && dialog_object ? find_widget(manager, 0, 0, dialog_object) : NULL;
@@ -1022,7 +1027,9 @@ static void *bridge_worker(void *unused)
             socket_fd = -1;
         }
         log_line("FMFACE24_COMPANION_UNAVAILABLE");
-        show_message("The FM Face companion isn't running. Start fm24/companion.py and try again.");
+        show_message("FM Face's companion isn't running. FM24 starts it; restart FM24 from Steam to try again. "
+                     "If you moved the FM Face folder, run python3 fm24/setup_fm24.py again. "
+                     "fmface24-companion.log beside fm.app says what went wrong.");
     }
     return NULL;
 }

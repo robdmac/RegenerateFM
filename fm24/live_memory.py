@@ -37,8 +37,16 @@ class PersonIdentity:
 
     @property
     def possible_ages(self) -> tuple[int, int]:
+        """The ages the record's year allows. The year is the one the record was
+        last updated in, which can be the season before (738 of 31,032 people,
+        mostly youth players, in a 2026-10-21 save), so age_on is preferred."""
         difference = self.game_year - self.birth_date.year
         return difference - 1, difference
+
+    def age_on(self, today: dt.date) -> int:
+        """The person's age on the in-game date ``today``."""
+        return today.year - self.birth_date.year - ((today.month, today.day) <
+                                                    (self.birth_date.month, self.birth_date.day))
 
 
 def _record_addresses(pid: int, person_id: int, aligned: bool = True):

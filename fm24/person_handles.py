@@ -95,20 +95,27 @@ def _check(pid: int, handle: int, record: int) -> str | None:
     return str(number)
 
 
-def _slot_person(pid: int, database: int, slot: int, handle: int) -> str | None:
-    """The person ID at this handle in the database's vector at ``slot``, or None."""
+def _slot_person(pid: int, database: int, slot: int, handle: int) -> tuple[str, int] | None:
+    """The person ID and record at this handle in the database's vector at ``slot``, or None."""
     try:
         begin, end = struct.unpack("<QQ", read_process_bytes(pid, database + slot, 16))
         if not begin or end <= begin or (end - begin) % 8 or handle >= (end - begin) // 8:
             return None
         person = struct.unpack("<Q", read_process_bytes(pid, begin + 8 * handle, 8))[0]
-        return _check(pid, handle, person + PERSON_HANDLE + 4) if person else None
+        record = person + PERSON_HANDLE + 4
+        return (number, record) if person and (number := _check(pid, handle, record)) else None
     except (OSError, ValueError, struct.error):
         return None
 
 
 def _from_table(pid: int, handle: int) -> str | None:
-    """The person ID at this handle in FM24's person table, or None.
+    """The person ID at this handle in FM24's person table, or None."""
+    found = _table_record(pid, handle)
+    return found[0] if found else None
+
+
+def _table_record(pid: int, handle: int) -> tuple[str, int] | None:
+    """The person ID and record address at this handle in FM24's person table, or None.
 
     The database object keeps one vector per kind of object, each indexed by
     handle ({begin, end, capacity, allocator}), and which slot holds people
@@ -132,6 +139,19 @@ def _from_table(pid: int, handle: int) -> str | None:
         return None
     _table_slots[pid] = min(found)
     return next(iter(found.values()))
+
+
+def people_vector(pid: int, handle: int) -> int | None:
+    """The start of FM24's vector of person pointers, indexed by handle (the
+    slot _table_record finds with this handle's person), or None."""
+    if _table_record(pid, handle) is None:
+        return None
+    pointer, hint = LAYOUT["person_table"]
+    try:
+        database = struct.unpack("<Q", read_process_bytes(pid, fm24_image_base(pid) + pointer, 8))[0]
+        return struct.unpack("<Q", read_process_bytes(pid, database + _table_slots.get(pid, hint), 8))[0]
+    except (OSError, ValueError, struct.error):
+        return None
 
 
 def build(pid: int) -> None:
@@ -170,16 +190,21 @@ def build_in_background(pid: int) -> None:
 def person_for_reference(pid: int, reference: int, *, wait: bool = True) -> str:
     """The person ID for a person reference. Without ``wait``, raises
     RuntimeError while the index is still being built."""
+    return person_record_for_reference(pid, reference, wait=wait)[0]
+
+
+def person_record_for_reference(pid: int, reference: int, *, wait: bool = True) -> tuple[str, int]:
+    """The person ID and record address for a person reference (as person_for_reference)."""
     if LAYOUT["browser_reference"] is None:
         raise MemoryUnavailable("This FM24 build's object browser isn't mapped; enable screen IDs.")
     handle = person_handle(reference)
-    if person := _from_table(pid, handle):
-        return person
+    if found := _table_record(pid, handle):
+        return found
     with _lock:
         record = _index.get(pid, {}).get(handle)
         last = _built.get(pid)
     if record is not None and (person := _check(pid, handle, record)):
-        return person
+        return person, record
     # A person the index doesn't know yet (a newgen, say), or a moved record.
     if last is None or time.monotonic() - last > _REBUILD_AFTER:
         if not wait:
@@ -189,7 +214,7 @@ def person_for_reference(pid: int, reference: int, *, wait: bool = True) -> str:
         with _lock:
             record = _index.get(pid, {}).get(handle)
         if record is not None and (person := _check(pid, handle, record)):
-            return person
+            return person, record
     raise MemoryUnavailable(f"No FM24 person has handle {handle:#x}.")
 
 

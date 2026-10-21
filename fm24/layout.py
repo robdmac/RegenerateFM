@@ -55,6 +55,7 @@ WINDOWS = {
     "person_table": (0x6426D90, 0x920),  # database global, first slot tried (person_handles)
     "sidebar_vtable": 0x57E3B48,   # SIDEBAR_MENU_TABLE, as in the DLL
     "sidebar_reference": 0x280,
+    "table_model": 0x6E8,          # a Squad table widget's row model (native_squad)
 }
 
 MACOS = {
@@ -63,7 +64,10 @@ MACOS = {
     "record_year": -0x13A,
     "record_birth": -0x138,
     "record_name": -0x134,
-    "record_name_parts": None,  # not mapped: their names come from FM24's first/surname records
+    # As on Windows, 0x10 and 0x18 after the full-name pointer: the name of
+    # most people (16,985 of 30,943 in a 2026-10-21 MK Dons save have no
+    # full-name string).
+    "record_name_parts": (-0x124, -0x11C),
     "record_flags": tuple(range(8)),  # 0 for most people; 1, 2, 4, 5 and 6 seen
     "record_kinds": (0x58, 0x50, 0x78),  # 0x50 on staff and reserve records (types 0 and 1); 0x78 as on Windows
     "name_records_aligned": False,    # first/surname records can start anywhere
@@ -74,17 +78,18 @@ MACOS = {
     "playing_club": -0x28C,
     "contract": -0xB4,
     "pointer": 8,
-    # The person object's class, from its vtable 12 bytes before the record:
-    # db::ACTUAL_PLAYER and db::ACTUAL_NON_PLAYER. Player-coaches
-    # (db::ACTUAL_PLAYER_AND_NON_PLAYER) keep their player fields elsewhere
-    # and are refused. The bytes where a player's ratings are hold other data
-    # for staff, so they can't tell staff apart as they do on Windows.
-    "person_vtables": {0x51E6FD0: "player", 0x51E1150: "staff"},
-    "brief_vtables": None,  # not mapped: brief squad rows are told by their record marker
-    "player_coach_vtables": None,  # not mapped: a player-coach's row is one FM Face can't read
-    "team_vtable": None,    # not mapped: teams and nations are checked by their IDs
-    "club_vtable": None,
-    "nation_vtable": None,
+    # The person object's class, from its vtable 12 bytes before the record
+    # (Itanium RTTI names, fm24/research/survey_people.py). As on Windows,
+    # player-coaches are made as staff.
+    "person_vtables": {0x51E6FD0: "player",   # db::ACTUAL_PLAYER
+                       0x51E1150: "staff",    # db::ACTUAL_NON_PLAYER
+                       0x51ED1C8: "staff"},   # db::ACTUAL_PLAYER_AND_NON_PLAYER
+    "brief_vtables": {0x521B770},             # db::VIRTUAL_PLAYER
+    "player_coach_vtables": {0x51ED1C8},
+    # db::TEAM, db::CLUB and db::NATION.
+    "team_vtable": 0x5216EE8,
+    "club_vtable": 0x51F9BA8,
+    "nation_vtable": 0x52099F0,
     # The open screen's CLIENT_OBJECT_BROWSER and its reference to the object
     # shown: type << 24 | index, 0x01000000 | handle for a person.
     "object_browser_vtable": 0x4F77650,
@@ -98,6 +103,7 @@ MACOS = {
     # reload, when the object browser's stops being updated.
     "sidebar_vtable": 0x5060DC0,
     "sidebar_reference": 0x278,
+    "table_model": 0x6C8,
 }
 
 # A copy, so tests with records from one build can select its layout on any

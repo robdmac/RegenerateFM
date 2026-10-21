@@ -122,6 +122,31 @@ class LiveMemoryTests(unittest.TestCase):
         struct.pack_into("<I", record, 0x54, 0x3000)
         self.assertEqual(parse().name, "Toni Micevski")
 
+    def test_mac_record_names_come_from_its_name_objects(self):
+        # The Mac build's record: fields before it, and 64-bit pointers. Most
+        # people (15,512 of 31,032 in a 2026-10-21 save) have no full-name string.
+        mac = layout.MACOS
+        image, record = 0x100000000, 0x10000
+        memory = {record - 12: struct.pack("<QIII", image + 0x51E6FD0, 7, 29190272, 29190272) + bytes(12),
+                  record + mac["record_year"]: struct.pack("<HHH", 2023, 174, 1995),
+                  record + mac["record_name"]: struct.pack("<Q", 0),
+                  record + mac["record_name_parts"][0]: struct.pack("<Q", 0x20000),
+                  record + mac["record_name_parts"][1]: struct.pack("<Q", 0x30000),
+                  0x20000: struct.pack("<Q", 0x21000), 0x21000: struct.pack("<I", 5) + b"Lewis\0",
+                  0x30000: struct.pack("<Q", 0x31000), 0x31000: struct.pack("<I", 4) + b"Wing\0"}
+
+        def read(pid, address, size):
+            for start, data in memory.items():
+                if start <= address and address + size <= start + len(data):
+                    return data[address - start:address - start + size]
+            return bytes(size)
+        memory[record] = struct.pack("<II", 29190272, 29190272) + bytes(8) + struct.pack("<I", 4) + bytes(44)
+        with patch.dict(live_memory.LAYOUT, mac), \
+                patch.object(live_memory, "read_process_bytes", side_effect=read), \
+                patch.object(live_memory, "fm24_image_base", return_value=image):
+            identity = live_memory._parse_record(1, record, 29190272)
+        self.assertEqual((identity.name, identity.kind, identity.birth_date), ("Lewis Wing", "player", dt.date(1995, 6, 23)))
+
     def test_without_mapped_classes_the_record_marker_decides(self):
         for marker in ("00025810", "00025010", "00027810", "00425810"):
             self.assertTrue(live_memory.record_marker(bytes(12) + bytes.fromhex(marker)), marker)
@@ -371,7 +396,8 @@ class NativeProfileReadTests(unittest.TestCase):
 
     def read(self, screens, reread=None, identity_only=False):
         screens = iter(screens)
-        reread = reread or (lambda pid, person_id, title, age, identity_only=False: (person_id, dict(self.PROFILE)))
+        reread = reread or (lambda pid, person_id, title, age, identity_only=False, today=None:
+                            (person_id, dict(self.PROFILE)))
         with patch.object(companion, "find_game_pid", return_value=1), \
              patch.object(companion, "read_open_profile",
                           side_effect=lambda *a, **k: ("7458500", dict(self.PROFILE))) as first, \
@@ -399,6 +425,75 @@ class NativeProfileReadTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "from game memory"):
                 companion.read_native_profile()
 
+    def test_a_screen_with_the_record_and_age_needs_no_memory_search(self):
+        from native_screen import OpenScreen
+        identity = live_memory.PersonIdentity(29190272, "Lewis Wing", dt.date(1995, 6, 23), 2023, "player")
+        screen = OpenScreen("29190272", "", "Defensive Midfielder - Reading", record=0x10000, ages=frozenset({28}))
+        with patch.object(native_profile, "_scan_ui", side_effect=AssertionError("UI memory search")), \
+                patch.object(native_profile, "read_person_record", side_effect=AssertionError("ID memory search")), \
+                patch.object(native_profile, "_parse_record", return_value=identity) as parse, \
+                patch.object(native_profile, "read_process_bytes", return_value=bytes(0x40)), \
+                patch.object(native_profile, "_profile", side_effect=lambda pid, record, ident, names, age, only:
+                             {"record": record, "age": age, "names": names}):
+            self.assertEqual(native_profile.read_open_profile(1, screen=screen),
+                             ("29190272", {"record": 0x10000, "age": 28, "names": ["Defensive Midfielder - Reading"]}))
+        parse.assert_called_once_with(1, 0x10000, 29190272)
+
+    def test_the_age_is_checked_against_the_date_shown_not_the_records_year(self):
+        # Scott McGowan, born 23 Jul 2007: his record's year is 2022, the season
+        # before, so it allows 14 or 15, but on 16 Sep 2023 he is 16.
+        from native_screen import OpenScreen
+        identity = live_memory.PersonIdentity(2002067938, "Scott McGowan", dt.date(2007, 7, 23), 2022, "player")
+        self.assertEqual(identity.possible_ages, (14, 15))
+        self.assertEqual(identity.age_on(dt.date(2023, 9, 16)), 16)
+        self.assertEqual(identity.age_on(dt.date(2023, 7, 22)), 15)
+        screen = OpenScreen("2002067938", "", "Midfielder (Right) - MK Dons Under 18s", record=0x10000,
+                            ages=frozenset({16}), today=dt.date(2023, 9, 16))
+        with patch.object(native_profile, "_parse_record", return_value=identity), \
+                patch.object(native_profile, "read_process_bytes", return_value=bytes(0x40)), \
+                patch.object(native_profile, "_profile", side_effect=lambda pid, record, ident, names, age, only: age):
+            self.assertEqual(native_profile.read_open_profile(1, screen=screen), ("2002067938", 16))
+            with self.assertRaisesRegex(live_memory.MemoryUnavailable, "age"):
+                native_profile.read_open_profile(1, screen=OpenScreen(
+                    "2002067938", "", "x", record=0x10000, ages=frozenset({16})))
+
+    def test_the_date_is_the_top_bars(self):
+        import native_screen
+        dtam = int.from_bytes(b"dtam", "big")
+        texts = {0x1000: b"16 Sep 2023", 0x2000: b"16 Sep 2023", 0x3000: b"31 Feb 2023"}
+        memory = {}
+        for widget, text in zip((0x100, 0x200, 0x300), texts):
+            memory[widget + native_screen.WIDGET_TEXT] = struct.pack("<Q", text)
+            memory[text] = struct.pack("<I", len(texts[text])) + texts[text]
+
+        def read(pid, address, size):
+            for start, data in memory.items():
+                if start <= address and address + size <= start + len(data):
+                    return data[address - start:address - start + size]
+            return bytes(size)
+        with patch.object(native_screen, "read_process_bytes", side_effect=read), \
+                patch("native_squad.read_process_bytes", side_effect=read):
+            self.assertEqual(native_screen.shown_date(1, {dtam: [0x100, 0x200]}), dt.date(2023, 9, 16))
+            self.assertIsNone(native_screen.shown_date(1, {dtam: [0x300]}))  # not a date
+            self.assertIsNone(native_screen.shown_date(1, {}))
+
+    def test_screen_ages_are_the_profiles_years_old_texts(self):
+        import native_screen
+        texts = {0x1000: b"28 years old", 0x2000: b"Overview", 0x3000: b"5 years old ago"}
+        memory = {}
+        for widget, text in zip((0x100, 0x200, 0x300), texts):
+            memory[widget + native_screen.WIDGET_TEXT] = struct.pack("<Q", text)
+            memory[text] = struct.pack("<I", len(texts[text])) + texts[text]
+
+        def read(pid, address, size):
+            for start, data in memory.items():
+                if start <= address and address + size <= start + len(data):
+                    return data[address - start:address - start + size]
+            return bytes(size)
+        with patch.object(native_screen, "read_process_bytes", side_effect=read), \
+                patch("native_squad.read_process_bytes", side_effect=read):
+            self.assertEqual(native_screen._ages(1, {1: [0x100, 0x200], 2: [0x300, 0x400]}), frozenset({28}))
+
     def test_update_reads_identity_only(self):
         from native_screen import OpenScreen
         screen = OpenScreen("7458500", "A biography.", "Attacking Midfielder - Inter Miami")
@@ -406,7 +501,7 @@ class NativeProfileReadTests(unittest.TestCase):
         self.assertEqual((person_id, result), ("7458500", self.PROFILE))
         # The profile read takes the person and title from the screen, not "(ID:n)" titles.
         self.assertEqual(first.call_args.kwargs, {"identity_only": True, "screen": screen})
-        self.assertEqual(again.call_args.kwargs, {"identity_only": True})
+        self.assertEqual(again.call_args.kwargs, {"identity_only": True, "today": None})
 
 
 class PersonReferenceTests(unittest.TestCase):
@@ -443,6 +538,10 @@ class PersonReferenceTests(unittest.TestCase):
                 patch.object(live_memory, "fm24_image_base", return_value=image), \
                 patch.object(person_handles, "_scan", side_effect=AssertionError("no memory pass")):
             self.assertEqual(person_handles.person_for_reference(1, 0x0100000E, wait=False), "4000829")
+            # The record too, so the profile read needn't search memory for the ID,
+            # and the vector itself, which the squad scan uses for undrawn rows.
+            self.assertEqual(person_handles.person_record_for_reference(1, 0x0100000E), ("4000829", person + 12))
+            self.assertEqual(person_handles.people_vector(1, 0x0E), table)
             # Outside the table, or an empty slot: the lookup falls back to the index.
             for reference in (0x01000040, 0x0100000F):
                 self.assertIsNone(person_handles._from_table(1, reference & 0x7FFFFF))
