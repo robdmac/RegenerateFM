@@ -345,6 +345,10 @@ namespace FMFaceHotReload
             var loanClub = FirstText(FindNamed(header, "TeamAwayFromOrTo"));
             if (!string.IsNullOrWhiteSpace(loanClub))
                 profile.Club = loanClub;
+            // A free agent's header has no PlayingTeam; its contract box says "Free Agent".
+            if (string.IsNullOrWhiteSpace(profile.Club) &&
+                FirstText(FindNamed(header, "Frame 1000003767")) is string contract && FaceGenerator.NoClub(contract))
+                profile.Club = contract.Trim();
             profile.Nationality = FirstText(FindNamed(header, "Frame 1000003766"));
             foreach (var value in TextValues(banner))
             {
