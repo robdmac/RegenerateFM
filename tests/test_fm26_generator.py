@@ -139,7 +139,11 @@ class GeneratorParityTests(unittest.TestCase):
             dict(PLAYER, age=61),
             dict(PLAYER, age=13),
             dict(PLAYER, height=""),
+            # A partly scouted player: only the physical stats known.
             dict(PLAYER, physical={"Pace": 9}),
+            dict(PLAYER, physical={"Strength": "11-15", "Pace": 9}),
+            dict(PLAYER, physical={}),
+            dict(PLAYER, physical={"Pace": 9, "Flying": 3}),
             dict(PLAYER, technical={}, mental={"Decisions": 14}, goalkeeping={}),
             dict(PLAYER, technical={"Passing": "15-12"}),
             dict(PLAYER, technical={"Passing": 21}),

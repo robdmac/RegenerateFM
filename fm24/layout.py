@@ -44,6 +44,8 @@ WINDOWS = {
                        0x5C7ECB8: "staff"},   # db::ACTUAL_PLAYER_AND_NON_PLAYER
     # Squad rows of players FM24 keeps only briefly ("Scouting Required").
     "brief_vtables": {0x5C7D4F8},             # db::VIRTUAL_PLAYER
+    # Player-coaches, which a squad lists but can't describe as players.
+    "player_coach_vtables": {0x5C7ECB8},      # db::ACTUAL_PLAYER_AND_NON_PLAYER
     # db::TEAM, db::CLUB (a team's club details) and db::NATION.
     "team_vtable": 0x5A78848,
     "club_vtable": 0x5A51F38,
@@ -79,6 +81,7 @@ MACOS = {
     # for staff, so they can't tell staff apart as they do on Windows.
     "person_vtables": {0x51E6FD0: "player", 0x51E1150: "staff"},
     "brief_vtables": None,  # not mapped: brief squad rows are told by their record marker
+    "player_coach_vtables": None,  # not mapped: a player-coach's row is one FM Face can't read
     "team_vtable": None,    # not mapped: teams and nations are checked by their IDs
     "club_vtable": None,
     "nation_vtable": None,

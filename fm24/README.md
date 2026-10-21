@@ -118,6 +118,7 @@ The packaged companion runs whenever FM24 does. From source, leave the companion
 - **Generate missing squad faces…:** on the Squad screen, choose it from the **Overview** menu. For a reserve or youth team, open **Development Center**, then choose it from that team's tab menu (for example **Inter Miami II**); opening the menu shows the team's Overview, whose squad list it reads.
   - It reads every row from memory, including rows FM24 hasn't drawn, and asks in an FM24 dialog before any request. The dialog names the team most of the players play for.
   - Players FM24 lists as **Scouting Required** with no age or ability (players of leagues it hasn't fully loaded, such as Inter Miami II's 11 of 23 and all of the IMCF Academy on the test save) are left out and counted in the dialog: FM24 keeps only a brief record for them, without the age, nationality or attributes a prompt needs.
+  - Player-coaches are left out and counted too: FM24 keeps their player details outside the record the list reads, so make theirs from their own profile. A list with no players FM Face can read (a Development Center overview that lists staff) says so and makes no request.
   - It then generates and reloads one face at a time. Choose **Stop after this face** to end after the current one.
 
 If FM24 can't show one of its dialogs, the message goes to the companion terminal instead, and an unanswerable squad confirmation counts as Cancel.

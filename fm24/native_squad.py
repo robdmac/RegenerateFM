@@ -51,8 +51,9 @@ HEADER_ROW_ID = int.from_bytes(b"HROW", "big")
 PERSON_HANDLE = 8
 PERSON_ROW = 0x01000000
 WIDGET_MANAGER, WIDGET_PARENT, WIDGET_ID, WIDGET_CHILDREN = 0x48, 0x50, 0x5C, 0x100
-NOT_A_SQUAD = ("Generate missing squad faces works on a squad's player list, and this screen shows "
-               "another kind of list. Choose it from the Squad screen's menu instead.")
+NOT_A_SQUAD = ("Generate missing squad faces works on a team's player list, and the list on this screen has no "
+               "players FM Face can read. Open the team's Squad screen (for a reserve or youth team, its tab "
+               "in the Development Center) and choose it from that menu.")
 _PERSON_PICTURE = b"graphics/pictures/person/"
 _PORTRAIT = re.compile(rb"(?:r-)?([1-9][0-9]{0,9})/portrait")
 _NO_PICTURE = b"graphics/pictures/person/none/male/player/portrait"
@@ -77,10 +78,13 @@ class SquadState:
     table: int = 0                      # the table widget, for the row model
     unreadable: tuple[str, ...] = ()    # undrawn players whose names FM24 hasn't loaded
     brief: tuple[str, ...] = ()         # players FM24 keeps only a brief record for
+    coaches: int = 0                    # player-coaches, made from their own profile instead
+    others: int = 0                     # rows that aren't players FM Face can read
 
     @property
     def complete(self) -> bool:
-        return len(self.rows) + len(self.unreadable) + len(self.brief) == self.total
+        return (len(self.rows) + len(self.unreadable) + len(self.brief) + self.coaches + self.others
+                == self.total)
 
     @property
     def missing(self) -> tuple[SquadRow, ...]:
@@ -129,6 +133,15 @@ def _attached(pid: int, widget: int, manager: int) -> bool:
     return False
 
 
+class NotAPlayer(MemoryUnavailable):
+    """A row's person isn't a player FM Face can describe from the list: a
+    player-coach (``coach``), staff, or no validated person at all."""
+
+    def __init__(self, coach: bool = False):
+        super().__init__("A Squad row does not show a validated FM24 player.")
+        self.coach = coach
+
+
 class BriefRecord(MemoryUnavailable):
     """A row's person has only FM24's brief record (no age or attributes)."""
 
@@ -142,20 +155,24 @@ def _player_id(pid: int, person: int) -> str:
     raw = read_process_bytes(pid, record, 20)
     number = struct.unpack_from("<I", raw)[0]
     if raw[:8] != struct.pack("<II", number, number) or not 1 <= number <= 2_147_483_647:
-        raise MemoryUnavailable("A Squad row does not show a validated FM24 player.")
+        raise NotAPlayer()
     # Rows FM24 lists as "Scouting Required" with no age or ability (players
     # of leagues it hasn't loaded) are brief objects (db::VIRTUAL_PLAYER)
     # with none of the fields a prompt needs. Where the layout doesn't map
     # that class, their record markers tell (00 02 00 10, 08 02 40 30).
     if LAYOUT["brief_vtables"] is not None:
-        if object_class(pid, record) in LAYOUT["brief_vtables"]:
+        kind = object_class(pid, record)
+        if kind in LAYOUT["brief_vtables"]:
             raise BriefRecord(str(number))
+        # A player-coach keeps their player fields outside the record.
+        if kind in (LAYOUT["player_coach_vtables"] or ()):
+            raise NotAPlayer(coach=True)
         if not is_person_record(pid, record, raw):
-            raise MemoryUnavailable("A Squad row does not show a validated FM24 player.")
+            raise NotAPlayer()
     elif not record_marker(raw):
         raise BriefRecord(str(number))
     if person_kind(pid, record, raw[16]) != "player":
-        raise MemoryUnavailable("A Squad row does not show a validated FM24 player.")
+        raise NotAPlayer()
     return str(number)
 
 
@@ -266,7 +283,7 @@ def read_squad(pid: int | None = None, attempts: int = 3, catalogue: bool = True
         if not len(rows) <= total <= 500 or not 1 <= visible[0] <= visible[1] <= total:
             raise MemoryUnavailable("Invalid FM24 Squad table row count.")
         order = {child: index for index, child in enumerate(_children(pid, table))}
-        seen, result, brief = set(), [], []
+        seen, result, brief, coaches, others = set(), [], [], 0, 0
         for cell in (rows[row] for row in sorted(rows, key=order.__getitem__)):
             person = _u64(pid, cell + ROW_PERSON)
             try:
@@ -275,19 +292,22 @@ def read_squad(pid: int | None = None, attempts: int = 3, catalogue: bool = True
                 if exc.person_id not in brief:
                     brief.append(exc.person_id)
                 continue
-            except MemoryUnavailable as exc:
-                # The squad menu is also offered on screens with another kind of
-                # player list (a Development Center team's overview).
-                raise MemoryUnavailable(NOT_A_SQUAD) from exc
+            except NotAPlayer as exc:
+                coaches += exc.coach
+                others += not exc.coach
+                continue
             if person_id not in seen:
                 seen.add(person_id)
                 result.append(SquadRow(person_id, person + 12, _text(pid, _u64(pid, cell + ROW_NAME))))
     except (OSError, ValueError, struct.error) as exc:
         raise MemoryUnavailable(f"Could not read the FM24 Squad table: {exc}") from exc
     if not result:
+        # The squad menu is also offered on screens with another kind of list
+        # (a Development Center team's overview can list staff).
         raise MemoryUnavailable(
             "FM24 keeps only brief records for the players shown (no age or ability), so FM Face "
-            "can't describe them." if brief else "The open FM24 Squad table has no players.")
+            "can't describe them." if brief else NOT_A_SQUAD if coaches or others else
+            "The open FM24 Squad table has no players.")
     today = dt.date.min
     if catalogue:
         # Person records carry the current game year (layout "record_year").
@@ -298,7 +318,8 @@ def read_squad(pid: int | None = None, attempts: int = 3, catalogue: bool = True
         year = str(years.pop())
         today = _today(collections.Counter({text: count for text, count in dates.items()
                                             if text.endswith(" " + year)}))
-    return SquadState(tuple(result), total, frozenset(indexed), today, visible, table, brief=tuple(brief))
+    return SquadState(tuple(result), total, frozenset(indexed), today, visible, table, brief=tuple(brief),
+                      coaches=coaches, others=others)
 
 
 def _row_ids(pid: int, table: int) -> list[int]:
@@ -417,7 +438,7 @@ def read_squad_rows(pid: int | None = None) -> SquadState:
             raise MemoryUnavailable("The FM24 Squad row model does not match the table.")
         base = _handle_table(pid, [row.record - 12 for row in state.rows])
         drawn = {row.person_id: row for row in state.rows}
-        records, brief = [], []
+        records, brief, coaches, others = [], [], 0, 0
         for row_id in ids:
             handle = row_id & 0xFFFFFF
             person = _u64(pid, base + 8 * handle)
@@ -427,6 +448,9 @@ def read_squad_rows(pid: int | None = None) -> SquadState:
                 records.append((_player_id(pid, person), person + 12))
             except BriefRecord as exc:
                 brief.append(exc.person_id)
+            except NotAPlayer as exc:
+                coaches += exc.coach
+                others += not exc.coach
     except (OSError, ValueError, struct.error) as exc:
         raise MemoryUnavailable(f"Could not read the FM24 Squad rows: {exc}") from exc
     if not drawn.keys() <= {person_id for person_id, _ in records}:
@@ -437,4 +461,4 @@ def read_squad_rows(pid: int | None = None) -> SquadState:
                  for person_id, record in records if person_id in drawn or person_id in names)
     unreadable = tuple(person_id for person_id, _ in records if person_id not in drawn and person_id not in names)
     return SquadState(rows, state.total, state.indexed, state.today, state.visible, state.table, unreadable,
-                      tuple(brief))
+                      tuple(brief), coaches, others)

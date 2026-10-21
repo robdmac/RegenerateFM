@@ -276,10 +276,12 @@ def profile_prompt(profile: dict, *, person_id: str | None = None,
     height = _profile_text(profile, "height")
     if age > 60:
         raise ValueError("Player age is missing or invalid.")
-    physical = _profile_stats(profile.get("physical"), "physical")
-    missing = set(PHYSICAL_STATS) - physical.keys()
-    if missing:
-        raise ValueError("Missing physical stats: " + ", ".join(sorted(missing)))
+    # Only the attributes known: a partly scouted player may have some hidden.
+    physical = _profile_stats(profile.get("physical", {}), "physical")
+    unexpected = physical.keys() - set(PHYSICAL_STATS)
+    if unexpected:
+        raise ValueError("Unknown physical stats: " + ", ".join(sorted(unexpected)))
+    known_physical = [stat for stat in PHYSICAL_STATS if stat in physical]
     other = []
     for section in ("technical", "mental", "goalkeeping"):
         for stat, score in _profile_stats(profile.get(section, {}), section).items():
@@ -296,7 +298,8 @@ def profile_prompt(profile: dict, *, person_id: str | None = None,
     return (
         f"Football Manager profile picture for {name}, a {age}-year-old {position} "
         f"{plays}. Nationality: {nationality}. {first_name} is {height} tall.{biography_text} "
-        "Physical stats: " + ", ".join(f"{stat} {physical[stat]}/20" for stat in PHYSICAL_STATS) + ". "
+        + ("Physical stats: " + ", ".join(f"{stat} {physical[stat]}/20" for stat in known_physical) + ". "
+           if known_physical else "") +
         f"Best non-physical stats: {fmt(best)}. Weakest non-physical stats: {fmt(worst)}. "
         "Create one plausible, original footballer portrait for a sports management game. "
         + appearance + PORTRAIT_STYLE +

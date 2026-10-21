@@ -22,12 +22,13 @@ def _terminal(text: str) -> None:
 
 def confirm_batch(missing: int, total: int, *, preview_only: bool = False,
                   native: tuple[int, str] | None = None, skipped: int = 0, brief: int = 0,
-                  team: str = "") -> bool:
+                  coaches: int = 0, others: int = 0, team: str = "") -> bool:
     """Ask in FM24's own dialog before any request; ``native`` is the DLL's
     port and token. Without an answer from FM24, nothing is generated.
     ``skipped`` players could not be read (FM24 has not loaded their names);
     ``brief`` players have only FM24's brief record (no age or ability).
-    ``team`` names the team most players shown play for."""
+    ``coaches`` are player-coaches and ``others`` rows that aren't players
+    FM Face can read. ``team`` names the team most players shown play for."""
     note = (f" {skipped} {'player was' if skipped == 1 else 'players were'} left out because FM24 "
             "hasn't loaded their names; scroll the list to them and run it again to include them."
             if skipped else "")
@@ -35,14 +36,22 @@ def confirm_batch(missing: int, total: int, *, preview_only: bool = False,
         note += (f" {brief} {'player' if brief == 1 else 'players'} FM24 lists without an age or "
                  f"ability (Scouting Required) {'was' if brief == 1 else 'were'} left out; FM24 keeps "
                  "too little about them to describe a face.")
+    if coaches:
+        note += (f" {coaches} {'player-coach was' if coaches == 1 else 'player-coaches were'} left out; "
+                 "make their faces from their own profiles.")
+    if others:
+        note += (f" {others} {'row that isn' if others == 1 else 'rows that aren'}'t "
+                 f"{'a player' if others == 1 else 'players'} FM Face can read "
+                 f"{'was' if others == 1 else 'were'} left out.")
+    left_out = skipped + brief + coaches + others
     players = f"{team} players" if team else "squad players"
     if not missing:
         notify(*(native or (None, "")),
-               f"All {total - skipped - brief} {players} read already have portraits.{note}"
-               if skipped or brief else f"All {total} {players} already have portraits.", _terminal)
+               f"All {total - left_out} {players} read already have portraits.{note}"
+               if left_out else f"All {total} {players} already have portraits.", _terminal)
         return False
-    counted = (f"{missing} of {total} {players} have no portrait." if not skipped and not brief
-               else f"{missing} of the {total - skipped - brief} {players} read have no portrait.")
+    counted = (f"{missing} of {total} {players} have no portrait." if not left_out
+               else f"{missing} of the {total - left_out} {players} read have no portrait.")
     action = "Preview faces" if preview_only else "Generate faces"
     bill = "No API requests will be made in preview mode." if preview_only else \
         "Each face makes one billed API request."
@@ -93,6 +102,7 @@ def run_native_squad_batch(handler, generate, describe=str, *, pid: int | None =
         print(f"FM24 squad scan complete: {len(missing)} missing of {state.total} players.", flush=True)
         if not confirm_batch(len(missing), state.total, preview_only=handler.preview_only, native=native,
                              skipped=len(state.unreadable), brief=len(state.brief),
+                             coaches=state.coaches, others=state.others,
                              team=shown_team(pid, [row.record for row in state.rows])):
             return
         club = squad_club(pid, [row.record for row in state.rows])

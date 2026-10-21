@@ -126,10 +126,12 @@ namespace FMFaceHotReload
             string height = Text(profile.Height, "height", "Player");
             if (age > 60)
                 throw new ArgumentException("Player age is missing or invalid.");
-            var physical = Stats(profile.Physical, "physical");
-            var missing = PhysicalStats.Where(stat => !physical.ContainsKey(stat)).OrderBy(stat => stat, StringComparer.Ordinal).ToList();
-            if (missing.Count > 0)
-                throw new ArgumentException("Missing physical stats: " + string.Join(", ", missing));
+            // Only the attributes known: a partly scouted player may have some hidden.
+            var physical = Stats(profile.Physical ?? new Dictionary<string, object>(), "physical");
+            var unexpected = physical.Keys.Where(stat => !PhysicalStats.Contains(stat)).OrderBy(stat => stat, StringComparer.Ordinal).ToList();
+            if (unexpected.Count > 0)
+                throw new ArgumentException("Unknown physical stats: " + string.Join(", ", unexpected));
+            var knownPhysical = PhysicalStats.Where(physical.ContainsKey).ToList();
             var other = new List<(string Section, string Stat, string Score, double Strength)>();
             foreach (var (section, values) in new[] { ("technical", profile.Technical), ("mental", profile.Mental), ("goalkeeping", profile.Goalkeeping) })
                 foreach (var stat in Stats(values ?? new Dictionary<string, object>(), section))
@@ -145,7 +147,8 @@ namespace FMFaceHotReload
             string appearance = AppearancePrompt(name, age, personId, appearanceDir);
             return "Football Manager profile picture for " + name + ", a " + age + "-year-old " + position + " " +
                    (NoClub(club) ? "who is a free agent" : "who plays for " + club) + ". Nationality: " + nationality + ". " + firstName + " is " + height + " tall." + biographyText + " " +
-                   "Physical stats: " + string.Join(", ", PhysicalStats.Select(stat => stat + " " + physical[stat].Text + "/20")) + ". " +
+                   (knownPhysical.Count == 0 ? "" : "Physical stats: " +
+                    string.Join(", ", knownPhysical.Select(stat => stat + " " + physical[stat].Text + "/20")) + ". ") +
                    "Best non-physical stats: " + format(best) + ". Weakest non-physical stats: " + format(worst) + ". " +
                    "Create one plausible, original footballer portrait for a sports management game. " +
                    appearance + PortraitStyle +
