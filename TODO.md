@@ -250,3 +250,24 @@
   the launcher starts the app's own executable ("Football Manager 26 Demo"),
   and `steam_launch.py fm26demo` sets its launch option. Checked with the
   image stand-in: a 21-face batch and staff Generate and Update.
+
+## Requested (2026-10-21)
+
+- **Relatives.** FM records family links between people (son of, brother
+  of, nephew of and so on; FM24 and FM26 show them on the profile). Neither
+  profile reader reads them yet. Find where each game keeps them, and when a
+  relative has a face (a RegenerateFM portrait or a real photo), send it as
+  a reference with the prompt asking for a slight family resemblance, not
+  the same face. Without a face, share some appearance traits (hair, face
+  shape) between relatives instead of choosing them separately.
+- **Women's football.** Never tested on women's teams (FM26 has women's
+  leagues) or with female staff in either game. The profile has no gender,
+  and the appearance traits choose stubble, a beard or a moustache from age
+  alone, so women can be drawn with facial hair. This happened to a female
+  assistant manager in the live credits test on 2026-10-21. Read the
+  person's gender in FM26 and FM24, say it in the prompt, choose facial
+  hair only for men, then test a women's squad batch and female staff.
+- **Launch.** Put the server code (`~/work/regeneratefm-server`) in a
+  private repo; make this repo public; switch Stripe from the sandbox to the
+  live account (restricted key, webhook and its secret); check every link,
+  including the front page's `DOWNLOAD_URL` once there is a release.
