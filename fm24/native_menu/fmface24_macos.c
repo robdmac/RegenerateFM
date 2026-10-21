@@ -217,7 +217,8 @@ static unsigned char *find_widget(void *manager, unsigned int a, unsigned int b,
 static unsigned int person_reference(unsigned int reference)
 {
     unsigned int index = reference & 0x7fffff;
-    return reference >> 24 == 1 && index && index != 0x7fffff ? reference : 0;
+    /* Index 0 is the people vector's first person. */
+    return reference >> 24 == 1 && index != 0x7fffff ? reference : 0;
 }
 
 static unsigned int screen_reference(void *manager, unsigned char *widget)

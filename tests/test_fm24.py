@@ -413,7 +413,10 @@ class PersonReferenceTests(unittest.TestCase):
     def test_only_person_references_have_a_handle(self):
         import person_handles
         self.assertEqual(person_handles.person_handle(0x01000C0E), 0xC0E)
-        for reference in (0x18000CB8, 0x01000000, 0x017FFFFF, 0):
+        # The people vector's first entry is a person too (an Atlanta save's
+        # Michael Reiziger), so handle 0 is valid.
+        self.assertEqual(person_handles.person_handle(0x01000000), 0)
+        for reference in (0x18000CB8, 0x017FFFFF, 0):
             with self.assertRaises(ValueError):
                 person_handles.person_handle(reference)
 
