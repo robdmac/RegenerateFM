@@ -66,6 +66,22 @@ class PortraitTests(unittest.TestCase):
         self.assertIn("Natural Fitness 12–14/20", prompt)
         self.assertIn("Determination 14–17/20", prompt)
 
+    def test_partly_scouted_player_uses_the_known_physical_stats(self):
+        # FM26 hides unscouted attributes ("-"); fewer than half hidden is enough.
+        profile = {
+            "name": "Jordan Faria", "age": 25, "nationality": "Canada",
+            "position": "Attacking Midfielder (Right)", "club": "Waterford", "height": "5'6\"",
+            "physical": {"Pace": "10-16", "Acceleration": "11-19"},
+            "technical": {"Passing": "8-16", "Technique": "6-11", "Long Shots": "5-10"},
+            "mental": {"Vision": "6-12", "Work Rate": "8-13", "Flair": "4-12"},
+        }
+        prompt = profile_prompt(profile)
+        self.assertIn("Physical stats: Acceleration 11–19/20, Pace 10–16/20. ", prompt)
+        self.assertNotIn("Strength", prompt)
+        self.assertNotIn("Physical stats", profile_prompt(dict(profile, physical={})))
+        with self.assertRaisesRegex(ValueError, "Unknown physical stats: Flying"):
+            profile_prompt(dict(profile, physical={"Pace": 9, "Flying": 3}))
+
     def test_staff_prompt_uses_identity_role_and_optional_biography(self):
         profile = {
             "type": "staff", "name": "Alex Morgan", "age": 45,

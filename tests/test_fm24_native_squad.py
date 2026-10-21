@@ -231,8 +231,9 @@ class WidgetChildrenTests(unittest.TestCase):
 class RowModelTests(unittest.TestCase):
     TABLE, MODEL, ROWS, PERSONS = 0x10000, 0x11000, 0x12000, 0x20000
 
-    def build(self, players, drawn, row_ids=None):
-        """``players``: (person ID, handle); rows in table order, header first."""
+    def build(self, players, drawn, row_ids=None, coaches=()):
+        """``players``: (person ID, handle); rows in table order, header first.
+        ``coaches`` are person IDs that are player-coaches."""
         memory = FakeMemory()
         memory.q(self.TABLE + native_squad.TABLE_MODEL, self.MODEL)
         rows = [self.ROWS + 0x100 * index for index in range(len(players) + 1)]
@@ -246,7 +247,8 @@ class RowModelTests(unittest.TestCase):
         people = {}
         for index, (person_id, handle) in enumerate(players):
             person = 0x30000 + 0x100 * index
-            memory.q(person, IMAGE + PLAYER_VTABLE)  # a db::ACTUAL_PLAYER object
+            memory.q(person, IMAGE + (next(iter(layout.WINDOWS["player_coach_vtables"])) if person_id in coaches
+                                      else PLAYER_VTABLE))  # a db::ACTUAL_PLAYER object
             memory.put(person + 8, struct.pack("<I", handle))
             # A validated player record: ID twice, then the 00 xx 58 10 marker and type 4.
             memory.put(person + 12, struct.pack("<II", person_id, person_id) + bytes(4) +
@@ -276,6 +278,16 @@ class RowModelTests(unittest.TestCase):
         self.assertEqual([row.person_id for row in result.rows], ["101", "102", "103", "104", "105", "106"])
         self.assertEqual(result.rows[0].name, "Record 101")
         self.assertEqual(result.rows[2].name, "Shown 103")
+        self.assertTrue(result.complete)
+
+    def test_a_player_coach_is_left_out_and_counted(self):
+        # FM24 keeps a player-coach's player fields outside the record, so the
+        # list can't describe them; the rest of the squad still goes ahead.
+        players = [(101, 7), (102, 3), (103, 9), (104, 1), (105, 5), (106, 2)]
+        memory, state = self.build(players, drawn=[103, 104, 105, 106, 102], coaches={101})
+        result = self.read(memory, state)
+        self.assertEqual([row.person_id for row in result.rows], ["102", "103", "104", "105", "106"])
+        self.assertEqual((result.coaches, result.others), (1, 0))
         self.assertTrue(result.complete)
 
     def test_refuses_a_model_that_does_not_match_the_table(self):
@@ -322,7 +334,8 @@ class NativeBatchTests(unittest.TestCase):
         for name, value in (("read_squad_rows", lambda *a, **k: self.full),
                             ("squad_club", lambda *a: "Club"),
                             ("shown_team", lambda *a: "Club II"),
-                            ("confirm_batch", lambda missing, total, preview_only=False, native=None, skipped=0, brief=0, team="": True),
+                            ("confirm_batch", lambda missing, total, preview_only=False, native=None, skipped=0, brief=0,
+                             coaches=0, others=0, team="": True),
                             ("NativeProgress", Progress),
                             ("notify", lambda port, token, text, fallback: self.notices.append(text))):
             patcher = patch.object(squad_batch, name, value)
@@ -421,6 +434,14 @@ class ConfirmationTests(unittest.TestCase):
             self.assertFalse(squad_batch.confirm_batch(0, 23, native=(8770, "t"), brief=11, team="Inter Miami II"))
         self.assertIn("All 12 Inter Miami II players read already have portraits.", notices[0])
 
+    def test_counts_player_coaches_and_other_rows_left_out(self):
+        with patch.object(squad_batch, "show_dialog", return_value="no") as dialog:
+            squad_batch.confirm_batch(2, 25, native=(8770, "t"), coaches=1, others=2, team="Reading")
+        text = dialog.call_args.args[4]
+        self.assertIn("2 of the 22 Reading players read have no portrait", text)
+        self.assertIn("1 player-coach was left out; make their faces from their own profiles.", text)
+        self.assertIn("2 rows that aren't players FM Face can read were left out.", text)
+
 
 class RatingTests(unittest.TestCase):
     def test_lowest_raw_ratings_show_as_one(self):
@@ -454,9 +475,13 @@ class BriefRecordTests(unittest.TestCase):
             self.assertEqual(self.player_id(PLAYER_VTABLE, marker), "2002070373")
         # Not a person record at all, or not a player's.
         for vtable, ids in ((PLAYER_VTABLE, (5, 6)), (0x5A6D858, (7, 7))):
-            with self.assertRaises(MemoryUnavailable) as raised:
+            with self.assertRaises(native_squad.NotAPlayer) as raised:
                 self.player_id(vtable, ids=ids)
-            self.assertNotIsInstance(raised.exception, native_squad.BriefRecord)
+            self.assertFalse(raised.exception.coach)
+        # A player-coach: a person, but not one a squad list can describe.
+        with self.assertRaises(native_squad.NotAPlayer) as raised:
+            self.player_id(next(iter(layout.WINDOWS["player_coach_vtables"])))
+        self.assertTrue(raised.exception.coach)
         # Without a mapped brief class (the macOS layout), the marker tells.
         with self.assertRaises(native_squad.BriefRecord):
             self.player_id(PLAYER_VTABLE, (8, 2, 0x40, 0x30), brief_vtables=False)

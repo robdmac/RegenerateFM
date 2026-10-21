@@ -222,6 +222,7 @@ namespace FMFaceHotReload
             {
                 var snapshot = staff ? CaptureStaff(personId.Value, out picture, out root)
                                      : CaptureProfile(personId.Value, out picture, out root);
+                _scoutingRetry = null;
                 if (snapshot.BiographyHeadline == null && _biographyCache.TryGetValue(personId.Value, out string cachedBiography))
                     snapshot.BiographyHeadline = cachedBiography;
                 var settings = CurrentSettings();
@@ -248,6 +249,18 @@ namespace FMFaceHotReload
             catch (NeedsScoutingException error)
             {
                 _pending = null;
+                // A profile that has just opened can show its attributes as unknown
+                // while they load; look again for a few seconds, as the batch does.
+                var now = System.DateTime.UtcNow;
+                if (_scoutingRetry == null || _scoutingRetry.PersonId != personId.Value)
+                    _scoutingRetry = new ScoutingRetry { PersonId = personId.Value, FirstUtc = now };
+                if (now - _scoutingRetry.FirstUtc < ScoutingSettle)
+                {
+                    _scoutingRetry.NextUtc = now.AddSeconds(1);
+                    _scoutingRetry.Retry = () => Generate(personId, staff, update);
+                    return;
+                }
+                _scoutingRetry = null;
                 Log.LogInfo(error.Message);
                 ShowDialog(error.Message, "Close", () => CancelSquadScan());
             }
@@ -385,7 +398,7 @@ namespace FMFaceHotReload
                     profile.Height = texts[i + 1];
                     break;
                 }
-            int unknown = 0;
+            int shown = 0, unknown = 0;
             foreach (var row in NamedElements(attributes, "attributes_row"))
             {
                 if (row.worldBound.width < 40 || row.worldBound.height < 10)
@@ -395,8 +408,14 @@ namespace FMFaceHotReload
                     continue;
                 string stat = values[0];
                 string score = values[values.Count - 1].Replace(" ", "");
-                if (score == "-" || score == "–")
-                    unknown++;  // not scouted yet
+                // "-" is not scouted yet; a range ("11-14") is known, if vaguely.
+                bool hidden = score == "-" || score == "–";
+                if (!stat.Contains("Rating") && (hidden || StatPattern.IsMatch(score)))
+                {
+                    shown++;
+                    if (hidden)
+                        unknown++;
+                }
                 if (!StatPattern.IsMatch(score))
                     continue;
                 object number = score.Contains("-") || score.Contains("–") ? score : (object)int.Parse(score);
@@ -409,13 +428,13 @@ namespace FMFaceHotReload
                 else if (!stat.Contains("Rating"))
                     profile.Technical[stat] = number;
             }
-            bool fewStats = profile.Physical.Count != 8 ||
-                profile.Technical.Count + profile.Mental.Count + profile.Goalkeeping.Count < 6;
-            if (fewStats && unknown > 0 && !string.IsNullOrWhiteSpace(profile.Name))
+            // Half or more not scouted is too little to describe them; otherwise the
+            // known attributes are used.
+            if (shown > 0 && unknown * 2 >= shown && !string.IsNullOrWhiteSpace(profile.Name))
                 throw new NeedsScoutingException(profile.Name);
             if (string.IsNullOrWhiteSpace(profile.Name) || string.IsNullOrWhiteSpace(profile.Position) ||
                 string.IsNullOrWhiteSpace(profile.Club) || string.IsNullOrWhiteSpace(profile.Nationality) ||
-                string.IsNullOrWhiteSpace(profile.Height) || profile.Age < 14 || profile.Physical.Count != 8 ||
+                string.IsNullOrWhiteSpace(profile.Height) || profile.Age < 14 ||
                 profile.Technical.Count + profile.Mental.Count + profile.Goalkeeping.Count < 6)
                 throw new InvalidOperationException("Incomplete profile (no API request): " +
                     "name=" + profile.Name + ", age=" + profile.Age + ", nationality=" + profile.Nationality +
@@ -426,13 +445,42 @@ namespace FMFaceHotReload
             return profile;
         }
 
-        // A player whose attributes FM26 hides until they are scouted: too few are
-        // known to describe them, which is said in a dialog rather than as a failure.
+        // A player with half or more of their attributes hidden until they are
+        // scouted: too few are known to describe them, which is said in a dialog
+        // rather than as a failure.
+        private sealed class ScoutingRetry
+        {
+            public long PersonId;
+            public System.DateTime FirstUtc;
+            public System.DateTime NextUtc;
+            public Action Retry;
+        }
+
+        private ScoutingRetry _scoutingRetry;
+
+        // Runs a pending Generate again while its profile is still the one shown.
+        private void PollScoutingRetry()
+        {
+            var retry = _scoutingRetry;
+            if (retry?.Retry == null || System.DateTime.UtcNow < retry.NextUtc)
+                return;
+            var again = retry.Retry;
+            retry.Retry = null;
+            var header = FindNamed(CurrentRoot(), "ReportHeader");
+            if (header == null || !HeaderId(header, out long shown) || shown != retry.PersonId)
+            {
+                _scoutingRetry = null;
+                return;
+            }
+            again();
+        }
+
         private sealed class NeedsScoutingException : InvalidOperationException
         {
             public NeedsScoutingException(string name)
-                : base("Your scouts don't know enough about " + name + " yet. Scout them first, and once " +
-                       "some of their attributes are known, FM Face can make their face. No image was requested.") { }
+                : base("Your scouts don't know enough about " + name + " yet: half or more of their " +
+                       "attributes are unknown. Scout them first, and once most are known, FM Face can make " +
+                       "their face. No image was requested.") { }
         }
 
         private static ProfileSnapshot CaptureStaff(long personId, out VisualElement picture, out VisualElement root)
@@ -636,6 +684,8 @@ namespace FMFaceHotReload
                 plugin.PollGeneration();
                 plugin.PollKeyCheck();
                 plugin.PollKeyTyping();
+                try { plugin.PollScoutingRetry(); }
+                catch (Exception error) { plugin.Log.LogWarning("Profile check failed: " + error.Message); }
                 if (Time.unscaledTime < _nextScan)
                     return;
                 _nextScan = Time.unscaledTime + 0.5f;
@@ -643,6 +693,8 @@ namespace FMFaceHotReload
                 catch (Exception error) { plugin.Log.LogWarning("Biography scan failed: " + error.Message); }
                 try { plugin.CheckPortraitTrigger(); }
                 catch (Exception error) { plugin.Log.LogWarning("Portrait menu setup failed: " + error.Message); }
+                try { plugin.CheckDialogPage(); }
+                catch (Exception error) { plugin.Log.LogWarning("Dialog check failed: " + error.Message); }
                 try { plugin.CheckSquadMenu(); plugin.PollSquadScan(); }
                 catch (Exception error) { plugin.Log.LogWarning("Squad scan failed: " + error); plugin.CancelSquadScan(); }
                 try { plugin.PollSquadBatch(); }
@@ -1644,7 +1696,58 @@ namespace FMFaceHotReload
             dialog.Add(button);
             root.Add(dialog);
             _squadDialog = dialog;
+            _dialogPage = DialogPage(root);
+            _dialogPageMisses = 0;
+            WatchDialogEscape(root);
             return label;
+        }
+
+        // The page a dialog was shown over: the profile's person, or the squad
+        // list's team. A message closes when you leave that page or press Escape;
+        // a running squad scan or batch keeps its dialog until it ends.
+        private string _dialogPage;
+        private int _dialogPageMisses;
+        private VisualElement _escapeRoot;
+
+        private static string DialogPage(VisualElement root)
+        {
+            var header = FindNamed(root, "ReportHeader");
+            if (header != null && HeaderId(header, out long id))
+                return "person " + id;
+            return SquadTable(root) != null ? "squad " + (SquadPageTeam(root) ?? "") : null;
+        }
+
+        private void CheckDialogPage()
+        {
+            if (_squadDialog == null || _squadScan != null || _squadBatch != null)
+                return;
+            if (_squadDialog.parent == null)
+            {
+                _squadDialog = null;
+                return;
+            }
+            // Twice in a row (a second apart), so a page redrawing doesn't close it.
+            if (_dialogPage == null || DialogPage(CurrentRoot()) == _dialogPage)
+                _dialogPageMisses = 0;
+            else if (++_dialogPageMisses >= 2)
+                CancelSquadScan();
+        }
+
+        private void WatchDialogEscape(VisualElement root)
+        {
+            var top = root?.panel?.visualTree;
+            if (top == null || top == _escapeRoot)
+                return;
+            _escapeRoot = top;
+            top.RegisterCallback(DelegateSupport.ConvertDelegate<EventCallback<KeyDownEvent>>(
+                new Action<KeyDownEvent>(e =>
+                {
+                    if (e.keyCode != KeyCode.Escape || _squadDialog == null || _squadDialog.parent == null ||
+                        _squadBatch != null)
+                        return;
+                    e.StopPropagation();
+                    CancelSquadScan();
+                })), TrickleDown.TrickleDown);
         }
 
         private void CheckPortraitTrigger()
