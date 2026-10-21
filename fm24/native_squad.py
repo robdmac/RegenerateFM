@@ -51,6 +51,8 @@ HEADER_ROW_ID = int.from_bytes(b"HROW", "big")
 PERSON_HANDLE = 8
 PERSON_ROW = 0x01000000
 WIDGET_MANAGER, WIDGET_PARENT, WIDGET_ID, WIDGET_CHILDREN = 0x48, 0x50, 0x5C, 0x100
+NOT_A_SQUAD = ("Generate missing squad faces works on a squad's player list, and this screen shows "
+               "another kind of list. Choose it from the Squad screen's menu instead.")
 _PERSON_PICTURE = b"graphics/pictures/person/"
 _PORTRAIT = re.compile(rb"(?:r-)?([1-9][0-9]{0,9})/portrait")
 _NO_PICTURE = b"graphics/pictures/person/none/male/player/portrait"
@@ -273,6 +275,10 @@ def read_squad(pid: int | None = None, attempts: int = 3, catalogue: bool = True
                 if exc.person_id not in brief:
                     brief.append(exc.person_id)
                 continue
+            except MemoryUnavailable as exc:
+                # The squad menu is also offered on screens with another kind of
+                # player list (a Development Center team's overview).
+                raise MemoryUnavailable(NOT_A_SQUAD) from exc
             if person_id not in seen:
                 seen.add(person_id)
                 result.append(SquadRow(person_id, person + 12, _text(pid, _u64(pid, cell + ROW_NAME))))

@@ -378,6 +378,15 @@ class NativeBatchTests(unittest.TestCase):
         self.assertEqual(calls, ["3"])
         self.assertIn("reload failed", Progress.made[0].result)
 
+    def test_another_kind_of_list_is_named_without_stopping_anything(self):
+        # A Development Center team's overview: the menu item is offered there too.
+        calls = []
+        with patch.object(squad_batch, "read_squad_rows",
+                          side_effect=MemoryUnavailable(native_squad.NOT_A_SQUAD)):
+            self.run_batch(lambda person, profile: calls.append(person))
+        self.assertEqual(calls, [])
+        self.assertEqual(self.notices[-1], native_squad.NOT_A_SQUAD)
+
     def test_without_the_dll_nothing_is_generated(self):
         calls = []
         self.run_batch(lambda person, profile: calls.append(person), port=None)
