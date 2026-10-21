@@ -1,4 +1,4 @@
-# FM24 player, staff and squad faces (experimental)
+# FM24 player, staff and squad faces
 
 FM Face for FM24 works inside the game through the [native DLL](native_menu/README.md), which is pinned to the tested FM24 24.4.2 executable on Steam/Proton.
 - A player or staff profile's **Overview** tab menu ends with **Generate new face** and **Update face**, with any skin. With the optional FM Face skin, clicking the portrait gives FM24's own popup with the same two items.
@@ -35,7 +35,7 @@ Run it with FM24 closed. Running it again does nothing unless something changed,
 
 Afterwards FM Face works with whatever skin you use. For the portrait popup too, choose the **FM Face** skin in FM24's **Preferences > Interface**. It is FM24's default skin plus that popup, so it can't be combined with another custom skin. Without it, single-face progress appears in an FM Face dialog instead of on the portrait; closing that dialog doesn't stop the face.
 
-## macOS (Apple Silicon, experimental)
+## macOS (Apple Silicon)
 
 FM24 for Mac is its own program, so FM Face uses a Mac library instead of the DLL: `libfmface24.dylib`, from [native_menu/fmface24_macos.c](native_menu/fmface24_macos.c), pinned to FM24 24.4.2's arm64 build. Its in-game features are the same: the Overview tab rows, the portrait popup, the Squad menu item, FM24's dialogs and the skin reload. macOS doesn't let another program read FM24's memory, so the library also serves the companion's reads.
 

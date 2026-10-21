@@ -1,8 +1,9 @@
 #!/bin/sh
-# Starts Football Manager 26 on macOS with BepInEx and the FM Face plugin.
+# Starts Football Manager 26 (or the FM26 Demo) on macOS with BepInEx and the
+# FM Face plugin.
 #
-# It lives in the Football Manager 26 folder, beside fm.app, with the rest of
-# the release's FM26-macOS folder. FM26's Steam launch option runs it:
+# It lives in the game folder, beside fm.app, with the rest of the release's
+# FM26-macOS folder. The game's Steam launch option runs it:
 #   "/path/to/Football Manager 26/run_fmface.sh" %command%
 #
 # BepInEx's macOS runtime (CoreCLR and its native helpers) is x86_64 only, so
@@ -11,12 +12,17 @@
 set -e
 
 BASEDIR=$(cd "$(dirname "$0")" && pwd -P)
-GAME="${BASEDIR}/fm.app/Contents/MacOS/Football Manager 26"
+# The app's executable: "Football Manager 26", or "Football Manager 26 Demo".
+executable() {
+    /usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$1/Contents/Info.plist" 2>/dev/null ||
+        echo "Football Manager 26"
+}
+GAME="${BASEDIR}/fm.app/Contents/MacOS/$(executable "${BASEDIR}/fm.app")"
 
 # Steam passes the game (its executable or fm.app) and any game arguments.
 if [ $# -gt 0 ]; then
     case "$1" in
-        *.app|*.app/) GAME="${1%/}/Contents/MacOS/Football Manager 26"; shift ;;
+        *.app|*.app/) GAME="${1%/}/Contents/MacOS/$(executable "${1%/}")"; shift ;;
         *) if [ -f "$1" ] && [ -x "$1" ]; then GAME="$1"; shift; fi ;;
     esac
 fi

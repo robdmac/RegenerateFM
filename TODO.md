@@ -246,3 +246,7 @@
   so the item wasn't added (on Windows too: the same rule). A tab with All
   Players now gets it; checked on the Mac with Huddersfield (6 of 35). The
   Windows DLL has the same change but hasn't been rebuilt or checked.
+- **FM26 Demo on macOS:** done. The plugin pins the Demo's Mac binaries,
+  the launcher starts the app's own executable ("Football Manager 26 Demo"),
+  and `steam_launch.py fm26demo` sets its launch option. Checked with the
+  image stand-in: a 21-face batch and staff Generate and Update.
