@@ -1,7 +1,7 @@
 # FM24 player, staff and squad faces
 
-FM Face for FM24 works inside the game through the [native DLL](native_menu/README.md), which is pinned to the tested FM24 24.4.2 executable on Steam/Proton.
-- A player or staff profile's **Overview** tab menu ends with **Generate new face** and **Update face**, with any skin. With the optional FM Face skin, clicking the portrait gives FM24's own popup with the same two items.
+RegenerateFM for FM24 works inside the game through the [native DLL](native_menu/README.md), which is pinned to the tested FM24 24.4.2 executable on Steam/Proton.
+- A player or staff profile's **Overview** tab menu ends with **Generate new face** and **Update face**, with any skin. With the optional RegenerateFM skin, clicking the portrait gives FM24's own popup with the same two items.
 - The Squad screen's **Overview** menu ends with **Generate missing squad faces…**. A reserve or youth team's tab menu in the Development Center (and another club's Players menu) ends with it too.
 
 The companion reads everything from FM24's memory: the open profile, the biography FM24 is showing, and every Squad row. It makes the image request, writes a versioned portrait and reloads the skin inside the game. Progress, the squad confirmation, results and errors appear in FM24's own dialogs. There is no X11 code, no screenshots or OCR, and no browser.
@@ -27,46 +27,46 @@ If anything can't be verified, the request is refused before any image is reques
 
 `setup_fm24.py` does the one-time setup, and the packaged companion runs it by itself:
 - **Finds FM24** in your Steam libraries (`libraryfolders.vdf`), and its **user-data** folder (`Documents/Sports Interactive/Football Manager 2024`; under Proton, inside the game's `compatdata/2252570` prefix). That's the folder with `skins` and `graphics`, not the game folder.
-- **Builds the optional FM Face skin** from the player and staff panels in FM24's own `data/game/panels.fmf`, read directly, so there's no Resource Archiver step. This repository does not include Sports Interactive's panels.
-- **Creates the private token** the DLL and companion share (`.fm24-auth` beside FM Face). If FM24 already has an FM Face token, for example after moving the companion to a new folder, it reuses that one.
-- **Installs the [native DLL](native_menu/README.md)** and adds the portrait popups to the FM Face skin's panels.
+- **Builds the optional RegenerateFM skin** from the player and staff panels in FM24's own `data/game/panels.fmf`, read directly, so there's no Resource Archiver step. This repository does not include Sports Interactive's panels.
+- **Creates the private token** the DLL and companion share (`.fm24-auth` beside RegenerateFM). If FM24 already has a RegenerateFM token, for example after moving the companion to a new folder, it reuses that one.
+- **Installs the [native DLL](native_menu/README.md)** and adds the portrait popups to the RegenerateFM skin's panels.
 
-Run it with FM24 closed. Running it again does nothing unless something changed, such as a new DLL in an FM Face update; `--remove` uninstalls the DLL and restores the panels. `--game-dir` and `--user-data-dir` override the search.
+Run it with FM24 closed. Running it again does nothing unless something changed, such as a new DLL in a RegenerateFM update; `--remove` uninstalls the DLL and restores the panels. `--game-dir` and `--user-data-dir` override the search.
 
-Afterwards FM Face works with whatever skin you use. For the portrait popup too, choose the **FM Face** skin in FM24's **Preferences > Interface**. It is FM24's default skin plus that popup, so it can't be combined with another custom skin. Without it, single-face progress appears in an FM Face dialog instead of on the portrait; closing that dialog doesn't stop the face.
+Afterwards RegenerateFM works with whatever skin you use. For the portrait popup too, choose the **RegenerateFM** skin in FM24's **Preferences > Interface**. It is FM24's default skin plus that popup, so it can't be combined with another custom skin. Without it, single-face progress appears in a RegenerateFM dialog instead of on the portrait; closing that dialog doesn't stop the face.
 
 ## macOS (Apple Silicon)
 
-FM24 for Mac is its own program, so FM Face uses a Mac library instead of the DLL: `libfmface24.dylib`, from [native_menu/fmface24_macos.c](native_menu/fmface24_macos.c), pinned to FM24 24.4.2's arm64 build. Its in-game features are the same: the Overview tab rows, the portrait popup, the Squad menu item, FM24's dialogs and the skin reload. macOS doesn't let another program read FM24's memory, so the library also serves the companion's reads.
+FM24 for Mac is its own program, so RegenerateFM uses a Mac library instead of the DLL: `libregeneratefm24.dylib`, from [native_menu/regeneratefm24_macos.c](native_menu/regeneratefm24_macos.c), pinned to FM24 24.4.2's arm64 build. Its in-game features are the same: the Overview tab rows, the portrait popup, the Squad menu item, FM24's dialogs and the skin reload. macOS doesn't let another program read FM24's memory, so the library also serves the companion's reads.
 
 1. Install Xcode's command-line tools (`xcode-select --install`) and the companion's Python packages (`pip install -r fm24/requirements.txt`).
 2. Build the library: `python3 fm24/native_menu/build_macos.py`.
-3. Close FM24 and run `python3 fm24/setup_fm24.py`. It finds FM24 in `~/Library/Application Support/Steam`, builds the skin in `~/Library/Application Support/Sports Interactive/Football Manager 2024/skins/fmface`, and puts `libfmface24.dylib`, `run_fmface24.sh` and `fmface24.ini` beside `fm.app`.
-4. If Steam was running, quit it and run the setup again, or set FM24's Steam launch option to the line it prints: `"<the game folder>/run_fmface24.sh" %command%`.
-5. Play FM24 from Steam: the launcher starts the companion with the Python you ran the setup with (it logs to `fmface24-companion.log` beside `fm.app`) and the companion stops when FM24 does. Run the setup with a Python that has the packages, such as a virtual environment's. The first time you choose a face command, FM24 asks for your OpenAI key in a prompt on its window (paste with Cmd+V; the key isn't shown). The companion checks it with a free OpenAI request, keeps it in `~/Library/Application Support/FM Face`, readable only by you, and asks again in the game if OpenAI later rejects it. Optionally, choose the FM Face skin in FM24's **Preferences > Interface** for the portrait popup. On the Mac, **Show screen IDs in Title Bar** isn't needed: the library reports the person from the screen's object browser, and the companion finds them by their handle in FM24's person table.
+3. Close FM24 and run `python3 fm24/setup_fm24.py`. It finds FM24 in `~/Library/Application Support/Steam`, builds the skin in `~/Library/Application Support/Sports Interactive/Football Manager 2024/skins/regeneratefm`, and puts `libregeneratefm24.dylib`, `run_regeneratefm24.sh` and `regeneratefm24.ini` beside `fm.app`.
+4. If Steam was running, quit it and run the setup again, or set FM24's Steam launch option to the line it prints: `"<the game folder>/run_regeneratefm24.sh" %command%`.
+5. Play FM24 from Steam: the launcher starts the companion with the Python you ran the setup with (it logs to `regeneratefm24-companion.log` beside `fm.app`) and the companion stops when FM24 does. Run the setup with a Python that has the packages, such as a virtual environment's. The first time you choose a face command, FM24 asks for your OpenAI key in a prompt on its window (paste with Cmd+V; the key isn't shown). The companion checks it with a free OpenAI request, keeps it in `~/Library/Application Support/RegenerateFM`, readable only by you, and asks again in the game if OpenAI later rejects it. Optionally, choose the RegenerateFM skin in FM24's **Preferences > Interface** for the portrait popup. On the Mac, **Show screen IDs in Title Bar** isn't needed: the library reports the person from the screen's object browser, and the companion finds them by their handle in FM24's person table.
 
-`fm.app` is never changed. `python3 fm24/setup_fm24.py --remove` removes the library and launcher and restores the panels; then clear the launch option. On an Intel Mac, `run_fmface24.sh` starts FM24 without FM Face. The memory layouts are in [layout.py](layout.py) and described in [native_menu/README.md](native_menu/README.md#macos).
+`fm.app` is never changed. `python3 fm24/setup_fm24.py --remove` removes the library and launcher and restores the panels; then clear the launch option. On an Intel Mac, `run_regeneratefm24.sh` starts FM24 without RegenerateFM. The memory layouts are in [layout.py](layout.py) and described in [native_menu/README.md](native_menu/README.md#macos).
 
 ## Packaged companion (Windows and Linux)
 
-`fmface-fm24.exe` (the release ZIP's `FM24` folder) is the companion packaged with Python, Pillow, zstandard and the FM24 DLL, so players need no Python or compiler. It is a Windows program; on Linux it runs inside FM24's Proton prefix, so the same file serves both.
+`regeneratefm-fm24.exe` (the release ZIP's `FM24` folder) is the companion packaged with Python, Pillow, zstandard and the FM24 DLL, so players need no Python or compiler. It is a Windows program; on Linux it runs inside FM24's Proton prefix, so the same file serves both.
 
-**FM24 starts it.** Once FM Face is set up, the DLL starts `fmface-fm24.exe` whenever FM24 starts (its path is in `fmface24.ini` beside `fm.exe`), and it stops when FM24 does. It has no window: it writes to `fmface-fm24.log` beside itself. There is nothing to start or keep open.
+**FM24 starts it.** Once RegenerateFM is set up, the DLL starts `regeneratefm-fm24.exe` whenever FM24 starts (its path is in `regeneratefm24.ini` beside `fm.exe`), and it stops when FM24 does. It has no window: it writes to `regeneratefm-fm24.log` beside itself. There is nothing to start or keep open.
 
 **Windows:**
 1. Copy the `FM24` folder somewhere of your own, not into the game folder.
-2. Close FM24 and double-click `fmface-fm24.exe`. The first time (and after an FM Face update, or after moving the folder) it runs the setup above.
-3. It asks for your OpenAI key in its window. Paste it (right-click or Ctrl+V) or type it; it isn't shown. It checks the key with a free OpenAI request and saves it encrypted for your Windows user in `%APPDATA%\FM Face\openai-key`, the same file the FM26 plugin uses. Delete that folder to forget the key. A `.env` beside the exe with `OPENAI_API_KEY` takes priority.
-4. Start FM24 (choosing the FM Face skin is optional, as above).
+2. Close FM24 and double-click `regeneratefm-fm24.exe`. The first time (and after a RegenerateFM update, or after moving the folder) it runs the setup above.
+3. It asks for your OpenAI key in its window. Paste it (right-click or Ctrl+V) or type it; it isn't shown. It checks the key with a free OpenAI request and saves it encrypted for your Windows user in `%APPDATA%\RegenerateFM\openai-key`, the same file the FM26 plugin uses. Delete that folder to forget the key. A `.env` beside the exe with `OPENAI_API_KEY` takes priority.
+4. Start FM24 (choosing the RegenerateFM skin is optional, as above).
 
 **Linux (Steam/Proton):**
 1. Copy the release ZIP's `FM24` and `source` folders somewhere of your own, side by side, not into the game folder.
-2. Close FM24, **quit Steam** (Steam > Exit), and run `FM24/install-linux.sh`. It needs only `python3`, which Linux systems include, with no extra packages. It installs the DLL, points it at `fmface-fm24.exe`, and sets FM24's Steam launch option to `WINEDLLOVERRIDES="winmm=n,b" %command%`. It refuses while Steam is running, because Steam overwrites launch options changed while it's open.
-3. Start Steam and play FM24. The first time, a small **FM Face: OpenAI key** window asks for your key: paste it with Ctrl+V (or type it; it shows as dots) and choose **Save key**. It is checked with a free OpenAI request and saved encrypted in FM24's Proton prefix. Without the `zstandard` package the setup can't build the optional FM Face skin, so the companion builds it on this first start; choose it after restarting FM24 if you want the portrait popup.
+2. Close FM24, **quit Steam** (Steam > Exit), and run `FM24/install-linux.sh`. It needs only `python3`, which Linux systems include, with no extra packages. It installs the DLL, points it at `regeneratefm-fm24.exe`, and sets FM24's Steam launch option to `WINEDLLOVERRIDES="winmm=n,b" %command%`. It refuses while Steam is running, because Steam overwrites launch options changed while it's open.
+3. Start Steam and play FM24. The first time, a small **RegenerateFM: OpenAI key** window asks for your key: paste it with Ctrl+V (or type it; it shows as dots) and choose **Save key**. It is checked with a free OpenAI request and saved encrypted in FM24's Proton prefix. Without the `zstandard` package the setup can't build the optional RegenerateFM skin, so the companion builds it on this first start; choose it after restarting FM24 if you want the portrait popup.
 
 **When a key is needed later** (none was saved, or OpenAI rejects the saved one), choosing a face command opens the key window again, and FM24 says so. Closing it saves nothing.
 
-**Options:** it reads `.fm24-auth` from its own folder (or the token in `fmface24.ini`) and finds `Documents\Sports Interactive\Football Manager 2024\graphics\fmface` itself. `fmface-fm24.exe setup [--game-dir ...] [--remove]` runs only the setup; `install-linux.sh --remove` uninstalls on Linux (with Steam closed). Double-clicked while FM24 is running, it runs as the companion in its window, as before. The companion options below (`--graphics-dir`, `--preview-only` and so on) still work. If it stops with an error, the window stays open until you press Enter.
+**Options:** it reads `.fm24-auth` from its own folder (or the token in `regeneratefm24.ini`) and finds `Documents\Sports Interactive\Football Manager 2024\graphics\regeneratefm` itself. `regeneratefm-fm24.exe setup [--game-dir ...] [--remove]` runs only the setup; `install-linux.sh --remove` uninstalls on Linux (with Steam closed). Double-clicked while FM24 is running, it runs as the companion in its window, as before. The companion options below (`--graphics-dir`, `--preview-only` and so on) still work. If it stops with an error, the window stays open until you press Enter.
 
 **Building it:** build the DLL first (see [native_menu/README.md](native_menu/README.md); it needs MinGW), then run `fm24/build_exe.py` with a Windows Python 3.11 that has `fm24/requirements-exe.txt` installed. On Linux, a Windows Python under Wine works:
 
@@ -75,7 +75,7 @@ wine python.exe -m pip install -r fm24/requirements-exe.txt
 wine python.exe fm24/build_exe.py
 ```
 
-The output is the folder `dist/fmface-fm24/`, about 30 MB, which `make_release.py` adds to the release ZIP. It's a folder rather than one file because one-file packages unpack themselves on every start, which is slower and more often flagged by antivirus software.
+The output is the folder `dist/regeneratefm-fm24/`, about 30 MB, which `make_release.py` adds to the release ZIP. It's a folder rather than one file because one-file packages unpack themselves on every start, which is slower and more often flagged by antivirus software.
 
 **Note on antivirus:** a program that reads another program's memory can still be flagged. Signing the exe would reduce that.
 
@@ -83,7 +83,7 @@ The output is the folder `dist/fmface-fm24/`, about 30 MB, which `make_release.p
 
 ## Running from source (Linux)
 
-The packaged companion above is simpler. From source, the companion isn't started by FM24 (unless you pass the setup `--companion` with a built `fmface-fm24.exe`); start it yourself:
+The packaged companion above is simpler. From source, the companion isn't started by FM24 (unless you pass the setup `--companion` with a built `regeneratefm-fm24.exe`); start it yourself:
 
 1. Create a virtual environment and install the companion's dependencies:
 
@@ -99,7 +99,7 @@ The packaged companion above is simpler. From source, the companion isn't starte
 
    ```sh
    .venv-fm24/bin/python fm24/companion.py \
-     --graphics-dir '/path/to/Football Manager 2024/graphics/fmface'
+     --graphics-dir '/path/to/Football Manager 2024/graphics/regeneratefm'
    ```
 
    `--auth-file` defaults to `.fm24-auth` in the repository. `fm24/build_skin.py` still builds the skin from panels you extracted yourself, if you prefer.
@@ -108,9 +108,9 @@ The packaged companion above is simpler. From source, the companion isn't starte
 
 The packaged companion runs whenever FM24 does. From source, leave the companion running while you play; the menus work only while it runs.
 
-- **Generate new face:** open a player or staff profile and choose it from the **Overview** tab menu (below **Follow**), or, with the FM Face skin, click the portrait and choose it from FM24's popup. The new face loads automatically, and choosing it again replaces the portrait.
+- **Generate new face:** open a player or staff profile and choose it from the **Overview** tab menu (below **Follow**), or, with the RegenerateFM skin, click the portrait and choose it from FM24's popup. The new face loads automatically, and choosing it again replaces the portrait.
 - **Update face:** refreshes the face the person already has, asking for the same person at their current age in their current club's kit. The starting face can be:
-  - FM Face's own portrait
+  - RegenerateFM's own portrait
   - a facepack picture from your graphics folder
   - FM24's bundled squad photo, read from `data/game/graphics.fmf` with its mask as transparency
 
@@ -118,7 +118,7 @@ The packaged companion runs whenever FM24 does. From source, leave the companion
 - **Generate missing squad faces…:** on the Squad screen, choose it from the **Overview** menu. For a reserve or youth team, open **Development Center**, then choose it from that team's tab menu (for example **Inter Miami II**); opening the menu shows the team's Overview, whose squad list it reads.
   - It reads every row from memory, including rows FM24 hasn't drawn, and asks in an FM24 dialog before any request. The dialog names the team most of the players play for.
   - Players FM24 lists as **Scouting Required** with no age or ability (players of leagues it hasn't fully loaded, such as Inter Miami II's 11 of 23 and all of the IMCF Academy on the test save) are left out and counted in the dialog: FM24 keeps only a brief record for them, without the age, nationality or attributes a prompt needs.
-  - Player-coaches are left out and counted too: FM24 keeps their player details outside the record the list reads, so make theirs from their own profile. A list with no players FM Face can read (a Development Center overview that lists staff) says so and makes no request.
+  - Player-coaches are left out and counted too: FM24 keeps their player details outside the record the list reads, so make theirs from their own profile. A list with no players RegenerateFM can read (a Development Center overview that lists staff) says so and makes no request.
   - It then generates and reloads one face at a time. Choose **Stop after this face** to end after the current one.
 
 If FM24 can't show one of its dialogs, the message goes to the companion terminal instead, and an unanswerable squad confirmation counts as Cancel.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the FM24 FM Face library for FM24 24.4.2 on macOS (Apple Silicon)."""
+"""Build the FM24 RegenerateFM library for FM24 24.4.2 on macOS (Apple Silicon)."""
 
 from __future__ import annotations
 
@@ -34,10 +34,10 @@ def main() -> None:
             constants.append(f"#define {name} {value}u")
     args.output.mkdir(parents=True, exist_ok=True)
     (args.output / "supported_build_macos.h").write_text("\n".join(constants) + "\n")
-    target = args.output / "libfmface24.dylib"
+    target = args.output / "libregeneratefm24.dylib"
     subprocess.run([compiler, "-arch", "arm64", "-dynamiclib", "-O2", "-Wall", "-Wextra", "-Werror",
                     "-mmacosx-version-min=11.0", "-I", str(args.output),
-                    str(HERE / "fmface24_macos.c"), "-fobjc-arc", str(HERE / "key_prompt_macos.m"),
+                    str(HERE / "regeneratefm24_macos.c"), "-fobjc-arc", str(HERE / "key_prompt_macos.m"),
                     "-framework", "AppKit", "-o", str(target)], check=True)
     print(f"Built {target}.")
 

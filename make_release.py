@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Create the FM Face release ZIP.
+"""Create the RegenerateFM release ZIP.
 
-Layout of fmface-<version>.zip, in fmface-<version>/:
+Layout of regeneratefm-<version>.zip, in regeneratefm-<version>/:
   FM26/        copy its contents into the "Football Manager 26" folder: BepInEx
                (downloaded once and checked against its pinned SHA-256) and the
-               FM Face plugin, so FM26 needs no installer, Python or .NET SDK
+               RegenerateFM plugin, so FM26 needs no installer, Python or .NET SDK
   FM26-macOS/  the same for FM26 on macOS: BepInEx for macOS with the pieces
-               hotreload/macos/build.py makes, and run_fmface.sh; only when
+               hotreload/macos/build.py makes, and run_regeneratefm.sh; only when
                they have been built
-  FM24/        fmface-fm24.exe (fm24/build_exe.py), which sets FM24 up itself
+  FM24/        regeneratefm-fm24.exe (fm24/build_exe.py), which sets FM24 up itself
   source/      the public source, docs and tests
 """
 
@@ -27,20 +27,20 @@ PUBLIC_FILES = (
     "LICENSE",
     "README.md",
     "RELEASE_CHECKLIST.md",
-    "fmface.py",
+    "regeneratefm.py",
     "appearance.py",
     "keystore.py",
     "steam_launch.py",
     "install_service.py",
     "make_release.py",
-    "hotreload/FMFaceHotReload.cs",
+    "hotreload/RegenerateFMHotReload.cs",
     "hotreload/FaceGenerator.cs",
-    "hotreload/FMFaceHotReload.csproj",
+    "hotreload/RegenerateFMHotReload.csproj",
     "hotreload/README.md",
     "hotreload/macos/README.md",
     "hotreload/macos/BepInEx.cfg",
     "hotreload/macos/build.py",
-    "hotreload/macos/run_fmface.sh",
+    "hotreload/macos/run_regeneratefm.sh",
     "hotreload/macos/patches/funchook-rosetta.patch",
     "hotreload/macos/patches/il2cppinterop-macos.patch",
     "global.json",
@@ -77,12 +77,12 @@ PUBLIC_FILES = (
     "fm24/native_menu/build.py",
     "fm24/native_menu/install.py",
     "fm24/native_menu/skin.py",
-    "fm24/native_menu/fmface24.c",
+    "fm24/native_menu/regeneratefm24.c",
     "fm24/native_menu/supported_build.json",
     "fm24/native_menu/build_macos.py",
-    "fm24/native_menu/fmface24_macos.c",
+    "fm24/native_menu/regeneratefm24_macos.c",
     "fm24/native_menu/key_prompt_macos.m",
-    "fm24/native_menu/run_fmface24.sh",
+    "fm24/native_menu/run_regeneratefm24.sh",
     "fm24/native_menu/supported_build_macos.json",
     "fm24/native_menu/requirements.txt",
     "tests/test_appearance.py",
@@ -93,7 +93,7 @@ PUBLIC_FILES = (
     "tests/test_fm24_native_dialog.py",
     "tests/test_fm24_native_menu.py",
     "tests/test_fm24_native_squad.py",
-    "tests/test_fmface.py",
+    "tests/test_regeneratefm.py",
     "tests/test_fm26_generator.py",
     "tests/fm26_generator/GeneratorCheck.csproj",
     "tests/fm26_generator/Program.cs",
@@ -101,7 +101,7 @@ PUBLIC_FILES = (
     "licenses/BepInEx-LICENSE.txt",
     "licenses/Il2CppInterop-LICENSE.txt",
 )
-PLUGIN_DLL = "hotreload/bin/Release/net6.0/FMFaceHotReload.dll"
+PLUGIN_DLL = "hotreload/bin/Release/net6.0/RegenerateFMHotReload.dll"
 BEPINEX = ("https://builds.bepinex.dev/projects/bepinex_be/760/"
            "BepInEx-Unity.IL2CPP-win-x64-6.0.0-be.760%2Ba1afbfb.zip",
            "9753b825578a3c3a31cc10067cd45a44a7bf56d3c34c4679e24d6adfd0fba8ea")
@@ -128,7 +128,7 @@ def bepinex_zip(pinned: tuple[str, str], path: Path | None) -> Path:
         target.parent.mkdir(parents=True, exist_ok=True)
         print(f"Downloading BepInEx from {url}")
         # builds.bepinex.dev refuses Python's default User-Agent (HTTP 403).
-        request = urllib.request.Request(url, headers={"User-Agent": "fmface-make-release"})
+        request = urllib.request.Request(url, headers={"User-Agent": "regeneratefm-make-release"})
         with urllib.request.urlopen(request, timeout=120) as response:
             data = response.read()
         temporary = target.with_suffix(".part")
@@ -163,7 +163,7 @@ def macos_files(archive: Path) -> dict[str, tuple[bytes, int]]:
     for name, built in MACOS_NATIVE.items():
         files[name] = ((MACOS_BUILD / built).read_bytes(), 0o644)
     files["BepInEx/config/BepInEx.cfg"] = ((ROOT / "hotreload/macos/BepInEx.cfg").read_bytes(), 0o644)
-    files["run_fmface.sh"] = ((ROOT / "hotreload/macos/run_fmface.sh").read_bytes(), 0o755)
+    files["run_regeneratefm.sh"] = ((ROOT / "hotreload/macos/run_regeneratefm.sh").read_bytes(), 0o755)
     return files
 
 
@@ -180,38 +180,38 @@ def main() -> None:
     parser.add_argument("--bepinex-zip", type=Path, help="a local copy of the pinned BepInEx be.760 ZIP")
     parser.add_argument("--bepinex-macos-zip", type=Path, help="a local copy of the pinned macOS BepInEx be.789 ZIP")
     args = parser.parse_args()
-    source = (ROOT / "hotreload/FMFaceHotReload.cs").read_text()
-    match = re.search(r'BepInPlugin\("fmface\.hotreload", "FM Face", "([^"]+)"\)', source)
+    source = (ROOT / "hotreload/RegenerateFMHotReload.cs").read_text()
+    match = re.search(r'BepInPlugin\("regeneratefm\.hotreload", "RegenerateFM", "([^"]+)"\)', source)
     if not match:
         raise SystemExit("Could not read the plugin version.")
     version = match.group(1)
-    target = ROOT / "dist" / f"fmface-{version}.zip"
+    target = ROOT / "dist" / f"regeneratefm-{version}.zip"
     missing = [name for name in PUBLIC_FILES + (PLUGIN_DLL,) if not (ROOT / name).is_file()]
     if missing:
         raise SystemExit("Release files are missing: " + ", ".join(missing))
     # The packaged FM24 companion (fm24/build_exe.py), when it has been built.
-    companion = ROOT / "dist" / "fmface-fm24"
+    companion = ROOT / "dist" / "regeneratefm-fm24"
     packaged = sorted(path for path in companion.rglob("*") if path.is_file()) if companion.is_dir() else []
-    if packaged and not (companion / "fmface-fm24.exe").is_file():
-        raise SystemExit("dist/fmface-fm24 has no fmface-fm24.exe; rebuild it with fm24/build_exe.py.")
+    if packaged and not (companion / "regeneratefm-fm24.exe").is_file():
+        raise SystemExit("dist/regeneratefm-fm24 has no regeneratefm-fm24.exe; rebuild it with fm24/build_exe.py.")
     if any(path.name in (".env", ".fm24-auth") for path in packaged):
-        raise SystemExit("dist/fmface-fm24 holds a private .env or .fm24-auth; remove it first.")
+        raise SystemExit("dist/regeneratefm-fm24 holds a private .env or .fm24-auth; remove it first.")
     loader = bepinex_files(bepinex_zip(BEPINEX, args.bepinex_zip), "winhttp.dll")
     # The macOS hooking pieces (hotreload/macos/build.py), when they have been built.
     macos = (macos_files(bepinex_zip(BEPINEX_MACOS, args.bepinex_macos_zip))
              if all((MACOS_BUILD / built).is_file() for built in MACOS_NATIVE.values()) else {})
-    top = f"fmface-{version}"
+    top = f"regeneratefm-{version}"
     target.parent.mkdir(exist_ok=True)
     with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for name in TOP_LEVEL:
             archive.write(ROOT / name, f"{top}/{Path(name).name}")
         for name, (data, mode) in loader.items():
             write(archive, f"{top}/FM26/{name}", data, mode)
-        archive.write(ROOT / PLUGIN_DLL, f"{top}/FM26/BepInEx/plugins/FMFaceHotReload/FMFaceHotReload.dll")
+        archive.write(ROOT / PLUGIN_DLL, f"{top}/FM26/BepInEx/plugins/RegenerateFMHotReload/RegenerateFMHotReload.dll")
         for name, (data, mode) in macos.items():
             write(archive, f"{top}/FM26-macOS/{name}", data, mode)
         if macos:
-            archive.write(ROOT / PLUGIN_DLL, f"{top}/FM26-macOS/BepInEx/plugins/FMFaceHotReload/FMFaceHotReload.dll")
+            archive.write(ROOT / PLUGIN_DLL, f"{top}/FM26-macOS/BepInEx/plugins/RegenerateFMHotReload/RegenerateFMHotReload.dll")
         for path in packaged:
             archive.write(path, f"{top}/FM24/{path.relative_to(companion).as_posix()}")
         if packaged:

@@ -16,7 +16,7 @@ import layout  # noqa: E402  The fixtures are records from the Windows fm.exe.
 layout.LAYOUT.update(layout.WINDOWS)
 import existing_portrait
 import game_archive
-from fmface import PNG_SIGNATURE
+from regeneratefm import PNG_SIGNATURE
 
 
 def _text(value: str) -> bytes:
@@ -73,8 +73,8 @@ class ExistingPortraitTests(unittest.TestCase):
         self.game = self.root / "Football Manager 2024"
         (self.game / "data" / "game").mkdir(parents=True)
         self.graphics = self.root / "graphics"
-        self.fmface = self.graphics / "fmface"
-        self.fmface.mkdir(parents=True)
+        self.regeneratefm = self.graphics / "regeneratefm"
+        self.regeneratefm.mkdir(parents=True)
         mask = Image.new("L", (8, 8), 0)
         mask.paste(255, (2, 2, 6, 6))
         masked = io.BytesIO()
@@ -98,7 +98,7 @@ class ExistingPortraitTests(unittest.TestCase):
         self.assertIn(b"lionel messi", game_archive.read_file(archive, config))
 
     def test_bundled_photo_becomes_a_transparent_png(self):
-        png, source = existing_portrait.find_existing_portrait("7458500", self.fmface, self.game)
+        png, source = existing_portrait.find_existing_portrait("7458500", self.regeneratefm, self.game)
         self.assertTrue(png.startswith(PNG_SIGNATURE))
         self.assertIn("bundled", source)
         with Image.open(io.BytesIO(png)) as picture:
@@ -106,45 +106,45 @@ class ExistingPortraitTests(unittest.TestCase):
             self.assertEqual(picture.getpixel((0, 0))[3], 0)
             self.assertEqual(picture.getpixel((4, 4))[3], 255)
 
-    def test_users_graphics_replace_bundled_and_fm_face_comes_first(self):
+    def test_users_graphics_replace_bundled_and_regeneratefm_comes_first(self):
         facepack = self.graphics / "facepack"
         facepack.mkdir()
         (facepack / "config.xml").write_text(
             '<record><list id="maps"><record from="messi" to="graphics/pictures/person/7458500/portrait"/>'
             '</list></record>')
         (facepack / "messi.png").write_bytes(image_bytes("RGBA", (0, 0, 255, 255), "PNG"))
-        _, source = existing_portrait.find_existing_portrait("7458500", self.fmface, self.game)
+        _, source = existing_portrait.find_existing_portrait("7458500", self.regeneratefm, self.game)
         self.assertEqual(Path(source), facepack / "messi.png")
-        (self.fmface / "config.xml").write_text(
+        (self.regeneratefm / "config.xml").write_text(
             '<record><list id="maps"><record from="7458500-0123456789abcdef" '
             'to="graphics/pictures/person/r-7458500/portrait"/></list></record>')
-        (self.fmface / "7458500-0123456789abcdef.png").write_bytes(image_bytes("RGBA", (0, 255, 0, 255), "PNG"))
-        _, source = existing_portrait.find_existing_portrait("7458500", self.fmface, self.game)
-        self.assertEqual(Path(source), self.fmface / "7458500-0123456789abcdef.png")
+        (self.regeneratefm / "7458500-0123456789abcdef.png").write_bytes(image_bytes("RGBA", (0, 255, 0, 255), "PNG"))
+        _, source = existing_portrait.find_existing_portrait("7458500", self.regeneratefm, self.game)
+        self.assertEqual(Path(source), self.regeneratefm / "7458500-0123456789abcdef.png")
 
     def test_person_without_a_picture_has_no_portrait(self):
-        self.assertIsNone(existing_portrait.find_existing_portrait("123", self.fmface, self.game))
-        self.assertIsNone(existing_portrait.find_existing_portrait("7458500", self.fmface, None))
+        self.assertIsNone(existing_portrait.find_existing_portrait("123", self.regeneratefm, self.game))
+        self.assertIsNone(existing_portrait.find_existing_portrait("7458500", self.regeneratefm, None))
         with self.assertRaises(ValueError):
-            existing_portrait.find_existing_portrait("../7458500", self.fmface, self.game)
+            existing_portrait.find_existing_portrait("../7458500", self.regeneratefm, self.game)
 
     def test_face_check_matches_the_lookup_without_decoding(self):
         # The DLL greys out "Update face" on the portrait popup and Overview
         # menu when this says no.
         now = [0.0]
-        check = lambda person: existing_portrait.has_existing_portrait(person, self.fmface, self.game,
+        check = lambda person: existing_portrait.has_existing_portrait(person, self.regeneratefm, self.game,
                                                                       clock=lambda: now[0])
         self.assertTrue(check("7458500"))
         self.assertFalse(check("123"))
-        self.assertFalse(existing_portrait.has_existing_portrait("7458500", self.fmface, None, clock=lambda: now[0]))
-        # FM Face's own folder is read again as soon as its config changes.
-        (self.fmface / "config.xml").write_text(
+        self.assertFalse(existing_portrait.has_existing_portrait("7458500", self.regeneratefm, None, clock=lambda: now[0]))
+        # RegenerateFM's own folder is read again as soon as its config changes.
+        (self.regeneratefm / "config.xml").write_text(
             '<record><list id="maps"><record from="123-0123456789abcdef" '
             'to="graphics/pictures/person/r-123/portrait"/></list></record>')
         self.assertFalse(check("123"))  # Mapped, but the picture is missing.
-        (self.fmface / "123-0123456789abcdef.png").write_bytes(image_bytes("RGBA", (0, 255, 0, 255), "PNG"))
+        (self.regeneratefm / "123-0123456789abcdef.png").write_bytes(image_bytes("RGBA", (0, 255, 0, 255), "PNG"))
         self.assertTrue(check("123"))
-        self.assertIsNotNone(existing_portrait.find_existing_portrait("123", self.fmface, None))
+        self.assertIsNotNone(existing_portrait.find_existing_portrait("123", self.regeneratefm, None))
         # Another folder's config is found by the next walk.
         facepack = self.graphics / "facepack"
         facepack.mkdir()
@@ -160,12 +160,12 @@ class ExistingPortraitTests(unittest.TestCase):
 
     def test_face_check_does_not_wait_for_the_archive_index(self):
         with self.assertRaisesRegex(RuntimeError, "indexed"):
-            existing_portrait.has_existing_portrait("7458500", self.fmface, self.game, wait=False)
+            existing_portrait.has_existing_portrait("7458500", self.regeneratefm, self.game, wait=False)
         for _ in range(100):
             if existing_portrait._bundled:
                 break
             time.sleep(.05)
-        self.assertTrue(existing_portrait.has_existing_portrait("7458500", self.fmface, self.game, wait=False))
+        self.assertTrue(existing_portrait.has_existing_portrait("7458500", self.regeneratefm, self.game, wait=False))
 
 
 if __name__ == "__main__":

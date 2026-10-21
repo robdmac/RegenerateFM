@@ -12,11 +12,11 @@ import urllib.parse
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from unittest.mock import patch
-import fmface
+import regeneratefm
 
 from http.server import ThreadingHTTPServer
 
-from fmface import FaceHandler, PNG_SIGNATURE, generate_png, load_env, profile_prompt, save_portrait, validate_id
+from regeneratefm import FaceHandler, PNG_SIGNATURE, generate_png, load_env, profile_prompt, save_portrait, validate_id
 from PIL import Image
 
 
@@ -130,7 +130,7 @@ class PortraitTests(unittest.TestCase):
                                                "csrf_token": FaceHandler.form_token}).encode()
                 request = urllib.request.Request(url + "/generate", data=form)
                 request.add_header("Host", f"attacker.example:{server.server_port}")
-                with patch("fmface.generate_png") as generate:
+                with patch("regeneratefm.generate_png") as generate:
                     with self.assertRaises(urllib.error.HTTPError) as rejected:
                         urllib.request.urlopen(request)
                     self.assertEqual(rejected.exception.code, 403)
@@ -161,7 +161,7 @@ class PortraitTests(unittest.TestCase):
             handler = object.__new__(FaceHandler)
             handler.reload_env = True
             # Never the key this computer has saved.
-            with patch("fmface.load_env", side_effect=lambda: load_env(env_file)), \
+            with patch("regeneratefm.load_env", side_effect=lambda: load_env(env_file)), \
                     patch("keystore.default_path", return_value=None):
                 self.assertFalse(handler._current_env().get("OPENAI_API_KEY"))
                 env_file.write_text("OPENAI_API_KEY=test-key\n")
@@ -190,20 +190,20 @@ class PortraitTests(unittest.TestCase):
             old = PNG_SIGNATURE + b"old image"
             save_portrait(folder, "123", old, newgen=False, replace=False)
             old_config = (folder / "config.xml").read_bytes()
-            original_write = fmface._atomic_write
+            original_write = regeneratefm._atomic_write
 
             def fail_config(path, content):
                 if path.name == "config.xml":
                     raise OSError("simulated config write failure")
                 original_write(path, content)
 
-            with patch("fmface._atomic_write", side_effect=fail_config):
+            with patch("regeneratefm._atomic_write", side_effect=fail_config):
                 with self.assertRaisesRegex(OSError, "simulated config write failure"):
                     save_portrait(folder, "123", PNG_SIGNATURE + b"replacement", newgen=None, replace=True)
             self.assertEqual((folder / "123.png").read_bytes(), old)
             self.assertEqual((folder / "config.xml").read_bytes(), old_config)
 
-            with patch("fmface._atomic_write", side_effect=fail_config):
+            with patch("regeneratefm._atomic_write", side_effect=fail_config):
                 with self.assertRaisesRegex(OSError, "simulated config write failure"):
                     save_portrait(folder, "456", PNG_SIGNATURE + b"new image", newgen=None, replace=True)
             self.assertFalse((folder / "456.png").exists())
@@ -225,7 +225,7 @@ class PortraitTests(unittest.TestCase):
             if configured is not None:
                 env["OPENAI_IMAGE_QUALITY"] = configured
             metadata = {}
-            with patch("fmface.urllib.request.urlopen", return_value=io.BytesIO(json.dumps(body).encode())) as request:
+            with patch("regeneratefm.urllib.request.urlopen", return_value=io.BytesIO(json.dumps(body).encode())) as request:
                 saved = generate_png(env, "test portrait", metadata=metadata)
             # Stored at FM's portrait size, with the transparency kept.
             with Image.open(io.BytesIO(saved)) as image:
@@ -240,13 +240,13 @@ class PortraitTests(unittest.TestCase):
             self.assertNotIn("data", metadata)
 
     def test_invalid_quality_is_refused_before_a_billed_request(self):
-        with patch("fmface.urllib.request.urlopen") as request:
+        with patch("regeneratefm.urllib.request.urlopen") as request:
             with self.assertRaisesRegex(ValueError, "OPENAI_IMAGE_QUALITY"):
                 generate_png({"OPENAI_API_KEY": "test-only", "OPENAI_IMAGE_QUALITY": "typo"}, "portrait")
             request.assert_not_called()
 
     def test_update_prompt_keeps_the_person_and_changes_age_and_kit(self):
-        prompt = fmface.update_prompt({"name": "Lionel Messi", "age": 38, "club": "Inter Miami",
+        prompt = regeneratefm.update_prompt({"name": "Lionel Messi", "age": 38, "club": "Inter Miami",
                                        "position": "Striker"})
         self.assertIn("Lionel Messi's current portrait", prompt)
         self.assertIn("at age 38", prompt)
@@ -255,31 +255,31 @@ class PortraitTests(unittest.TestCase):
         self.assertIn("transparent background", prompt)
         # New-face variety instructions would fight the supplied likeness.
         self.assertNotIn("distinctive facial proportions", prompt)
-        staff = fmface.update_prompt({"type": "staff", "name": "Alex Morgan", "age": 61})
+        staff = regeneratefm.update_prompt({"type": "staff", "name": "Alex Morgan", "age": 61})
         self.assertIn("unbranded dark jacket", staff)
         with self.assertRaisesRegex(ValueError, "club"):
-            fmface.update_prompt({"name": "Lionel Messi", "age": 38})
+            regeneratefm.update_prompt({"name": "Lionel Messi", "age": 38})
         with self.assertRaisesRegex(ValueError, "age"):
-            fmface.update_prompt({"name": "Lionel Messi", "age": 3, "club": "Inter Miami"})
+            regeneratefm.update_prompt({"name": "Lionel Messi", "age": 3, "club": "Inter Miami"})
 
     def test_edit_request_sends_existing_portrait_and_settings(self):
         reference = PNG_SIGNATURE + b"current face"
         png = real_png(256)
         body = {"data": [{"b64_json": base64.b64encode(png).decode()}]}
         env = {"OPENAI_API_KEY": "test-only", "OPENAI_IMAGE_QUALITY": "low"}
-        with patch("fmface.urllib.request.urlopen", return_value=io.BytesIO(json.dumps(body).encode())) as request:
-            self.assertEqual(fmface.edit_png(env, "update this portrait", reference), png)
+        with patch("regeneratefm.urllib.request.urlopen", return_value=io.BytesIO(json.dumps(body).encode())) as request:
+            self.assertEqual(regeneratefm.edit_png(env, "update this portrait", reference), png)
         sent = request.call_args.args[0]
         self.assertEqual(sent.full_url, "https://api.openai.com/v1/images/edits")
-        self.assertTrue(sent.headers["Content-type"].startswith("multipart/form-data; boundary=fmface-"))
+        self.assertTrue(sent.headers["Content-type"].startswith("multipart/form-data; boundary=regeneratefm-"))
         self.assertIn(b'name="image[]"; filename="portrait.png"', sent.data)
         self.assertIn(reference, sent.data)
         self.assertIn(b'name="quality"\r\n\r\nlow\r\n', sent.data)
         self.assertIn(b'name="background"\r\n\r\ntransparent\r\n', sent.data)
         self.assertIn(b"update this portrait", sent.data)
-        with patch("fmface.urllib.request.urlopen") as request:
+        with patch("regeneratefm.urllib.request.urlopen") as request:
             with self.assertRaisesRegex(ValueError, "PNG"):
-                fmface.edit_png(env, "update", b"GIF89a")
+                regeneratefm.edit_png(env, "update", b"GIF89a")
             request.assert_not_called()
 
     def test_web_page_renders_without_api_key(self):
@@ -306,8 +306,8 @@ class PortraitTests(unittest.TestCase):
             worker.start()
             try:
                 base = f"http://127.0.0.1:{server.server_port}"
-                event = json.dumps({"event": "button.click", "buttonId": "fmface", "playerId": 200123}).encode()
-                with patch("fmface.webbrowser.open"):
+                event = json.dumps({"event": "button.click", "buttonId": "regeneratefm", "playerId": 200123}).encode()
+                with patch("regeneratefm.webbrowser.open"):
                     with urllib.request.urlopen(urllib.request.Request(base + "/fm-events", data=event, headers={"Content-Type": "application/json"})) as response:
                         self.assertEqual(response.status, 204)
                 with urllib.request.urlopen(base + "/") as response:
@@ -315,7 +315,7 @@ class PortraitTests(unittest.TestCase):
                     self.assertIn('value="200123"', page)
                     token = re.search(r'name="csrf_token" value="([^"]+)"', page).group(1)
                 fields = {"player_id": "200123", "description": "short dark hair", "newgen": "on"}
-                with patch("fmface.generate_png", return_value=PNG_SIGNATURE + b"test bytes") as generate:
+                with patch("regeneratefm.generate_png", return_value=PNG_SIGNATURE + b"test bytes") as generate:
                     with self.assertRaises(urllib.error.HTTPError) as rejected:
                         urllib.request.urlopen(urllib.request.Request(base + "/generate", data=urllib.parse.urlencode(fields).encode()))
                     self.assertEqual(rejected.exception.code, 403)

@@ -4,7 +4,7 @@ using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
 
-namespace FMFaceHotReload
+namespace RegenerateFMHotReload
 {
     // Reads a JSON array of cases on stdin and writes one result per case.
     internal static class Program

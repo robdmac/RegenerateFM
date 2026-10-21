@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """FM24 companion: read the open profile from game memory and generate its portrait.
 
-Requires FM Face's native library in FM24 (fm24/native_menu: the DLL on
-Windows and Proton, libfmface24.dylib on macOS); there is no X11 code.
+Requires RegenerateFM's native library in FM24 (fm24/native_menu: the DLL on
+Windows and Proton, libregeneratefm24.dylib on macOS); there is no X11 code.
 """
 
 from __future__ import annotations
@@ -20,10 +20,10 @@ from urllib.parse import parse_qs, urlsplit
 from xml.etree.ElementTree import ParseError
 
 if sys.platform not in ("win32", "darwin") and not sys.platform.startswith("linux"):
-    sys.exit("FM Face's FM24 companion runs on Linux (Steam/Proton), Windows and macOS.")
+    sys.exit("RegenerateFM's FM24 companion runs on Linux (Steam/Proton), Windows and macOS.")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from fmface import ROOT, api_base, check_graphics_config, edit_png, generate_png, load_env, profile_prompt, update_prompt
+from regeneratefm import ROOT, api_base, check_graphics_config, edit_png, generate_png, load_env, profile_prompt, update_prompt
 from existing_portrait import find_existing_portrait, game_dir_from_process, has_existing_portrait
 from graphics import save_versioned_portrait
 from layout import LAYOUT
@@ -35,7 +35,7 @@ from native_screen import read_open_screen
 from person_handles import build_in_background, person_for_reference
 
 
-MISSING_KEY = ("FM Face has no OpenAI key. Close and restart the companion to enter it, "
+MISSING_KEY = ("RegenerateFM has no OpenAI key. Close and restart the companion to enter it, "
                "or add OPENAI_API_KEY to .env.")
 
 
@@ -58,7 +58,7 @@ def error_text(exc: Exception, handler=None) -> str:
 
 
 def _api() -> str:
-    """The image API address the key is checked against (fmface.api_base)."""
+    """The image API address the key is checked against (regeneratefm.api_base)."""
     return api_base(load_env())
 
 
@@ -78,15 +78,15 @@ def _asks_in_game(handler) -> bool:
 
 def _asks_in_window(handler) -> bool:
     """Started by FM24 on Windows or Proton: no window of its own, so a key is
-    asked for in FM Face's key dialog (ask_key_in_window)."""
+    asked for in RegenerateFM's key dialog (ask_key_in_window)."""
     return sys.platform == "win32" and bool(getattr(handler, "started_by_fm24", None))
 
 
-KEY_WINDOW = "Paste or type your OpenAI key in the FM Face: OpenAI key window."
+KEY_WINDOW = "Paste or type your OpenAI key in the RegenerateFM: OpenAI key window."
 
 
 def ask_key_in_window(handler, *, tell_fm24: bool = True) -> bool:
-    """With no key saved (or one OpenAI rejected), ask in FM Face's key
+    """With no key saved (or one OpenAI rejected), ask in RegenerateFM's key
     dialog (key_dialog: an ordinary Windows edit box, which takes a paste
     under Wine too), check the key with OpenAI (free) and save it in FM
     Face's key file. True once a key is saved or set in .env."""
@@ -98,12 +98,12 @@ def ask_key_in_window(handler, *, tell_fm24: bool = True) -> bool:
             return True
         if tell_fm24 and handler.reload_port:
             try:
-                show_dialog(handler.reload_port, handler.token, "message", "FM Face", KEY_WINDOW)
+                show_dialog(handler.reload_port, handler.token, "message", "RegenerateFM", KEY_WINDOW)
             except (DialogUnavailable, OSError, ValueError):
                 pass
         problem = "OpenAI didn't accept the saved key. Paste a new one." if handler.key_rejected else None
         while True:
-            text = (problem or "FM Face makes faces with your own OpenAI API key. Each face is one billed "
+            text = (problem or "RegenerateFM makes faces with your own OpenAI API key. Each face is one billed "
                                "request on your OpenAI account, usually a few cents or less.") + \
                    ("\n\nPaste the key (it starts with sk-) with Ctrl+V or type it, then choose Save key. "
                     f"Get a key… opens {keystore.KEYS_PAGE}.\n\n"
@@ -138,7 +138,7 @@ def ask_key_in_window(handler, *, tell_fm24: bool = True) -> bool:
 def ensure_key(handler) -> bool:
     """FM24 for macOS asks for the OpenAI key in the game, like FM26: with no
     key saved (or one OpenAI rejected), show the library's key prompt, check
-    the key with OpenAI (free) and save it in FM Face's key file. False when
+    the key with OpenAI (free) and save it in RegenerateFM's key file. False when
     the player cancels; True otherwise (a missing key elsewhere fails later
     with MISSING_KEY)."""
     import keystore
@@ -154,7 +154,7 @@ def ensure_key(handler) -> bool:
         problem = "OpenAI didn't accept the saved key. Paste a new one."
     with handler.key_lock:
         while True:
-            text = (problem or "FM Face makes faces with your own OpenAI API key. Each face is one billed "
+            text = (problem or "RegenerateFM makes faces with your own OpenAI API key. Each face is one billed "
                                "request on your OpenAI account, usually a few cents or less.") + \
                    ("\n\nPaste or type the key (it starts with sk-), then choose Save key. "
                     f"Get a key… opens {keystore.KEYS_PAGE}.\n\n"
@@ -195,7 +195,7 @@ def _check_saved_key(handler) -> None:
 
 
 class NativePortraitProgress:
-    """Progress text on FM Face's portrait popup inside FM24 (native DLL).
+    """Progress text on RegenerateFM's portrait popup inside FM24 (native DLL).
 
     The popup is 88 pixels wide, so the texts are one short word.
 
@@ -230,7 +230,7 @@ class NativePortraitProgress:
 
 
 class NativeDialogProgress:
-    """Progress in an FM Face OK dialog, for skins without FM Face's portrait
+    """Progress in a RegenerateFM OK dialog, for skins without RegenerateFM's portrait
     popup. The skin reload after a new face closes it; a failure turns it
     into the error message. Closing it early doesn't stop the face.
 
@@ -240,7 +240,7 @@ class NativeDialogProgress:
     def __init__(self, port: int, token: str, text: str):
         self.port, self.token = port, token
         self.failed = False
-        show_dialog(port, token, "message", "FM Face", text)
+        show_dialog(port, token, "message", "RegenerateFM", text)
 
     def send(self, command: str) -> None:
         if command == "reload":
@@ -264,7 +264,7 @@ class NativeDialogProgress:
 
 
 def start_progress(handler, mode: str):
-    """In-game progress: on the FM Face portrait popup, else in an FM Face
+    """In-game progress: on the RegenerateFM portrait popup, else in a RegenerateFM
     dialog (another skin), else None."""
     try:
         return NativePortraitProgress(handler.reload_port, handler.token,
@@ -450,25 +450,25 @@ class Handler(BaseHTTPRequestHandler):
         mode = "Preview" if self.preview_only else "Generate"
         payload = json.dumps({"key": self.token, "nonce": nonce})
         page = f'''<!doctype html><html lang="en"><meta charset="utf-8">
-<meta name="referrer" content="no-referrer"><title>FM Face for FM24</title>
+<meta name="referrer" content="no-referrer"><title>RegenerateFM for FM24</title>
 <style>body{{font:16px system-ui;background:#15191d;color:#eee;max-width:660px;margin:3rem auto;padding:0 1rem}}
 button{{font:inherit;padding:.6rem 1rem}}pre{{white-space:pre-wrap;overflow-wrap:anywhere}}</style>
-<h1>FM Face for FM24</h1><p id="status">Reading the open FM24 profile…</p><pre id="detail"></pre>
+<h1>RegenerateFM for FM24</h1><p id="status">Reading the open FM24 profile…</p><pre id="detail"></pre>
 <button id="again" hidden>{mode} again</button>
 <script>
 const data={payload};
 const status=document.getElementById('status'),detail=document.getElementById('detail'),again=document.getElementById('again');
 async function run(force=false){{
-  if(!force && sessionStorage.getItem('fmface-fm24-ran')){{status.textContent='This tab already ran. Return to FM24, or use the button below.';again.hidden=false;return;}}
-  sessionStorage.setItem('fmface-fm24-ran','1');
+  if(!force && sessionStorage.getItem('regeneratefm-fm24-ran')){{status.textContent='This tab already ran. Return to FM24, or use the button below.';again.hidden=false;return;}}
+  sessionStorage.setItem('regeneratefm-fm24-ran','1');
   status.textContent='{mode} in progress…';again.hidden=true;
   try{{const response=await fetch('/fm24/generate',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify(data)}});
-    const result=await response.json();status.textContent=result.ok ? (result.preview ? 'Profile preview ready; no image was generated.' : (result.refreshed ? 'Portrait saved and reloaded in FM24.' : 'Portrait saved; FM24 reload needs attention.')) : 'FM Face could not continue.';
+    const result=await response.json();status.textContent=result.ok ? (result.preview ? 'Profile preview ready; no image was generated.' : (result.refreshed ? 'Portrait saved and reloaded in FM24.' : 'Portrait saved; FM24 reload needs attention.')) : 'RegenerateFM could not continue.';
     detail.textContent=result.ok ? (result.preview ? result.prompt : ('Person '+result.playerId+(result.warning ? '\\n'+result.warning : ''))) : result.error;
   }}catch(error){{status.textContent='Could not reach the FM24 companion.';detail.textContent=String(error);}}
   again.hidden=false;
 }}
-again.onclick=()=>{{sessionStorage.removeItem('fmface-fm24-ran');location.reload();}};run();
+again.onclick=()=>{{sessionStorage.removeItem('regeneratefm-fm24-ran');location.reload();}};run();
 </script></html>'''
         self._send(200, page.encode(), "text/html; charset=utf-8")
 
@@ -559,17 +559,17 @@ again.onclick=()=>{{sessionStorage.removeItem('fmface-fm24-ran');location.reload
 
 
 def _default_graphics_dir() -> Path | None:
-    """FM24's user-data graphics/fmface folder on Windows (Documents may be redirected) and macOS."""
+    """FM24's user-data graphics/regeneratefm folder on Windows (Documents may be redirected) and macOS."""
     if sys.platform == "darwin":
         return (Path.home() / "Library" / "Application Support" / "Sports Interactive" /
-                "Football Manager 2024" / "graphics" / "fmface")
+                "Football Manager 2024" / "graphics" / "regeneratefm")
     if sys.platform != "win32":
         return None
     import ctypes
     buffer = ctypes.create_unicode_buffer(260)
     if ctypes.windll.shell32.SHGetFolderPathW(None, 5, None, 0, buffer) != 0:  # CSIDL_PERSONAL
         return None
-    return Path(buffer.value) / "Sports Interactive" / "Football Manager 2024" / "graphics" / "fmface"
+    return Path(buffer.value) / "Sports Interactive" / "Football Manager 2024" / "graphics" / "regeneratefm"
 
 
 def _installed_token(game_dir: Path) -> str | None:
@@ -608,8 +608,8 @@ def _first_start(handler, game_dir: Path | None, preview_only: bool) -> None:
     if game_dir is not None:
         import setup_fm24
         user_data = setup_fm24.find_user_data_dir(game_dir)
-        if user_data is not None and setup_fm24.build_skin_with_popups(game_dir, user_data / "skins" / "fmface"):
-            print("Built the optional FM Face skin; choose it in FM24's Preferences > Interface "
+        if user_data is not None and setup_fm24.build_skin_with_popups(game_dir, user_data / "skins" / "regeneratefm"):
+            print("Built the optional RegenerateFM skin; choose it in FM24's Preferences > Interface "
                   "after restarting FM24.", flush=True)
     # On macOS the key is asked for in the game when a face command needs it.
     if preview_only or _env_key() or sys.platform == "darwin":
@@ -621,9 +621,9 @@ def _first_start(handler, game_dir: Path | None, preview_only: bool) -> None:
 
 def _log_to_file() -> None:
     """A companion FM24 started has no window: everything goes to
-    fmface-fm24.log beside it (the previous run's in fmface-fm24.log.old)."""
+    regeneratefm-fm24.log beside it (the previous run's in regeneratefm-fm24.log.old)."""
     import os
-    log = ROOT / "fmface-fm24.log"
+    log = ROOT / "regeneratefm-fm24.log"
     try:
         if log.exists() and log.stat().st_size > 1_000_000:
             os.replace(log, log.with_suffix(".log.old"))
@@ -636,10 +636,10 @@ def _log_to_file() -> None:
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--auth-file", type=Path, default=ROOT / ".fm24-auth",
-                        help="the token file build_skin.py wrote (default: .fm24-auth beside FM Face)")
+                        help="the token file build_skin.py wrote (default: .fm24-auth beside RegenerateFM)")
     default_graphics = _default_graphics_dir()
     parser.add_argument("--graphics-dir", type=Path, default=default_graphics, required=default_graphics is None,
-                        help="FM24's user-data graphics/fmface folder" +
+                        help="FM24's user-data graphics/regeneratefm folder" +
                              (f" (default: {default_graphics})" if default_graphics else ""))
     parser.add_argument("--port", type=int, default=8768)
     # Accepted for old scripts; the native menu is the only mode.
@@ -661,14 +661,14 @@ def main(argv: list[str] | None = None) -> None:
         token = _installed_token(args.game_dir) if args.game_dir else None
         if not token:
             parser.error(f"Could not read the FM24 token file {args.auth_file} ({exc}). "
-                         "Run the FM Face setup again.")
+                         "Run the RegenerateFM setup again.")
     if len(token) < 40:
         parser.error("Invalid FM24 callback token file.")
     graphics_dir = args.graphics_dir.expanduser().resolve()
     if args.graphics_dir == default_graphics and graphics_dir.parent.is_dir():
         graphics_dir.mkdir(exist_ok=True)
-    if not graphics_dir.is_dir() or graphics_dir.name != "fmface" or graphics_dir.parent.name != "graphics" or graphics_dir.parent.parent.name != "Football Manager 2024":
-        parser.error("--graphics-dir must be the existing Football Manager 2024/graphics/fmface directory")
+    if not graphics_dir.is_dir() or graphics_dir.name != "regeneratefm" or graphics_dir.parent.name != "graphics" or graphics_dir.parent.parent.name != "Football Manager 2024":
+        parser.error("--graphics-dir must be the existing Football Manager 2024/graphics/regeneratefm directory")
     if not args.preview_only and sys.platform != "darwin" and not args.started_by_fm24:
         ask_for_key()
     Handler.started_by_fm24 = args.started_by_fm24
@@ -681,7 +681,7 @@ def main(argv: list[str] | None = None) -> None:
         server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     except OSError as exc:
         if args.started_by_fm24:
-            parser.exit(0, f"Another FM Face companion is already running (port {args.port}: {exc}); "
+            parser.exit(0, f"Another RegenerateFM companion is already running (port {args.port}: {exc}); "
                            "this one is stopping.\n")
         parser.exit(1, f"Companion port 127.0.0.1:{args.port} is unavailable ({exc}). "
                        "Is another companion already running?\n")
@@ -713,12 +713,12 @@ def main(argv: list[str] | None = None) -> None:
 
 
 def ask_for_key() -> None:
-    """With no key in .env or FM Face's key file, ask for one in this window.
+    """With no key in .env or RegenerateFM's key file, ask for one in this window.
 
-    The key is checked with OpenAI (free) and saved in FM Face's key file,
+    The key is checked with OpenAI (free) and saved in RegenerateFM's key file,
     which the FM26 plugin also reads: encrypted for the Windows user in
-    %APPDATA%\\FM Face, or readable only by this user in macOS's
-    ~/Library/Application Support/FM Face.
+    %APPDATA%\\RegenerateFM, or readable only by this user in macOS's
+    ~/Library/Application Support/RegenerateFM.
     """
     import getpass
     import keystore
@@ -734,7 +734,7 @@ def ask_for_key() -> None:
         if keystore.check(saved, base=_api()) != keystore.REJECTED:
             return
         print("OpenAI no longer accepts the saved key.", flush=True)
-    print("FM Face makes faces with your own OpenAI API key. Each face is one billed request on your "
+    print("RegenerateFM makes faces with your own OpenAI API key. Each face is one billed request on your "
           "OpenAI account, usually a few cents or less.\n"
           f"Create a key at {keystore.KEYS_PAGE}, then paste it here (right-click or Ctrl+V) or type it. "
           "It isn't shown as you type. Press Enter on an empty line to skip.", flush=True)
@@ -778,18 +778,18 @@ def _setup_if_needed() -> Path | None:
         print(exc, flush=True)
         return None
     companion = setup_fm24.packaged_companion()
-    if not setup_fm24.is_set_up(game, user_data / "skins" / "fmface", ROOT / ".fm24-auth", companion):
-        print("Setting up FM Face for FM24 (one time only).", flush=True)
+    if not setup_fm24.is_set_up(game, user_data / "skins" / "regeneratefm", ROOT / ".fm24-auth", companion):
+        print("Setting up RegenerateFM for FM24 (one time only).", flush=True)
         setup_fm24.setup(game, user_data, ROOT / ".fm24-auth", companion)
     return game
 
 
 def _main_packaged() -> None:
     """The packaged companion. FM24's DLL starts it with --started-by-fm24
-    (no window; it logs to fmface-fm24.log). Double-clicked, it sets FM24 up
+    (no window; it logs to regeneratefm-fm24.log). Double-clicked, it sets FM24 up
     and asks for the key, keeping its window readable on exit.
 
-    `fmface-fm24.exe setup [--game-dir ...] [--remove]` runs only the setup.
+    `regeneratefm-fm24.exe setup [--game-dir ...] [--remove]` runs only the setup.
     """
     if "--started-by-fm24" in sys.argv:
         _log_to_file()
@@ -820,7 +820,7 @@ def _main_packaged() -> None:
             ask_for_key()
             import setup_fm24
             if not setup_fm24.native_install.game_running(game):
-                print("\nFM Face is set up. It starts by itself whenever you start FM24, "
+                print("\nRegenerateFM is set up. It starts by itself whenever you start FM24, "
                       "so there's nothing else to run.", flush=True)
                 pause()
                 return

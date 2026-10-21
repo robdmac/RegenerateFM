@@ -1,7 +1,7 @@
 # FM24 research probes
 
 These are historical feasibility probes kept for reference. They are not part
-of the release archive and are not needed to run FM Face.
+of the release archive and are not needed to run RegenerateFM.
 
 - `build_probe_skin.py` and `probe_server.py`: the first skin-button probe,
   which opened a loopback URL from FM24 and identified the visible player by OCR.

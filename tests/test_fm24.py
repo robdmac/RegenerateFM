@@ -26,11 +26,11 @@ import process_memory
 import live_memory
 import native_profile
 from graphics import save_versioned_portrait
-from fmface import PNG_SIGNATURE
+from regeneratefm import PNG_SIGNATURE
 
 
 class MemoryProbeTests(unittest.TestCase):
-    @unittest.skipIf(sys.platform == "darwin", "macOS reads only FM24, through FM Face's library inside it")
+    @unittest.skipIf(sys.platform == "darwin", "macOS reads only FM24, through RegenerateFM's library inside it")
     def test_read_only_process_memory_access(self):
         sample = ctypes.create_string_buffer(b"FM24 probe")
         address = ctypes.addressof(sample)
@@ -193,9 +193,9 @@ class NativeReloadTests(unittest.TestCase):
                 received.append(packet.decode())
                 serial = packet.split()[2].decode()
                 if status == "wrong-serial":
-                    server.sendto(b"FMFACE24R 1 done", peer)
+                    server.sendto(b"REGENERATEFM24R 1 done", peer)
                     continue
-                server.sendto(f"FMFACE24R {serial} {status}".encode(), peer)
+                server.sendto(f"REGENERATEFM24R {serial} {status}".encode(), peer)
 
         threading.Thread(target=serve, daemon=True).start()
         return server.getsockname()[1], received
@@ -204,7 +204,7 @@ class NativeReloadTests(unittest.TestCase):
         import native_reload
         port, received = self._dll(["queued", "wrong-serial", "queued", "done"])
         native_reload.request_native_reload(port, "t" * 43, serial=7)
-        self.assertEqual(set(received), {"FMFACE24R 1 7 " + "t" * 43})
+        self.assertEqual(set(received), {"REGENERATEFM24R 1 7 " + "t" * 43})
         self.assertEqual(len(received), 4)
 
     def test_failed_and_busy_raise(self):
@@ -230,7 +230,7 @@ class NativeReloadTests(unittest.TestCase):
 class InGameProgressTests(unittest.TestCase):
     HANDLER = SimpleNamespace(reload_port=8770, token="t" * 43)
 
-    def test_progress_is_on_the_fm_face_portrait_popup(self):
+    def test_progress_is_on_the_regeneratefm_portrait_popup(self):
         with patch.object(companion, "set_progress") as progress, patch.object(companion, "show_dialog") as dialog:
             self.assertIsInstance(companion.start_progress(self.HANDLER, "update"), companion.NativePortraitProgress)
         progress.assert_called_once_with(8770, "t" * 43, "portrait", "Updating…")
@@ -244,7 +244,7 @@ class InGameProgressTests(unittest.TestCase):
              patch.object(companion, "show_dialog") as dialog:
             shown = companion.start_progress(self.HANDLER, "generate")
             self.assertIsInstance(shown, companion.NativeDialogProgress)
-            dialog.assert_called_once_with(8770, "t" * 43, "message", "FM Face", "Generating a new face…")
+            dialog.assert_called_once_with(8770, "t" * 43, "message", "RegenerateFM", "Generating a new face…")
             shown.send("reload")
             self.assertTrue(shown.fail("OpenAI image API returned HTTP 500."))
         self.assertEqual([call.args[2:] for call in progress.call_args_list[1:]],
@@ -567,7 +567,7 @@ class PersonReferenceTests(unittest.TestCase):
             # The layout's slot now holds another kind of object, also indexed by handle.
             database + 0x18: struct.pack("<QQ", decoy, decoy + 8 * 0x20),
             decoy + 8 * 0x0E: struct.pack("<Q", other),
-            # An official: the handle and an ID twice, but not a person FM Face makes faces for.
+            # An official: the handle and an ID twice, but not a person RegenerateFM makes faces for.
             other: struct.pack("<QIII", image + 0x5A6D858, 0x0E, 1234, 1234) + bytes(8),
             database + 0x98: struct.pack("<QQ", table, table + 8 * 0x20),
             table + 8 * 0x0E: struct.pack("<Q", person),

@@ -17,7 +17,7 @@ from native_squad import NOT_A_SQUAD, read_squad_rows
 
 
 def _terminal(text: str) -> None:
-    print(f"FM Face: {text}", flush=True)
+    print(f"RegenerateFM: {text}", flush=True)
 
 
 def confirm_batch(missing: int, total: int, *, preview_only: bool = False,
@@ -28,7 +28,7 @@ def confirm_batch(missing: int, total: int, *, preview_only: bool = False,
     ``skipped`` players could not be read (FM24 has not loaded their names);
     ``brief`` players have only FM24's brief record (no age or ability).
     ``coaches`` are player-coaches and ``others`` rows that aren't players
-    FM Face can read. ``team`` names the team most players shown play for."""
+    RegenerateFM can read. ``team`` names the team most players shown play for."""
     note = (f" {skipped} {'player was' if skipped == 1 else 'players were'} left out because FM24 "
             "hasn't loaded their names; scroll the list to them and run it again to include them."
             if skipped else "")
@@ -41,7 +41,7 @@ def confirm_batch(missing: int, total: int, *, preview_only: bool = False,
                  "make their faces from their own profiles.")
     if others:
         note += (f" {others} {'row that isn' if others == 1 else 'rows that aren'}'t "
-                 f"{'a player' if others == 1 else 'players'} FM Face can read "
+                 f"{'a player' if others == 1 else 'players'} RegenerateFM can read "
                  f"{'was' if others == 1 else 'were'} left out.")
     left_out = skipped + brief + coaches + others
     players = f"{team} players" if team else "squad players"
@@ -115,7 +115,7 @@ def run_native_squad_batch(handler, generate, describe=str, *, pid: int | None =
         action = "Previewing" if handler.preview_only else "Generating"
         if not native:
             raise ValueError("the squad command needs the FM24 native DLL")
-        batch_dialog = NativeProgress(*native, "FM Face squad faces",
+        batch_dialog = NativeProgress(*native, "RegenerateFM squad faces",
                                       f"{action} {missing[0].name} (1/{len(missing)})")
         completed = 0
         for index, row in enumerate(missing):

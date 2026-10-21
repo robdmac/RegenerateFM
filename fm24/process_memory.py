@@ -1,7 +1,7 @@
 """Read-only access to the running FM24 process.
 
 Linux/Proton reads through /proc and process_vm_readv; Windows through
-ReadProcessMemory and VirtualQueryEx; macOS through FM Face's library inside
+ReadProcessMemory and VirtualQueryEx; macOS through RegenerateFM's library inside
 FM24, which macOS requires (process_memory_macos). Nothing here attaches to,
 pauses, or writes to the game. The backends provide the same functions.
 """
@@ -20,7 +20,7 @@ elif sys.platform == "darwin":
     from process_memory_macos import (CHUNK, MemoryScan, fm24_image_base, process_executable,
                                       read_process_bytes, running_executables, writable_regions)
 else:
-    raise ImportError("FM Face's FM24 support runs on Linux (Steam/Proton), Windows and macOS only.")
+    raise ImportError("RegenerateFM's FM24 support runs on Linux (Steam/Proton), Windows and macOS only.")
 
 __all__ = ["CHUNK", "MemoryScan", "fm24_image_base", "process_executable", "read_process_bytes",
            "running_executables", "writable_regions"]

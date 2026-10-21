@@ -7,7 +7,7 @@ DLL remains unsuitable for normal play.
 
 This **experimental, temporary** WINMM replacement only checks whether the
 Windows version of FM24 can load our code under Proton. It logs
-`FMFACE_FM24_WINMM_PROBE_LOADED` through `OutputDebugStringA` and forwards FM24's
+`REGENERATEFM_FM24_WINMM_PROBE_LOADED` through `OutputDebugStringA` and forwards FM24's
 two static WINMM imports to the system DLL. It does not add UI or forward every WINMM export, so
 do not distribute or use it for normal play.
 

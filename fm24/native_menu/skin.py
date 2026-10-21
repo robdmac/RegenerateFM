@@ -1,4 +1,4 @@
-"""Add original FM Face popup widgets to the user's installed FM24 panels."""
+"""Add original RegenerateFM popup widgets to the user's installed FM24 panels."""
 
 from __future__ import annotations
 
@@ -28,11 +28,11 @@ PANEL_KINDS = ("player", "staff")
 
 def modify_panel(source: str, kind: str = "player") -> str:
     if kind not in PANEL_KINDS:
-        raise ValueError(f"Unknown FM Face panel kind: {kind}")
+        raise ValueError(f"Unknown RegenerateFM panel kind: {kind}")
     parser = ET.XMLParser(target=ET.TreeBuilder(insert_comments=True))
     root = ET.fromstring(source, parser=parser)
     if any(node.get("id") in ("fmnP", "fmnS") for node in root.iter()):
-        raise ValueError("This panel already has a native FM Face popup.")
+        raise ValueError("This panel already has a native RegenerateFM popup.")
     if kind == "staff":
         portraits = [node for node in root.iter("widget") if node.get("id") == "ppic"]
         if len(portraits) != 1:

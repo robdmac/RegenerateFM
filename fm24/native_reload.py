@@ -15,8 +15,8 @@ def request_native_reload(port: int, token: str, *, timeout: float = 70,
     and never starts a second reload.
     """
     serial = serial or time.time_ns() // 1_000_000
-    packet = f"FMFACE24R 1 {serial} {token}".encode()
-    prefix = f"FMFACE24R {serial} "
+    packet = f"REGENERATEFM24R 1 {serial} {token}".encode()
+    prefix = f"REGENERATEFM24R {serial} "
     deadline = clock() + timeout
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as connection:
         connection.connect(("127.0.0.1", port))

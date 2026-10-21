@@ -11,7 +11,7 @@ from urllib.parse import urlsplit
 
 
 def build(panel_source: Path, skin_dir: Path, callback_url: str | None, *,
-          skin_name: str = "FM Face Probe", button_text: str | None = "FM Face probe") -> None:
+          skin_name: str = "RegenerateFM Probe", button_text: str | None = "RegenerateFM probe") -> None:
     if callback_url is not None:
         parsed = urlsplit(callback_url)
         if parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost"}:
@@ -46,7 +46,7 @@ def build(panel_source: Path, skin_dir: Path, callback_url: str | None, *,
     (skin_dir / "skin_config.xml").write_text(
         '<record>\n'
         f'  <translation id="name" type="new" value="{html.escape(skin_name, quote=True)}"/>\n'
-        '  <string id="author" value="FM Face"/>\n'
+        '  <string id="author" value="RegenerateFM"/>\n'
         '  <translation id="description" type="new" value="FM24 on-demand portraits"/>\n'
         '  <string id="version" value="0.1"/>\n'
         '  <flags id="parent" value="fm"/>\n'

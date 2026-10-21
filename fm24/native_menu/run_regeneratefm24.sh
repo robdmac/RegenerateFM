@@ -1,11 +1,11 @@
 #!/bin/sh
-# Starts Football Manager 2024 on macOS with FM Face's library
-# (libfmface24.dylib), which adds the portrait and Squad menus and serves the
+# Starts Football Manager 2024 on macOS with RegenerateFM's library
+# (libregeneratefm24.dylib), which adds the portrait and Squad menus and serves the
 # companion's memory reads.
 #
 # install.py puts it in the Football Manager 2024 folder, beside fm.app.
 # FM24's Steam launch option runs it:
-#   "/path/to/Football Manager 2024/run_fmface24.sh" %command%
+#   "/path/to/Football Manager 2024/run_regeneratefm24.sh" %command%
 #
 # Nothing in fm.app is changed. FM24's own entitlements allow the library
 # (allow-dyld-environment-variables, disable-library-validation).
@@ -23,32 +23,32 @@ if [ $# -gt 0 ]; then
 fi
 
 if [ ! -x "$GAME" ]; then
-    echo "FM Face: Football Manager 2024 isn't at $GAME. Put run_fmface24.sh beside fm.app." >&2
+    echo "RegenerateFM: Football Manager 2024 isn't at $GAME. Put run_regeneratefm24.sh beside fm.app." >&2
     exit 1
 fi
 
-LIBRARY="${BASEDIR}/libfmface24.dylib"
+LIBRARY="${BASEDIR}/libregeneratefm24.dylib"
 # The library is built for Apple Silicon only; elsewhere FM24 starts without it.
 # Not uname -m: Steam can run under Rosetta, where it says x86_64 on Apple Silicon.
 if [ "$(/usr/sbin/sysctl -n hw.optional.arm64 2>/dev/null)" != "1" ] || [ ! -f "$LIBRARY" ]; then
-    echo "FM Face: starting FM24 without FM Face (it needs an Apple Silicon Mac and $LIBRARY)." >&2
+    echo "RegenerateFM: starting FM24 without RegenerateFM (it needs an Apple Silicon Mac and $LIBRARY)." >&2
     exec "$GAME" "$@"
 fi
 
-# Start FM Face's companion, as the Windows DLL does: setup_fm24.py records it
+# Start RegenerateFM's companion, as the Windows DLL does: setup_fm24.py records it
 # (companion=), the Python to run it with (python=) and that Python's
 # architecture (python_arch=; Steam may run this under Rosetta, and the
-# packages are built for the architecture setup ran as) in fmface24.ini. It is
+# packages are built for the architecture setup ran as) in regeneratefm24.ini. It is
 # given this shell's process ID, which exec below hands to FM24, and stops
 # when FM24 does, or at once if a companion is already running. It logs to
-# fmface24-companion.log here.
-CONFIG="${BASEDIR}/fmface24.ini"
+# regeneratefm24-companion.log here.
+CONFIG="${BASEDIR}/regeneratefm24.ini"
 COMPANION=$(/usr/bin/sed -n 's/^companion=//p' "$CONFIG" 2>/dev/null)
 PYTHON=$(/usr/bin/sed -n 's/^python=//p' "$CONFIG" 2>/dev/null)
 PYTHON_ARCH=$(/usr/bin/sed -n 's/^python_arch=//p' "$CONFIG" 2>/dev/null)
 case "$PYTHON_ARCH" in arm64|x86_64) ;; *) PYTHON_ARCH=arm64 ;; esac
 if [ -n "$COMPANION" ] && [ -f "$COMPANION" ] && [ -x "$PYTHON" ]; then
-    LOG="${BASEDIR}/fmface24-companion.log"
+    LOG="${BASEDIR}/regeneratefm24-companion.log"
     if [ -f "$LOG" ] && [ "$(/usr/bin/stat -f %z "$LOG")" -gt 1000000 ]; then
         /bin/mv -f "$LOG" "$LOG.old"
     fi

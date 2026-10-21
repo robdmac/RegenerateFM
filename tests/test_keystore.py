@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import fmface  # noqa: E402
+import regeneratefm  # noqa: E402
 import keystore  # noqa: E402
 
 KEY = "sk-test_" + "a" * 40
@@ -25,10 +25,10 @@ class KeyStoreTests(unittest.TestCase):
     @unittest.skipIf(sys.platform == "win32", "plain format is used off Windows")
     def test_plain_round_trip_matches_the_plugin_format(self):
         with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "FM Face" / "openai-key"
+            path = Path(tmp) / "RegenerateFM" / "openai-key"
             self.assertIsNone(keystore.load(path))
             keystore.save(path, KEY)
-            self.assertEqual(path.read_bytes(), b"FMFK0\n" + KEY.encode())
+            self.assertEqual(path.read_bytes(), b"RFMK0\n" + KEY.encode())
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
             self.assertEqual(keystore.load(path), KEY)
             self.assertFalse(path.with_name("openai-key.tmp").exists())
@@ -40,21 +40,21 @@ class KeyStoreTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "format"):
                 keystore.load(path)
             if sys.platform != "win32":
-                path.write_bytes(b"FMFK1\n\x01\x02")
+                path.write_bytes(b"RFMK1\n\x01\x02")
                 with self.assertRaisesRegex(ValueError, "encrypted for Windows"):
                     keystore.load(path)
 
     def test_load_env_falls_back_to_the_key_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             store = Path(tmp) / "openai-key"
-            store.write_bytes(b"FMFK0\n" + KEY.encode())
+            store.write_bytes(b"RFMK0\n" + KEY.encode())
             env_file = Path(tmp) / ".env"
             env_file.write_text("OPENAI_IMAGE_QUALITY=low\n", encoding="utf-8")
             with mock.patch.object(keystore, "default_path", return_value=store), \
                     mock.patch.dict(os.environ, {}, clear=True):
-                self.assertEqual(fmface.load_env(env_file)["OPENAI_API_KEY"], KEY)
+                self.assertEqual(regeneratefm.load_env(env_file)["OPENAI_API_KEY"], KEY)
                 env_file.write_text("OPENAI_API_KEY=sk-from-env\n", encoding="utf-8")
-                self.assertEqual(fmface.load_env(env_file)["OPENAI_API_KEY"], "sk-from-env")
+                self.assertEqual(regeneratefm.load_env(env_file)["OPENAI_API_KEY"], "sk-from-env")
 
 
 class ApiBaseTests(unittest.TestCase):
@@ -65,7 +65,7 @@ class ApiBaseTests(unittest.TestCase):
         for unsafe in ("http://192.168.1.5:8899/v1", "ftp://127.0.0.1/v1", "api.openai.com"):
             with self.assertRaises(ValueError):
                 keystore.api_base(unsafe)
-        self.assertEqual(fmface.api_base({"OPENAI_BASE_URL": "http://localhost:1/v1"}), "http://localhost:1/v1")
+        self.assertEqual(regeneratefm.api_base({"OPENAI_BASE_URL": "http://localhost:1/v1"}), "http://localhost:1/v1")
 
 
 class CompanionKeyPromptTests(unittest.TestCase):
@@ -90,7 +90,7 @@ class CompanionKeyPromptTests(unittest.TestCase):
 
     def test_asks_again_until_a_key_is_accepted_then_saves_it(self):
         with tempfile.TemporaryDirectory() as tmp:
-            store = Path(tmp) / "FM Face" / "openai-key"
+            store = Path(tmp) / "RegenerateFM" / "openai-key"
             asked, checked = self.prompt(store, ["hello", "sk-wrong_" + "c" * 30, f" {KEY} "],
                                          problems=["OpenAI didn't accept this key."])
             self.assertEqual((asked, checked), (3, 2))
@@ -148,7 +148,7 @@ class CompanionInGameKeyTests(unittest.TestCase):
 
     def test_asks_in_game_until_a_key_is_accepted_then_saves_it(self):
         with tempfile.TemporaryDirectory() as tmp:
-            store = Path(tmp) / "FM Face" / "openai-key"
+            store = Path(tmp) / "RegenerateFM" / "openai-key"
             ready, asked, checked = self.ensure(store, ["hello", "sk-wrong_" + "c" * 30, f" {KEY} "],
                                                 problems=["OpenAI didn't accept this key."])
             self.assertEqual((ready, asked.call_count, checked), (True, 3, 2))
@@ -174,7 +174,7 @@ class CompanionInGameKeyTests(unittest.TestCase):
         import key_dialog
         self.handler.started_by_fm24 = 4242
         with tempfile.TemporaryDirectory() as tmp:
-            store = Path(tmp) / "FM Face" / "openai-key"
+            store = Path(tmp) / "RegenerateFM" / "openai-key"
             with mock.patch.object(keystore, "default_path", return_value=store), \
                     mock.patch.object(self.companion, "load_env",
                                       side_effect=lambda use_key_file=True: {"OPENAI_API_KEY": keystore.load(store)}

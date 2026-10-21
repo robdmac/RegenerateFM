@@ -14,11 +14,11 @@ def service_text(project: Path) -> str:
     location = location.replace("%", "%%").replace("\\", "\\\\")
     return (
         "[Unit]\n"
-        "Description=FM Face local portrait generator\n\n"
+        "Description=RegenerateFM local portrait generator\n\n"
         "[Service]\n"
         "Type=simple\n"
         f"WorkingDirectory={location}\n"
-        "ExecStart=python3 -m fmface serve\n"
+        "ExecStart=python3 -m regeneratefm serve\n"
         "Restart=on-failure\n\n"
         "[Install]\n"
         "WantedBy=default.target\n"
@@ -27,14 +27,14 @@ def service_text(project: Path) -> str:
 
 def main() -> None:
     project = Path(__file__).resolve().parent
-    target = Path.home() / ".config/systemd/user/fmface.service"
-    if target.exists() and "Description=FM Face local portrait generator" not in target.read_text():
+    target = Path.home() / ".config/systemd/user/regeneratefm.service"
+    if target.exists() and "Description=RegenerateFM local portrait generator" not in target.read_text():
         raise SystemExit(f"Refusing to replace an unrelated service: {target}")
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(service_text(project))
     subprocess.run(["systemctl", "--user", "daemon-reload"], check=True)
-    subprocess.run(["systemctl", "--user", "enable", "--now", "fmface.service"], check=True)
-    subprocess.run(["systemctl", "--user", "restart", "fmface.service"], check=True)
+    subprocess.run(["systemctl", "--user", "enable", "--now", "regeneratefm.service"], check=True)
+    subprocess.run(["systemctl", "--user", "restart", "regeneratefm.service"], check=True)
     print(f"Installed and started {target}")
 
 

@@ -2,7 +2,7 @@
 
 FM24 maps pictures with config.xml files: each record maps a file stem in the
 same folder to "graphics/pictures/person/<id>/portrait". Pictures in the
-user's graphics folder replace the game's bundled ones, and FM Face's own
+user's graphics folder replace the game's bundled ones, and RegenerateFM's own
 folder is checked first. Bundled squad photos are a JPEG plus an optional
 "<name>_[mask].png" whose values become the alpha channel.
 """
@@ -20,7 +20,7 @@ from PIL import Image
 
 import game_archive
 from process_memory import process_executable
-from fmface import validate_id
+from regeneratefm import validate_id
 
 IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg")
 MAX_CONFIG = 8 << 20
@@ -130,7 +130,7 @@ def _bundled_portrait(game_dir: Path, person_id: str) -> tuple[bytes, str] | Non
 def find_existing_portrait(person_id: str, graphics_dir: Path, game_dir: Path | None) -> tuple[bytes, str] | None:
     """The person's current portrait as an RGBA PNG and where it came from.
 
-    ``graphics_dir`` is FM Face's own folder inside FM24's graphics folder.
+    ``graphics_dir`` is RegenerateFM's own folder inside FM24's graphics folder.
     Returns None when FM24 would show no picture (it draws a silhouette).
     """
     person_id = validate_id(person_id)
@@ -142,7 +142,7 @@ def find_existing_portrait(person_id: str, graphics_dir: Path, game_dir: Path | 
 
 # For "has this person a face?" while FM24's portrait menu opens: parsed
 # configs are kept until the file changes, and the folder walk for configs
-# outside FM Face's own folder is repeated at most every CONFIG_RESCAN seconds.
+# outside RegenerateFM's own folder is repeated at most every CONFIG_RESCAN seconds.
 CONFIG_RESCAN = 30.0
 _index_lock = threading.Lock()
 _config_folders: dict[Path, tuple[float, list[Path]]] = {}

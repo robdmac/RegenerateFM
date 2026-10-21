@@ -2,9 +2,9 @@
 
 macOS doesn't let another program read FM24's memory: the game is signed with
 the hardened runtime and without get-task-allow, so task_for_pid fails even
-for root. FM Face's library inside FM24 (native_menu/fmface24_macos.c)
+for root. RegenerateFM's library inside FM24 (native_menu/regeneratefm24_macos.c)
 serves reads instead, on loopback TCP at the bridge port + 2, after the same
-private token as the click bridge. Its port and token are in fmface24.ini
+private token as the click bridge. Its port and token are in regeneratefm24.ini
 beside fm.app. Nothing here writes to the game; the library only reads.
 """
 
@@ -51,19 +51,19 @@ def process_executable(pid: int) -> Path | None:
 def _settings(game_dir: Path) -> tuple[int, str]:
     values = {}
     try:
-        text = (game_dir / "fmface24.ini").read_text(encoding="ascii")
+        text = (game_dir / "regeneratefm24.ini").read_text(encoding="ascii")
     except (OSError, UnicodeError) as exc:
-        raise OSError(f"FM Face isn't installed in {game_dir} (no fmface24.ini).") from exc
+        raise OSError(f"RegenerateFM isn't installed in {game_dir} (no regeneratefm24.ini).") from exc
     for line in text.splitlines():
         key, _, value = line.partition("=")
         values[key.strip()] = value.strip()
     try:
         port = int(values["port"])
     except (KeyError, ValueError) as exc:
-        raise OSError("fmface24.ini has no valid port.") from exc
+        raise OSError("regeneratefm24.ini has no valid port.") from exc
     token = values.get("token", "")
     if not 1024 <= port <= 65533 or len(token) < 40:
-        raise OSError("fmface24.ini has no valid port or token.")
+        raise OSError("regeneratefm24.ini has no valid port or token.")
     return port, token
 
 
@@ -78,10 +78,10 @@ class _Connection:
         try:
             self.socket = socket.create_connection(("127.0.0.1", port + 2), timeout=10)
         except OSError as exc:
-            raise OSError("FM24 isn't running with FM Face's library (start it with run_fmface24.sh).") from exc
-        self.socket.sendall(f"FMFACE24M 1 {token}\n".encode("ascii"))
+            raise OSError("FM24 isn't running with RegenerateFM's library (start it with run_regeneratefm24.sh).") from exc
+        self.socket.sendall(f"REGENERATEFM24M 1 {token}\n".encode("ascii"))
         if self._exactly(3) != b"OK\n":
-            raise OSError("FM Face's library in FM24 refused the connection.")
+            raise OSError("RegenerateFM's library in FM24 refused the connection.")
         self._image: tuple[int, bytes] | None = None
 
     def _exactly(self, size: int) -> bytes:
@@ -89,7 +89,7 @@ class _Connection:
         while size:
             part = self.socket.recv(min(size, 4 << 20))
             if not part:
-                raise OSError("FM24 closed FM Face's memory connection.")
+                raise OSError("FM24 closed RegenerateFM's memory connection.")
             parts.append(part)
             size -= len(part)
         return b"".join(parts)
@@ -161,7 +161,7 @@ def fm24_image_base(pid: int) -> int:
     try:
         return _call(pid, "image")[0]
     except OSError as exc:
-        raise ValueError(f"No FM24 with FM Face's library in process {pid}: {exc}") from exc
+        raise ValueError(f"No FM24 with RegenerateFM's library in process {pid}: {exc}") from exc
 
 
 def fm24_image_uuid(pid: int) -> bytes:

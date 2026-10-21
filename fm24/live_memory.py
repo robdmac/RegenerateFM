@@ -197,10 +197,10 @@ def find_game_pid() -> int:
     if candidates:
         raise MemoryUnavailable("More than one FM24 is running. Quit the others and try again.")
     if unreadable and sys.platform == "darwin":
-        raise MemoryUnavailable("FM Face can't read FM24: its library in the game isn't answering. "
+        raise MemoryUnavailable("RegenerateFM can't read FM24: its library in the game isn't answering. "
                                 "Quit FM24 and start it again from Steam, then try again.")
     if unreadable:
-        raise MemoryUnavailable(f"FM Face can't read the running FM24 ({unreadable[0]}).")
+        raise MemoryUnavailable(f"RegenerateFM can't read the running FM24 ({unreadable[0]}).")
     raise MemoryUnavailable("FM24 isn't running. Start it, open the profile and try again.")
 
 

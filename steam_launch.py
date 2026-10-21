@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Set FM Face's Steam launch option for FM24 or FM26, so Play in Steam starts it.
+"""Set RegenerateFM's Steam launch option for FM24 or FM26, so Play in Steam starts it.
 
 Steam keeps launch options per account in userdata/<account>/config/
 localconfig.vdf, under UserLocalConfigStore > Software > Valve > Steam > apps
 > <app ID> > LaunchOptions. Steam reads the file when it starts and writes it
 back when it quits, so the file is only changed while Steam is closed. Only
 accounts that have the game get the option, the rest of the file is kept byte
-for byte, and the first change keeps a copy as localconfig.vdf.fmface-backup.
-A launch option the player already has is kept: FM Face's part goes in front.
+for byte, and the first change keeps a copy as localconfig.vdf.regeneratefm-backup.
+A launch option the player already has is kept: RegenerateFM's part goes in front.
 
     python3 steam_launch.py fm26 [--remove]
     python3 steam_launch.py fm24 [--remove]
@@ -24,17 +24,17 @@ import sys
 from pathlib import Path
 
 GAMES = {
-    "fm24": {"app": "2252570", "folder": "Football Manager 2024", "launcher": "run_fmface24.sh",
+    "fm24": {"app": "2252570", "folder": "Football Manager 2024", "launcher": "run_regeneratefm24.sh",
              "proton": 'WINEDLLOVERRIDES="winmm=n,b"'},
-    "fm26": {"app": "3551340", "folder": "Football Manager 26", "launcher": "run_fmface.sh",
+    "fm26": {"app": "3551340", "folder": "Football Manager 26", "launcher": "run_regeneratefm.sh",
              "proton": 'WINEDLLOVERRIDES="winhttp=n,b"'},
     # The FM26 Demo is its own Steam app and folder, set up as FM26.
-    "fm26demo": {"app": "3551360", "folder": "Football Manager 26 Demo", "launcher": "run_fmface.sh",
+    "fm26demo": {"app": "3551360", "folder": "Football Manager 26 Demo", "launcher": "run_regeneratefm.sh",
                  "proton": 'WINEDLLOVERRIDES="winhttp=n,b"'},
 }
 APPS_PATH = ("userlocalconfigstore", "software", "valve", "steam", "apps")
 COMMAND = "%command%"
-BACKUP_SUFFIX = ".fmface-backup"
+BACKUP_SUFFIX = ".regeneratefm-backup"
 
 
 def steam_roots() -> list[Path]:
@@ -78,8 +78,8 @@ def steam_libraries() -> list[Path]:
     return found
 
 
-def fm_face_option(game: str, game_dir: Path, platform: str = sys.platform) -> str | None:
-    """FM Face's part of the launch option, or None where none is needed (Windows)."""
+def regeneratefm_option(game: str, game_dir: Path, platform: str = sys.platform) -> str | None:
+    """RegenerateFM's part of the launch option, or None where none is needed (Windows)."""
     if platform == "win32":
         return None
     if platform == "darwin":
@@ -88,7 +88,7 @@ def fm_face_option(game: str, game_dir: Path, platform: str = sys.platform) -> s
 
 
 def combined(existing: str, prefix: str) -> str:
-    """The player's launch option with FM Face's prefix in front of %command%."""
+    """The player's launch option with RegenerateFM's prefix in front of %command%."""
     existing = existing.strip()
     if prefix in existing:
         return existing
@@ -99,7 +99,7 @@ def combined(existing: str, prefix: str) -> str:
 
 
 def without(existing: str, prefix: str) -> str:
-    """The launch option without FM Face's prefix; empty if nothing else was set."""
+    """The launch option without RegenerateFM's prefix; empty if nothing else was set."""
     option = " ".join(existing.replace(prefix, "").split())
     return "" if option == COMMAND else option
 
@@ -167,7 +167,7 @@ def _app_block(text: str, app_id: str):
 
 
 def set_launch_option(text: str, app_id: str, prefix: str, *, remove: bool = False) -> str | None:
-    """The file's text with FM Face's launch option set (or removed), or None
+    """The file's text with RegenerateFM's launch option set (or removed), or None
     when this account doesn't have the game."""
     found = _app_block(text, app_id)
     if found is None:
@@ -207,7 +207,7 @@ def update_accounts(app_id: str, prefix: str, *, remove: bool = False,
             backup = config.with_name(config.name + BACKUP_SUFFIX)
             if not backup.exists():
                 shutil.copy2(config, backup)
-            temporary = config.with_name(config.name + ".fmface-tmp")
+            temporary = config.with_name(config.name + ".regeneratefm-tmp")
             temporary.write_text(updated, encoding="utf-8")
             os.replace(temporary, config)
             changed.append(config)
@@ -224,8 +224,8 @@ def find_game_dir(game: str) -> Path | None:
 
 def needs_change(game: str, game_dir: Path, *, remove: bool = False,
                  roots: list[Path] | None = None) -> bool:
-    """True if some account's launch option for the game isn't as FM Face wants it yet."""
-    prefix = fm_face_option(game, game_dir)
+    """True if some account's launch option for the game isn't as RegenerateFM wants it yet."""
+    prefix = regeneratefm_option(game, game_dir)
     if prefix is None:
         return False
     for root in roots if roots is not None else steam_roots():
@@ -241,27 +241,27 @@ def needs_change(game: str, game_dir: Path, *, remove: bool = False,
 
 
 def apply(game: str, game_dir: Path, *, remove: bool = False) -> str:
-    """Set or remove FM Face's launch option; returns a message for the player."""
-    prefix = fm_face_option(game, game_dir)
+    """Set or remove RegenerateFM's launch option; returns a message for the player."""
+    prefix = regeneratefm_option(game, game_dir)
     if prefix is None:
-        return "On Windows FM Face needs no Steam launch option."
+        return "On Windows RegenerateFM needs no Steam launch option."
     manual = f"set it yourself in Steam (Properties > General > Launch Options): {prefix} {COMMAND}"
     if not needs_change(game, game_dir, remove=remove):
-        return (f"{GAMES[game]['folder']}'s Steam launch option is already set for FM Face." if not remove else
-                "No Steam account had FM Face's launch option.")
+        return (f"{GAMES[game]['folder']}'s Steam launch option is already set for RegenerateFM." if not remove else
+                "No Steam account had RegenerateFM's launch option.")
     if steam_running():
-        return ("Steam is running, so FM Face didn't change its launch option. Quit Steam and run "
+        return ("Steam is running, so RegenerateFM didn't change its launch option. Quit Steam and run "
                 f"the setup again, or {manual}" if not remove else
-                "Steam is running; quit it and run this again to remove FM Face's launch option.")
+                "Steam is running; quit it and run this again to remove RegenerateFM's launch option.")
     try:
         changed = update_accounts(GAMES[game]["app"], prefix, remove=remove)
     except (OSError, UnicodeError, ValueError) as exc:
-        return f"FM Face couldn't change Steam's launch option ({exc}); {manual}"
+        return f"RegenerateFM couldn't change Steam's launch option ({exc}); {manual}"
     if not changed:
         if remove:
-            return "No Steam account had FM Face's launch option."
+            return "No Steam account had RegenerateFM's launch option."
         return f"No Steam account on this computer had the game's settings to change; {manual}"
-    action = "Removed FM Face from" if remove else "Set"
+    action = "Removed RegenerateFM from" if remove else "Set"
     return f"{action} the Steam launch option for {GAMES[game]['folder']} ({len(changed)} account(s))."
 
 
@@ -269,7 +269,7 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("game", choices=sorted(GAMES))
     parser.add_argument("--game-dir", type=Path, help="the game folder (found through Steam)")
-    parser.add_argument("--remove", action="store_true", help="take FM Face's part out of the launch option")
+    parser.add_argument("--remove", action="store_true", help="take RegenerateFM's part out of the launch option")
     args = parser.parse_args(argv)
     game_dir = args.game_dir.expanduser().resolve() if args.game_dir else find_game_dir(args.game)
     if game_dir is None:

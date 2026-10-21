@@ -34,7 +34,7 @@ BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved)
     (void)instance;
     (void)reserved;
     if (reason == DLL_PROCESS_ATTACH)
-        OutputDebugStringA("FMFACE_FM24_WINMM_PROBE_LOADED");
+        OutputDebugStringA("REGENERATEFM_FM24_WINMM_PROBE_LOADED");
     return TRUE;
 }
 
@@ -42,7 +42,7 @@ MMRESULT WINAPI timeBeginPeriod(UINT period)
 {
     if (!real_begin && !load_real_winmm())
         return TIMERR_NOCANDO;
-    OutputDebugStringA("FMFACE_FM24_WINMM_PROBE_TIMER_BEGIN");
+    OutputDebugStringA("REGENERATEFM_FM24_WINMM_PROBE_TIMER_BEGIN");
     return real_begin(period);
 }
 

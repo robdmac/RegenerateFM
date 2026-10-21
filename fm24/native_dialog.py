@@ -22,7 +22,7 @@ def _packet(serial: int, token: str, kind: str, title: str, text: str) -> bytes:
         if not data or len(data) > limit or b"\0" in data:
             raise ValueError("FM24 dialog text is empty or too long.")
         encoded.append(base64.b64encode(data).decode("ascii"))
-    return f"FMFACE24D 1 {serial} {token} {kind} {encoded[0]} {encoded[1]}".encode("ascii")
+    return f"REGENERATEFM24D 1 {serial} {token} {kind} {encoded[0]} {encoded[1]}".encode("ascii")
 
 
 def show_dialog(port: int, token: str, kind: str, title: str, text: str, *,
@@ -39,7 +39,7 @@ def show_dialog(port: int, token: str, kind: str, title: str, text: str, *,
         raise ValueError("Unknown FM24 dialog kind.")
     serial = serial or time.time_ns() // 1_000_000
     packet = _packet(serial, token, kind, title, text)
-    prefix = f"FMFACE24D {serial} "
+    prefix = f"REGENERATEFM24D {serial} "
     replied = shown = False
     start = clock()
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as connection:
@@ -78,7 +78,7 @@ def show_dialog(port: int, token: str, kind: str, title: str, text: str, *,
 def set_progress(port: int, token: str, target: str, text: str, *, clock=time.monotonic,
                  serial: int | None = None) -> None:
     """Set in-game progress text: on the portrait ("portrait") or in the open
-    FM Face dialog ("dialog"). Empty text clears it. Raises DialogUnavailable
+    RegenerateFM dialog ("dialog"). Empty text clears it. Raises DialogUnavailable
     when FM24 could not apply it, so the caller can fall back."""
     if target not in ("portrait", "dialog", "finish"):
         raise ValueError("Unknown FM24 progress target.")
@@ -87,8 +87,8 @@ def set_progress(port: int, token: str, target: str, text: str, *, clock=time.mo
         raise ValueError("FM24 progress text is too long.")
     encoded = base64.b64encode(data).decode("ascii") if data else "-"
     serial = serial or time.time_ns() // 1_000_000
-    packet = f"FMFACE24P 1 {serial} {token} {target} {encoded}".encode("ascii")
-    prefix = f"FMFACE24P {serial} "
+    packet = f"REGENERATEFM24P 1 {serial} {token} {target} {encoded}".encode("ascii")
+    prefix = f"REGENERATEFM24P {serial} "
     start = clock()
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as connection:
         connection.connect(("127.0.0.1", port))
@@ -121,8 +121,8 @@ def ask_key(port: int, token: str, text: str, *, timeout: float = 1800, clock=ti
     if not data or len(data) > MAX_TEXT or b"\0" in data:
         raise ValueError("FM24 key prompt text is empty or too long.")
     serial = serial or time.time_ns() // 1_000_000
-    packet = f"FMFACE24K 1 {serial} {token} {base64.b64encode(data).decode('ascii')}".encode("ascii")
-    prefix = f"FMFACE24K {serial} "
+    packet = f"REGENERATEFM24K 1 {serial} {token} {base64.b64encode(data).decode('ascii')}".encode("ascii")
+    prefix = f"REGENERATEFM24K {serial} "
     replied = False
     start = clock()
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as connection:
@@ -161,7 +161,7 @@ def notify(port: int | None, token: str, text: str, fallback) -> None:
     """Show text in an FM24 OK dialog, or call ``fallback(text)`` if FM24 can't."""
     if port:
         try:
-            show_dialog(port, token, "message", "FM Face", clip_text(text))
+            show_dialog(port, token, "message", "RegenerateFM", clip_text(text))
             return
         except (DialogUnavailable, ValueError, OSError):
             pass
@@ -205,7 +205,7 @@ class NativeProgress:
     def _show(self, text: str) -> None:
         serial = time.time_ns() // 1_000_000
         packet = _packet(serial, self.token, "progress", self.title, clip_text(text))
-        prefix = f"FMFACE24D {serial} "
+        prefix = f"REGENERATEFM24D {serial} "
         deadline = time.monotonic() + 15
         while time.monotonic() < deadline:
             status = self._exchange(packet, prefix)

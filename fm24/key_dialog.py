@@ -70,7 +70,7 @@ WM_DESTROY, WM_CLOSE, WM_COMMAND, WM_SETFONT = 0x0002, 0x0010, 0x0111, 0x0030
 WIDTH, HEIGHT = 560, 300
 
 
-def ask(text: str, *, title: str = "FM Face: OpenAI key", link: str | None = None) -> str | None:
+def ask(text: str, *, title: str = "RegenerateFM: OpenAI key", link: str | None = None) -> str | None:
     """Show the dialog and return what was entered, or None for Cancel or
     closing it. ``text`` may have line breaks; ``link`` is opened by Get a key…"""
     if sys.platform != "win32":
@@ -101,7 +101,7 @@ def ask(text: str, *, title: str = "FM Face: OpenAI key", link: str | None = Non
         return _user32.DefWindowProcW(window, message, wparam, lparam)
 
     callback = WNDPROC(procedure)  # Kept alive until the window is gone.
-    name = f"FMFaceKeyDialog{id(callback)}"
+    name = f"RegenerateFMKeyDialog{id(callback)}"
     window_class = WNDCLASSW(lpfnWndProc=callback, hInstance=instance, lpszClassName=name,
                              hCursor=_user32.LoadCursorW(None, ctypes.c_void_p(32512)),  # IDC_ARROW
                              hbrBackground=wintypes.HBRUSH(16))  # COLOR_BTNFACE + 1

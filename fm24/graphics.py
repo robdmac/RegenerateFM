@@ -7,7 +7,7 @@ import secrets
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from fmface import PNG_SIGNATURE, _atomic_write, graphics_maps_xml, load_graphics_maps, validate_id
+from regeneratefm import PNG_SIGNATURE, _atomic_write, graphics_maps_xml, load_graphics_maps, validate_id
 
 
 def save_versioned_portrait(directory: Path, player_id: str, png: bytes) -> tuple[Path, list[Path]]:

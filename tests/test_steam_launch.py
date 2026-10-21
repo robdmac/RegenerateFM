@@ -7,7 +7,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import steam_launch  # noqa: E402
 
-LAUNCHER = '"/Users/you/Library/Application Support/Steam/steamapps/common/Football Manager 26/run_fmface.sh"'
+LAUNCHER = '"/Users/you/Library/Application Support/Steam/steamapps/common/Football Manager 26/run_regeneratefm.sh"'
 
 CONFIG = '''"UserLocalConfigStore"
 {
@@ -45,7 +45,7 @@ CONFIG = '''"UserLocalConfigStore"
 
 
 class LaunchOptionTests(unittest.TestCase):
-    def test_fm_face_goes_in_front_of_the_players_own_option(self):
+    def test_regeneratefm_goes_in_front_of_the_players_own_option(self):
         self.assertEqual(steam_launch.combined("", LAUNCHER), f"{LAUNCHER} %command%")
         self.assertEqual(steam_launch.combined("-windowed", LAUNCHER), f"{LAUNCHER} %command% -windowed")
         self.assertEqual(steam_launch.combined("MANGOHUD=1 %command% -x", 'WINEDLLOVERRIDES="winhttp=n,b"'),
@@ -80,15 +80,15 @@ class LaunchOptionTests(unittest.TestCase):
                 path.parent.mkdir(parents=True)
                 path.write_text(text)
             self.assertEqual(steam_launch.update_accounts("3551340", LAUNCHER, roots=[root]), [owner])
-            self.assertIn("run_fmface.sh", owner.read_text())
-            self.assertEqual((owner.parent / "localconfig.vdf.fmface-backup").read_text(), CONFIG)
+            self.assertIn("run_regeneratefm.sh", owner.read_text())
+            self.assertEqual((owner.parent / "localconfig.vdf.regeneratefm-backup").read_text(), CONFIG)
             self.assertEqual(other.read_text(), '"UserLocalConfigStore"\n{\n}\n')
             game = Path("/Games/Football Manager 26")
             with mock.patch.object(steam_launch, "steam_running", return_value=True), \
                     mock.patch.object(steam_launch, "needs_change", return_value=True), \
                     mock.patch.object(steam_launch, "update_accounts") as update, \
-                    mock.patch.object(steam_launch, "fm_face_option",
-                                      return_value=f'"{game / "run_fmface.sh"}"'):
+                    mock.patch.object(steam_launch, "regeneratefm_option",
+                                      return_value=f'"{game / "run_regeneratefm.sh"}"'):
                 self.assertIn("Quit Steam", steam_launch.apply("fm26", game))
             update.assert_not_called()
 
@@ -100,7 +100,7 @@ class LaunchOptionTests(unittest.TestCase):
             config.parent.mkdir(parents=True)
             config.write_text(CONFIG)
             game = Path("/Games/Football Manager 26")
-            prefix = steam_launch.fm_face_option("fm26", game)
+            prefix = steam_launch.regeneratefm_option("fm26", game)
             self.assertTrue(steam_launch.needs_change("fm26", game, roots=[root]))
             steam_launch.update_accounts("3551340", prefix, roots=[root])
             self.assertFalse(steam_launch.needs_change("fm26", game, roots=[root]))
@@ -111,14 +111,14 @@ class LaunchOptionTests(unittest.TestCase):
     def test_the_fm26_demo_is_its_own_app_with_fm26s_launcher(self):
         self.assertEqual(steam_launch.GAMES["fm26demo"]["app"], "3551360")
         demo = Path("/Games/Football Manager 26 Demo")
-        self.assertEqual(steam_launch.fm_face_option("fm26demo", demo, "darwin"), f'"{demo / "run_fmface.sh"}"')
-        self.assertEqual(steam_launch.fm_face_option("fm26demo", demo, "linux"), 'WINEDLLOVERRIDES="winhttp=n,b"')
+        self.assertEqual(steam_launch.regeneratefm_option("fm26demo", demo, "darwin"), f'"{demo / "run_regeneratefm.sh"}"')
+        self.assertEqual(steam_launch.regeneratefm_option("fm26demo", demo, "linux"), 'WINEDLLOVERRIDES="winhttp=n,b"')
 
     def test_options_per_platform(self):
         game = Path("/Games/Football Manager 2024")
-        self.assertEqual(steam_launch.fm_face_option("fm24", game, "darwin"), f'"{game / "run_fmface24.sh"}"')
-        self.assertEqual(steam_launch.fm_face_option("fm24", game, "linux"), 'WINEDLLOVERRIDES="winmm=n,b"')
-        self.assertIsNone(steam_launch.fm_face_option("fm26", game, "win32"))
+        self.assertEqual(steam_launch.regeneratefm_option("fm24", game, "darwin"), f'"{game / "run_regeneratefm24.sh"}"')
+        self.assertEqual(steam_launch.regeneratefm_option("fm24", game, "linux"), 'WINEDLLOVERRIDES="winmm=n,b"')
+        self.assertIsNone(steam_launch.regeneratefm_option("fm26", game, "win32"))
 
 
 if __name__ == "__main__":

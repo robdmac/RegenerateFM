@@ -18,7 +18,7 @@ def main() -> None:
     parser.add_argument("--cc", default="x86_64-w64-mingw32-gcc")
     parser.add_argument("--output", type=Path, default=Path(__file__).parent / "build")
     parser.add_argument("--perf", action="store_true",
-                        help="Log FM Face's own time on FM24's UI thread once a minute (fmface24.log)")
+                        help="Log RegenerateFM's own time on FM24's UI thread once a minute (regeneratefm24.log)")
     args = parser.parse_args()
     compiler = shutil.which(args.cc)
     if not compiler:
@@ -49,27 +49,27 @@ def main() -> None:
     (args.output / "supported_build.h").write_text("\n".join(constants) + "\n")
     # API names and ordinals only: no game or system DLL code is copied.
     names = [symbol.name.decode("ascii") if symbol.name else None for symbol in symbols]
-    source = ["#include <windows.h>", "extern void *fmface_resolve_export(unsigned int);",
-              f"void *fmface_exports[{len(symbols)}];",
-              "const char *fmface_export_names[] = {" +
+    source = ["#include <windows.h>", "extern void *regeneratefm_resolve_export(unsigned int);",
+              f"void *regeneratefm_exports[{len(symbols)}];",
+              "const char *regeneratefm_export_names[] = {" +
               ",".join('"' + name + '"' if name else "0" for name in names) + "};",
-              "const unsigned short fmface_export_ordinals[] = {" +
+              "const unsigned short regeneratefm_export_ordinals[] = {" +
               ",".join(str(symbol.ordinal) for symbol in symbols) + "};",
-              f"const unsigned int fmface_export_count = {len(symbols)};"]
+              f"const unsigned int regeneratefm_export_count = {len(symbols)};"]
     exports = ["LIBRARY winmm", "EXPORTS"]
     for index, (symbol, name) in enumerate(zip(symbols, names)):
-        stub = f"fmface_export_{index}"
+        stub = f"regeneratefm_export_{index}"
         exports.append(f"    {name or stub}={stub} @{symbol.ordinal}" + (" NONAME" if name is None else ""))
         # Preserve all Windows x64 argument registers while resolving lazily.
         # Entry RSP is 8 mod 16. Four pushes and 104 bytes align the helper call
         # and provide its 32-byte shadow space plus room for XMM0..3.
-        asm = [f"cmpq $0, fmface_exports+{index * 8}(%rip)", "jne 1f",
+        asm = [f"cmpq $0, regeneratefm_exports+{index * 8}(%rip)", "jne 1f",
                "pushq %rcx", "pushq %rdx", "pushq %r8", "pushq %r9", "subq $104, %rsp"]
         asm += [f"movdqu %xmm{i}, {32 + i * 16}(%rsp)" for i in range(4)]
-        asm += [f"movl ${index}, %ecx", "call fmface_resolve_export"]
+        asm += [f"movl ${index}, %ecx", "call regeneratefm_resolve_export"]
         asm += [f"movdqu {32 + i * 16}(%rsp), %xmm{i}" for i in range(4)]
         asm += ["addq $104, %rsp", "popq %r9", "popq %r8", "popq %rdx", "popq %rcx",
-                "1:", f"jmp *fmface_exports+{index * 8}(%rip)"]
+                "1:", f"jmp *regeneratefm_exports+{index * 8}(%rip)"]
         source.append(f'__attribute__((naked)) void {stub}(void) {{ __asm__("' +
                       "\\n".join(asm) + '"); }')
     generated = args.output / "exports.c"
@@ -78,8 +78,8 @@ def main() -> None:
     definition.write_text("\n".join(exports) + "\n")
     target = args.output / "winmm.dll"
     subprocess.run([compiler, "-shared", "-O2", "-Wall", "-Wextra", "-Werror",
-                    *(["-DFMFACE_PERF"] if args.perf else []),
-                    "-static-libgcc", "-I", str(args.output), str(Path(__file__).with_name("fmface24.c")),
+                    *(["-DREGENERATEFM_PERF"] if args.perf else []),
+                    "-static-libgcc", "-I", str(args.output), str(Path(__file__).with_name("regeneratefm24.c")),
                     str(generated), str(definition), "-lws2_32", "-lbcrypt", "-o", str(target)],
                    check=True)
     print(f"Built {target} with {len(symbols)} forwarded WINMM exports.")

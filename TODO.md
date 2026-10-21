@@ -1,8 +1,8 @@
-# FM Face to-do
+# RegenerateFM to-do
 
 ## Requested (2026-10-15)
 
-1. **Performance measurement.** Done (2026-10-15). FM Face's own work on
+1. **Performance measurement.** Done (2026-10-15). RegenerateFM's own work on
    FM24's UI thread is about 0.35 ms a minute when idle, and at most 4.4 ms
    for a single event (showing a dialog). The companion uses no CPU when idle
    and its memory reads don't pause the game. Each read takes about 4.3 s,
@@ -50,18 +50,18 @@
 - **FM26 Actions menu timing:** done (2026-10-16). The items are added as soon
   as the profile header exists and the ID is read on click.
 - **Release build:** done (2026-10-16). Plugin version 0.8.0 was rebuilt into
-  `hotreload/bin` and installed in FM26, and `dist/fmface-0.8.0.zip` was made.
+  `hotreload/bin` and installed in FM26, and `dist/regeneratefm-0.8.0.zip` was made.
   The unpacked zip passes all tests and holds no key or token. Not yet
   published anywhere.
-- **Remote repo:** pushed to github.com/robdmac/FMFace.
+- **Remote repo:** pushed to github.com/robdmac/RegenerateFM.
 - **FM26 without the Python server:** done in code (2026-10-16). Plugin 0.9.0
   calls OpenAI itself (`hotreload/FaceGenerator.cs`). It asks for the key in
-  the game and keeps it DPAPI-encrypted in `%APPDATA%\FM Face`; the prompts, saved files and requests
-  match `fmface.py` in tests. Checked live on 2026-10-17: a billed face
+  the game and keeps it DPAPI-encrypted in `%APPDATA%\RegenerateFM`; the prompts, saved files and requests
+  match `regeneratefm.py` in tests. Checked live on 2026-10-17: a billed face
   (Taylor Arnett) saved and reloaded, and a typed key no longer triggers
   FM26's keyboard shortcuts.
 - **Packaged FM24 companion:** done (2026-10-16). `fm24/build_exe.py` builds
-  `dist/fmface-fm24/fmface-fm24.exe` (PyInstaller, one folder). Under Wine in
+  `dist/regeneratefm-fm24/regeneratefm-fm24.exe` (PyInstaller, one folder). Under Wine in
   FM24's prefix it read the squad, showed FM24's dialog and answered face
   checks. Skin building and DLL install still need Python once. Since
   2026-10-17 it asks for the key in its window (shared, encrypted key file
@@ -69,7 +69,7 @@
 
 ## Next (2026-10-17)
 
-- **FM24 setup without Python:** done (2026-10-17). `fmface-fm24.exe` sets
+- **FM24 setup without Python:** done (2026-10-17). `regeneratefm-fm24.exe` sets
   FM24 up itself: it finds the game through Steam, builds the skin from
   FM24's own `panels.fmf` (no Resource Archiver) and installs the bundled DLL.
   Checked under Wine and against the live game (preview mode).
@@ -81,17 +81,17 @@
   exports of Wine's DLL, which it was built against; check FM24 starts with
   it on Windows.
 - **FM24 popup progress text:** after the first use in a session the DLL logs
-  `FMFACE24_PROGRESS_NOT_SET` and the popup shows no progress. The companion
-  now shows progress in an FM Face dialog instead, as it does with skins
-  other than FM Face's (2026-10-19). Cosmetic.
+  `REGENERATEFM24_PROGRESS_NOT_SET` and the popup shows no progress. The companion
+  now shows progress in a RegenerateFM dialog instead, as it does with skins
+  other than RegenerateFM's (2026-10-19). Cosmetic.
 - **FM24 companion starts with FM24:** done (2026-10-19). The DLL starts the
-  packaged `fmface-fm24.exe` (Windows, and inside the Proton prefix on Linux)
+  packaged `regeneratefm-fm24.exe` (Windows, and inside the Proton prefix on Linux)
   and it stops with FM24; Linux installs with `FM24/install-linux.sh` and
   plain `python3`, refusing while Steam runs. Checked under Proton through
   Steam's Play; real Windows is untested.
-- **macOS companion start:** the Mac library and `run_fmface24.sh` don't
+- **macOS companion start:** the Mac library and `run_regeneratefm24.sh` don't
   start the companion, and it isn't packaged for macOS (it needs building on
-  a Mac). `run_fmface24.sh` could start it before FM24.
+  a Mac). `run_regeneratefm24.sh` could start it before FM24.
 - **FM24 people found by class:** done (2026-10-20). Person records,
   teams, club details and nations are recognised by their object's class
   (MSVC RTTI), not by marker bytes or ID copies, which varied from person to
@@ -105,7 +105,7 @@
   only on the first scan of a session, and the rest is under 0.3 s. Natively
   on Linux the pass takes 3.3 s. The pass does three jobs; to remove it, all
   three need a direct route:
-  - **Name cells:** done in a test script, not in FM Face. Walk the widget
+  - **Name cells:** done in a test script, not in RegenerateFM. Walk the widget
     tree from the UI manager's root at `manager+0x58`, following only
     children whose parent link points back. It found the same cells as the
     pass in 0.01 s, after visiting 737 widgets.
@@ -131,7 +131,7 @@
 - **FM24 squad dialog names the club, not the team:** a youth squad's
   confirmation says "20 of 21 Reading players"; FM doesn't store "Reading
   Under 21s", so it would come from the screen's header.
-- **FM24 portrait popup in other skins:** FM Face works with any skin through
+- **FM24 portrait popup in other skins:** RegenerateFM works with any skin through
   the Overview tab menu (checked on the default skin, 2026-10-19). The setup
   could also add the portrait popup to the skin in use when its panels keep
   FM24's `ppdp`/`ppic` widgets; untested with third-party skins.
@@ -139,14 +139,14 @@
   Squad screen's player table; check it on the Under 21s and Under 18s tabs.
 - **FM26 biography:** needs a visit to the Career tab first; FM24 reads it
   from the Overview.
-- **Real Windows test** of both games. `dist/fmface-0.9.0.zip` is built
+- **Real Windows test** of both games. `dist/regeneratefm-0.9.0.zip` is built
   but not published.
 - **Credits system:** deferred.
 
 ## macOS (2026-10-17)
 
 - **FM26 on macOS:** loads (2026-10-17). BepInEx be.789 under Rosetta 2 with
-  funchook and a patched Il2CppInterop, started by `run_fmface.sh`; the
+  funchook and a patched Il2CppInterop, started by `run_regeneratefm.sh`; the
   plugin loaded in 12 cold starts, including a quarantined install from the
   release ZIP. Details in `hotreload/macos/README.md`. The Actions, portrait
   and squad commands open the key dialog. Still to check: a saved key and a
@@ -161,11 +161,11 @@
   faces…** at its next 0.5 s scan, so a slow click misses it (seen on macOS;
   same code on every platform).
 - **FM24 on macOS:** works with preview faces (2026-10-17), on FM24 24.4.2's
-  arm64 build with a copy of a real save. `libfmface24.dylib`
-  (`fm24/native_menu/fmface24_macos.c`) adds the portrait popup, the
+  arm64 build with a copy of a real save. `libregeneratefm24.dylib`
+  (`fm24/native_menu/regeneratefm24_macos.c`) adds the portrait popup, the
   Overview tab rows and the Squad menu item, shows FM24's dialogs, reloads
   the skin and serves the companion's memory reads; `setup_fm24.py`
-  installs it with `run_fmface24.sh`. Every Windows address was matched to
+  installs it with `run_regeneratefm24.sh`. Every Windows address was matched to
   the Mac build (`supported_build_macos.json`); the companion's record
   offsets are in `fm24/layout.py`. Checked: a player and a staff preview,
   the squad count and its No, Update face greyed for a person without a
@@ -180,7 +180,7 @@
   rejection and the second prompt, Cancel. A real key and a billed face are
   still to check. Windows and Linux ask in a Win32 dialog the companion
   opens above FM24 (`key_dialog.py`, takes a paste under Proton; 2026-10-19);
-  `fmface24.c` could show it on FM24's window instead.
+  `regeneratefm24.c` could show it on FM24's window instead.
 - **FM26 face not appearing on macOS:** fixed (2026-10-18). A billed face
   (Lucas Hoyos) was saved, but the graphics reload failed with FM26's
   "invalid operation handle" and the popup waited 30 s before giving up:
@@ -200,9 +200,9 @@
   background (macOS throttles it). Cmd+V doesn't reach FM26 on macOS, so
   the key prompt has a Paste button. Still to do: the dropdown stays open
   after choosing Generate faces…; the FM24 in-game checks with
-  `OPENAI_BASE_URL` (a stand-in image API for testing, new in fmface.py).
+  `OPENAI_BASE_URL` (a stand-in image API for testing, new in regeneratefm.py).
 - **Steam launch options:** `steam_launch.py fm24|fm26 [--remove]` sets
-  FM Face's launch option in Steam's localconfig.vdf (Steam closed, backup
+  RegenerateFM's launch option in Steam's localconfig.vdf (Steam closed, backup
   kept); FM24's setup uses it on macOS and Linux. Applied on this Mac.
 - **FM24 person after a skin reload:** fixed (2026-10-18). After the first
   face's reload the object browser stopped tracking the screen, and the
@@ -234,9 +234,9 @@
   season before (738 people in that save), which refused a 16-year-old's
   profile and stopped the Under 18s squad scan. Ages now come from the
   date in the top bar, on every platform. Not yet checked on Windows.
-- **FM24 Steam launch on the Mac:** fixed. `run_fmface24.sh` checked
+- **FM24 Steam launch on the Mac:** fixed. `run_regeneratefm24.sh` checked
   `uname -m`, which says x86_64 under Steam's Rosetta, so FM24 started
-  without FM Face. The launcher now also starts the companion.
+  without RegenerateFM. The launcher now also starts the companion.
 - **FM24 Mac squad batch:** the row model offset differs (+0x6C8); the
   final dialog now ends on OK as on Windows; the profile read takes 0.6 s
   instead of about 6 s, and the squad scan uses the people vector instead
