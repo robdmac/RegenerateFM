@@ -226,7 +226,7 @@ def _linked_classes(pid: int, image: int, record: int, cache: dict[int, str],
             if club:
                 note("details", native_profile._pointer(pid, club + 0x30))
     except (OSError, ValueError, struct.error):
-        linked["?unreadable"] += 1
+        linked["pointer ?unreadable"] += 1
 
 
 if __name__ == "__main__":
