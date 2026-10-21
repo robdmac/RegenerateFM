@@ -621,7 +621,13 @@ def main() -> None:
     args = parser.parse_args()
     env = load_env()
     if args.command == "import":
-        path = save_portrait(output_dir(env), args.player_id, args.png.read_bytes(), newgen=args.newgen, replace=args.replace)
+        try:
+            path = save_portrait(output_dir(env), args.player_id, args.png.read_bytes(),
+                                 newgen=args.newgen, replace=args.replace)
+        except FileExistsError:
+            # save_portrait words it for the web form's Replace box.
+            raise FileExistsError(f"Portrait for ID {args.player_id} already exists. "
+                                  "Add --replace to overwrite it.") from None
         print(f"Saved {path}")
     else:
         FaceHandler.env = env

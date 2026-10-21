@@ -1438,6 +1438,10 @@ namespace RegenerateFMHotReload
             _squadBatch = null;
             if (status != null && status.parent != null)
                 status.text = message;
+            // The batch's dialog becomes a message about where the batch ended (a
+            // profile, after Stop), so leaving that page, not its start, closes it.
+            _dialogPage = DialogPage(CurrentRoot());
+            _dialogPageMisses = 0;
             var button = _squadDialog != null && _squadDialog.hierarchy.childCount > 1
                 ? _squadDialog.hierarchy.ElementAt(1).TryCast<Button>() : null;
             if (button != null)
