@@ -1521,8 +1521,9 @@ namespace RegenerateFMHotReload
             text("RegenerateFM: paying for faces", 18);
             if (problem != null)
                 text(problem, 14).style.color = new Color(1f, 0.82f, 0.45f, 1f);
-            text("Buy RegenerateFM credits: 50 faces for £1, 400 for £5 or 1000 for £10. You sign in with your email " +
-                 "in your browser; there's nothing to paste.", 14);
+            text("Buy RegenerateFM credits: one credit makes or updates one face. Packs go from 75 credits for " +
+                 "£2 / €2.50 / $2.50 to 1000 for £20 / €24 / $24. You sign in with your email in your browser; " +
+                 "there's nothing to paste.", 14);
             var buy = new Button((Il2CppSystem.Action)(System.Action)(() => BuyCredits()))
             { text = "Buy credits / Sign in", focusable = false };
             buy.style.height = 34;
@@ -1690,7 +1691,7 @@ namespace RegenerateFMHotReload
         }
 
         // The key dialog's questions (the same as the credits pages' FAQ, in
-        // regeneratefm-credits/src/pages.ts), shown in place of the dialog's
+        // regeneratefm-server/src/pages.ts), shown in place of the dialog's
         // controls until Back. A question's link opens in the browser.
         private static readonly (string Question, string Answer, string LinkText, string Link)[] KeyFaq =
         {
@@ -1699,13 +1700,14 @@ namespace RegenerateFMHotReload
              "its own AI, so every face is one paid request to OpenAI, whether you use credits or your own key.", null, null),
             ("Which is cheaper, credits or my own OpenAI API key?",
              "Your own key. You then pay OpenAI's price for each image directly, which at RegenerateFM's default quality is " +
-             "usually around a penny or less. Credits cost 1p to 2p a face, but you don't need an OpenAI account, " +
-             "billing set up with OpenAI, or a key to copy into the game.",
+             "about 1.2p (1.6 US cents) a face. Credits cost 2p to 2.7p each (2.4 to 3.3 cents in euros or dollars), " +
+             "but you don't need an OpenAI account, billing set up with OpenAI, or a key to copy into the game.",
              "OpenAI's API pricing", "https://openai.com/api/pricing/"),
             ("Why do credits cost more than OpenAI's own price?",
-             "Credits pay for more than the image: the card payment (each payment costs us about 20p plus 1.5%, which is " +
-             "why small packs cost more per face), the service that signs you in and passes each request on to OpenAI, " +
-             "and the credit we give back when an image fails.", null, null),
+             "Credits pay for more than the image: VAT or sales tax, the card payment (each payment has a fixed fee, which " +
+             "is why small packs cost more per credit), Stripe handling tax, fraud and refunds for every sale, the service " +
+             "that signs you in and passes each request on to OpenAI, and the credit we give back when an image fails.",
+             null, null),
             ("Can I use my ChatGPT Plus or Pro subscription instead?",
              "Not yet. A ChatGPT subscription and OpenAI's API are separate products. OpenAI has started letting some apps " +
              "use a ChatGPT plan through \u201cSign in with ChatGPT\u201d, but it's a preview, and image generation is one " +
