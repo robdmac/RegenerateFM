@@ -137,7 +137,7 @@ def _asks_in_window(handler) -> bool:
     return sys.platform == "win32" and bool(getattr(handler, "started_by_fm24", None))
 
 
-KEY_WINDOW = "Paste or type your OpenAI key in the RegenerateFM: OpenAI key window."
+KEY_WINDOW = "Buy credits or paste your OpenAI key in the RegenerateFM: credits or OpenAI key window."
 
 
 def ask_key_in_window(handler, *, tell_fm24: bool = True) -> bool:
@@ -159,8 +159,8 @@ def ask_key_in_window(handler, *, tell_fm24: bool = True) -> bool:
         problem = _rejected_text() if handler.key_rejected else None
         while True:
             text = ((problem + "\n\n") if problem else "") + _credits_text() + \
-                   ("\n\nOr use your own OpenAI API key: paste it (it starts with sk-) with Ctrl+V or type it, "
-                    f"then choose Save key. Get a key… opens {keystore.KEYS_PAGE}.\n\n"
+                   ("\n\nOr use your own OpenAI API key. " + KEY_COST + " Paste it (it starts with sk-) with "
+                    f"Ctrl+V or type it, then choose Save key. Get a key… opens {keystore.KEYS_PAGE}.\n\n"
                     f"The key or sign-in is saved encrypted for your Windows user in {store.parent}. "
                     "Delete that folder to forget it.")
             try:
@@ -196,9 +196,10 @@ def ask_key_in_window(handler, *, tell_fm24: bool = True) -> bool:
 
 def _credits_text() -> str:
     import credits
-    return (credits.BUY_TEXT + " Choose Buy credits / Sign in.\n\n"
-            "With your own OpenAI API key instead, each face is one billed request on your OpenAI account, "
-            "usually a few cents or less.")
+    return credits.BUY_TEXT + " Choose Buy credits / Sign in."
+
+
+KEY_COST = "Each face is then one billed request on your OpenAI account, usually a few cents or less."
 
 
 def ensure_key(handler) -> bool:
@@ -221,7 +222,8 @@ def ensure_key(handler) -> bool:
     with handler.key_lock:
         while True:
             text = ((problem + "\n\n") if problem else "") + _credits_text() + \
-                   ("\n\nOr paste or type your OpenAI key (it starts with sk-), then choose Save key. "
+                   ("\n\nOr use your own OpenAI API key. " + KEY_COST + " Paste or type it (it starts with "
+                    "sk-), then choose Save key. "
                     f"Get a key… opens {keystore.KEYS_PAGE}.\n\n"
                     f"The key or sign-in is kept on this Mac only, readable only by your user account, in "
                     f"{store.parent}. Delete that folder to forget it.")
@@ -813,8 +815,8 @@ def ask_for_key() -> None:
             return
         print(_rejected_text(), flush=True)
     print(_credits_text().replace("Choose Buy credits / Sign in.", "Type credits and press Enter to sign in.") + "\n"
-          f"For a key, create one at {keystore.KEYS_PAGE}, then paste it here (right-click or Ctrl+V) or type it. "
-          "It isn't shown as you type. Press Enter on an empty line to skip.", flush=True)
+          "Or use your own OpenAI API key. " + KEY_COST + f" Create one at {keystore.KEYS_PAGE}, then paste it "
+          "here (right-click or Ctrl+V) or type it. It isn't shown as you type. Press Enter on an empty line to skip.", flush=True)
     while True:
         try:
             entered = getpass.getpass("OpenAI API key: ")
