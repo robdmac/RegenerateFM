@@ -22,7 +22,7 @@ using UnityEngine.UIElements;
 
 namespace RegenerateFMHotReload
 {
-    [BepInPlugin("regeneratefm.hotreload", "RegenerateFM", "0.9.0")]
+    [BepInPlugin("regeneratefm.hotreload", "RegenerateFM", "1.0.0")]
     public sealed class HotReloadPlugin : BasePlugin
     {
         internal static HotReloadPlugin Instance;
@@ -1092,7 +1092,9 @@ namespace RegenerateFMHotReload
             }
             // The top Squad navigation dropdown is a floating, virtualized View.
             // "Squad Numbers" uniquely identifies this menu on the checked build.
-            var menuItem = FindText(root, "Squad Numbers");
+            // Reading every text on the page is slow, so only the floating layer
+            // that FM26's dropdowns open in is read.
+            var menuItem = FindText(FindNamed(root, "floating-element-root") ?? root, "Squad Numbers");
             var menuList = menuItem;
             while (menuList != null && menuList.name != "View")
                 menuList = menuList.parent;
@@ -1474,7 +1476,18 @@ namespace RegenerateFMHotReload
             if (System.DateTime.UtcNow - batch.StageStartedUtc > TimeSpan.FromSeconds(45) &&
                 batch.Stage != SquadStage.Request && batch.Stage != SquadStage.Refresh)
             {
-                StopSquadBatch("Timed out while navigating FM26. " + batch.Completed + " faces were generated.");
+                // FM26's Back history doesn't always hold the team page: after going
+                // Back to it from Squad > Overview, Back from a profile opens the
+                // Overview, and the team page can drop out of the history altogether.
+                if (batch.Stage == SquadStage.AwaitSquad && batch.ReturnByBack)
+                {
+                    var team = batch.ReturnTab ?? "the team page";
+                    StopSquadBatch("FM26's Back button didn't return to " + team + ", so the batch stopped after " +
+                        batch.Completed + (batch.Completed == 1 ? " face" : " faces") + ". Open " + team +
+                        "'s squad again and choose Generate faces… for the rest." + ScoutingNote(batch));
+                }
+                else
+                    StopSquadBatch("Timed out while navigating FM26. " + batch.Completed + " faces were generated.");
                 return;
             }
             switch (batch.Stage)
@@ -2476,15 +2489,23 @@ namespace RegenerateFMHotReload
             _portraitDismissLayer = null;
         }
 
+        // Reading a page's texts for a biography is slow, so it is done every few
+        // seconds, not while a squad scan or batch is working, and not again once
+        // a person's biography is kept.
+        private float _nextBiographyCheck;
+
         private void CheckBiographyCache()
         {
+            if (Time.unscaledTime < _nextBiographyCheck || _squadScan != null || _squadBatch != null)
+                return;
+            _nextBiographyCheck = Time.unscaledTime + 3f;
             var root = CurrentRoot();
             if (root == null)
                 return;
             var header = FindNamed(root, "ReportHeader");
             if (header == null || header.worldBound.width < 800 || FindNamed(header, "PersonPicture") == null)
                 return;
-            if (!HeaderId(header, out long personId))
+            if (!HeaderId(header, out long personId) || _biographyCache.ContainsKey(personId))
                 return;
             var biography = CaptureBiographyHeadline(root);
             if (!string.IsNullOrWhiteSpace(biography))
@@ -2507,7 +2528,25 @@ namespace RegenerateFMHotReload
             return null;
         }
 
+        // The first shown element with this name. Walking FM26's tree from here
+        // crosses into IL2CPP for every element, which on a busy page (your own
+        // player's profile, Squad > Overview) took long enough to slow FM26's own
+        // page loading many times over; UI Toolkit's Q walks it natively. Its
+        // first match is the walk's answer when shown; a hidden one (FM26 keeps
+        // some pages laid out but not shown) needs the walk.
         private static VisualElement FindNamed(VisualElement element, string name)
+        {
+            if (element == null)
+                return null;
+            var first = element.Q<VisualElement>(name);
+            if (first == null)
+                return null;
+            if (first.worldBound.width > 0 && first.worldBound.height > 0)
+                return first;
+            return WalkNamed(element, name);
+        }
+
+        private static VisualElement WalkNamed(VisualElement element, string name)
         {
             if (element == null)
                 return null;
@@ -2515,7 +2554,7 @@ namespace RegenerateFMHotReload
                 return element;
             for (int i = 0; i < element.hierarchy.childCount; i++)
             {
-                var found = FindNamed(element.hierarchy.ElementAt(i), name);
+                var found = WalkNamed(element.hierarchy.ElementAt(i), name);
                 if (found != null)
                     return found;
             }
