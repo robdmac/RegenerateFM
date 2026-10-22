@@ -260,13 +260,23 @@
   a reference with the prompt asking for a slight family resemblance, not
   the same face. Without a face, share some appearance traits (hair, face
   shape) between relatives instead of choosing them separately.
-- **Women's football.** Never tested on women's teams (FM26 has women's
-  leagues) or with female staff in either game. The profile has no gender,
-  and the appearance traits choose stubble, a beard or a moustache from age
-  alone, so women can be drawn with facial hair. This happened to a female
-  assistant manager in the live credits test on 2026-10-21. Read the
-  person's gender in FM26 and FM24, say it in the prompt, choose facial
-  hair only for men, then test a women's squad batch and female staff.
+- **Women's football.** FM26: done (2026-10-22). The plugin reads
+  `Person.IsPersonFemale` from the profile header's bindings for players
+  and staff, and the prompt says who is a woman; only men get facial hair.
+  Women's silhouettes are `person_default_w`, not `person_default`, so
+  they now count as missing faces. A squad batch on a team page outside
+  Squad (the club's women's team, reached from its club page) returns to
+  it with FM26's Back button. Checked live in an Arsenal save with the WSL:
+  Leah Williamson (Generate), a two-face batch on the women's squad, and
+  head coach Renée Slegers, all billed; no facial hair. FM24: profiles say
+  male, assumed from FM24's men-only database; not verified.
+- **FM26 youth squads:** done (2026-10-22). Arsenal's Under 21s and Under
+  18s tabs: the squad count reads "U21 Squad Players (21)", and the batch
+  returns to the "Under 21s" tab for "Arsenal U21s". Checked with the image
+  stand-in: 17 and 3 faces.
+- **FM26 first Actions menu after loading:** once, the first Actions menu
+  opened after a career loaded lacked Generate face and Update face; the
+  next one had them.
 - **Launch.** Put the server code (`~/work/regeneratefm-server`) in a
   private repo; make this repo public; switch Stripe from the sandbox to the
   live account (restricted key, webhook and its secret); check every link,
