@@ -41,6 +41,9 @@ PUBLIC_FILES = (
     "hotreload/macos/README.md",
     "hotreload/macos/BepInEx.cfg",
     "hotreload/macos/build.py",
+    "hotreload/macos/make_installer.py",
+    "hotreload/macos/installer/RegenerateFMInstaller.swift",
+    "hotreload/macos/installer/AppIcon.png",
     "hotreload/macos/run_regeneratefm.sh",
     "hotreload/macos/patches/funchook-rosetta.patch",
     "hotreload/macos/patches/il2cppinterop-macos.patch",
@@ -89,6 +92,8 @@ PUBLIC_FILES = (
     "tests/test_appearance.py",
     "tests/test_keystore.py",
     "tests/test_credits.py",
+    "tests/test_macos_installer.py",
+    "tests/test_steam_launch.py",
     "tests/test_fm24.py",
     "tests/test_fm24_setup.py",
     "tests/test_fm24_existing_portrait.py",
@@ -177,16 +182,20 @@ def write(archive: zipfile.ZipFile, name: str, data: bytes, mode: int) -> None:
     archive.writestr(info, data)
 
 
+def plugin_version() -> str:
+    source = (ROOT / "hotreload/RegenerateFMHotReload.cs").read_text()
+    match = re.search(r'BepInPlugin\("regeneratefm\.hotreload", "RegenerateFM", "([^"]+)"\)', source)
+    if not match:
+        raise SystemExit("Could not read the plugin version.")
+    return match.group(1)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--bepinex-zip", type=Path, help="a local copy of the pinned BepInEx be.760 ZIP")
     parser.add_argument("--bepinex-macos-zip", type=Path, help="a local copy of the pinned macOS BepInEx be.789 ZIP")
     args = parser.parse_args()
-    source = (ROOT / "hotreload/RegenerateFMHotReload.cs").read_text()
-    match = re.search(r'BepInPlugin\("regeneratefm\.hotreload", "RegenerateFM", "([^"]+)"\)', source)
-    if not match:
-        raise SystemExit("Could not read the plugin version.")
-    version = match.group(1)
+    version = plugin_version()
     target = ROOT / "dist" / f"regeneratefm-{version}.zip"
     missing = [name for name in PUBLIC_FILES + (PLUGIN_DLL,) if not (ROOT / name).is_file()]
     if missing:
