@@ -121,7 +121,7 @@ def build_app(version: str, payload: dict[str, tuple[bytes, int]], identity: str
             "CFBundleIdentifier": BUNDLE_ID, "CFBundlePackageType": "APPL", "CFBundleInfoDictionaryVersion": "6.0",
             "CFBundleShortVersionString": version, "CFBundleVersion": version,
             "CFBundleIconFile": "AppIcon", "LSMinimumSystemVersion": MINIMUM_MACOS, "NSHighResolutionCapable": True,
-            "NSHumanReadableCopyright": "Copyright © 2026 Robert Macrae. GNU GPL v3 or later. BepInEx, .NET and Il2CppInterop are under their own licences.",
+            "NSHumanReadableCopyright": "Copyright © 2026 Rob Macrae. GNU GPL v3 or later. BepInEx, .NET and Il2CppInterop are under their own licences.",
         }, handle)
     resources = contents / "Resources"
     resources.mkdir()
