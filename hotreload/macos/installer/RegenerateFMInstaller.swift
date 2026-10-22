@@ -1,4 +1,5 @@
-// MIT. RegenerateFM Installer for FM26 on macOS.
+// SPDX-License-Identifier: GPL-3.0-or-later (see NOTICE.md).
+// RegenerateFM Installer for FM26 on macOS.
 //
 // The app carries the release's FM26-macOS folder in Contents/Resources and
 // copies it beside fm.app, then sets FM26's Steam launch option the way

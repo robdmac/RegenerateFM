@@ -1,6 +1,7 @@
 # Third-party software in the RegenerateFM release
 
-RegenerateFM's own code is under the MIT licence in `LICENSE`. The release ZIP's
+RegenerateFM's own code is under the GNU GPL version 3 or later (`LICENSE`), with
+the additional permission and terms in `NOTICE.md`. The release ZIP's
 `FM26` folder also contains, unmodified, the
 [BepInEx 6.0.0-be.760 Unity IL2CPP Windows x64](https://builds.bepinex.dev/projects/bepinex_be/)
 build (`BepInEx-Unity.IL2CPP-win-x64-6.0.0-be.760+a1afbfb.zip`, SHA-256

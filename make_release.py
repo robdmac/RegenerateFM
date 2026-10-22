@@ -26,6 +26,7 @@ ROOT = Path(__file__).resolve().parent
 PUBLIC_FILES = (
     ".env.example",
     "LICENSE",
+    "NOTICE.md",
     "README.md",
     "RELEASE_CHECKLIST.md",
     "regeneratefm.py",
@@ -125,7 +126,7 @@ MACOS_NATIVE = {"BepInEx/core/libfunchook.dylib": "libfunchook.dylib",
                 "BepInEx/core/Il2CppInterop.Runtime.dll": "Il2CppInterop.Runtime.dll",
                 "BepInEx/core/Il2CppInterop.Common.dll": "Il2CppInterop.Common.dll"}
 # Copied to the release's top level, beside the FM26 and FM24 folders.
-TOP_LEVEL = ("README.md", "LICENSE", "licenses/THIRD_PARTY_NOTICES.md",
+TOP_LEVEL = ("README.md", "LICENSE", "NOTICE.md", "licenses/THIRD_PARTY_NOTICES.md",
              "licenses/BepInEx-LICENSE.txt", "licenses/Il2CppInterop-LICENSE.txt")
 
 

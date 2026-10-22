@@ -42,7 +42,7 @@ ICON = HERE / "installer" / "AppIcon.png"
 MINIMUM_MACOS = "12.0"
 DMG = ROOT / "dist" / "RegenerateFM-macOS.dmg"
 # Shown beside the payload in Contents/Resources.
-NOTICES = ("LICENSE", "licenses/THIRD_PARTY_NOTICES.md", "licenses/BepInEx-LICENSE.txt",
+NOTICES = ("LICENSE", "NOTICE.md", "licenses/THIRD_PARTY_NOTICES.md", "licenses/BepInEx-LICENSE.txt",
            "licenses/Il2CppInterop-LICENSE.txt")
 MACHO_MAGIC = (b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe", b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca")
 
@@ -119,7 +119,7 @@ def build_app(version: str, payload: dict[str, tuple[bytes, int]], identity: str
             "CFBundleIdentifier": BUNDLE_ID, "CFBundlePackageType": "APPL", "CFBundleInfoDictionaryVersion": "6.0",
             "CFBundleShortVersionString": version, "CFBundleVersion": version,
             "CFBundleIconFile": "AppIcon", "LSMinimumSystemVersion": MINIMUM_MACOS, "NSHighResolutionCapable": True,
-            "NSHumanReadableCopyright": "MIT licence. BepInEx, .NET and Il2CppInterop are under their own licences.",
+            "NSHumanReadableCopyright": "Copyright © 2026 Robert Macrae. GNU GPL v3 or later. BepInEx, .NET and Il2CppInterop are under their own licences.",
         }, handle)
     resources = contents / "Resources"
     resources.mkdir()
