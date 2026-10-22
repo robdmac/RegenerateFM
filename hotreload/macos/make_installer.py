@@ -37,6 +37,8 @@ import make_release  # noqa: E402
 APP_NAME = "RegenerateFM Installer"
 BUNDLE_ID = "fm.regenerate.installer"
 SOURCE = HERE / "installer" / "RegenerateFMInstaller.swift"
+# The 1024 px icon, on macOS's icon grid; made into AppIcon.icns.
+ICON = HERE / "installer" / "AppIcon.png"
 MINIMUM_MACOS = "12.0"
 DMG = ROOT / "dist" / "RegenerateFM-macOS.dmg"
 # Shown beside the payload in Contents/Resources.
@@ -45,8 +47,8 @@ NOTICES = ("LICENSE", "licenses/THIRD_PARTY_NOTICES.md", "licenses/BepInEx-LICEN
 MACHO_MAGIC = (b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe", b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca")
 
 
-def run(*command: str | Path) -> None:
-    subprocess.run([str(part) for part in command], check=True)
+def run(*command: str | Path | int) -> None:
+    subprocess.run([str(part) for part in command], check=True, stdout=subprocess.DEVNULL)
 
 
 def developer_id() -> str:
@@ -96,6 +98,16 @@ def build_executable(target: Path, work: Path) -> None:
     run("lipo", "-create", *slices, "-output", target)
 
 
+def build_icon(target: Path, work: Path) -> None:
+    iconset = work / "AppIcon.iconset"
+    iconset.mkdir()
+    for size in (16, 32, 128, 256, 512):
+        for scale in (1, 2):
+            name = f"icon_{size}x{size}{'@2x' if scale == 2 else ''}.png"
+            run("sips", "-z", size * scale, size * scale, ICON, "--out", iconset / name)
+    run("iconutil", "-c", "icns", iconset, "-o", target)
+
+
 def build_app(version: str, payload: dict[str, tuple[bytes, int]], identity: str, work: Path) -> Path:
     app = work / f"{APP_NAME}.app"
     contents = app / "Contents"
@@ -106,10 +118,12 @@ def build_app(version: str, payload: dict[str, tuple[bytes, int]], identity: str
             "CFBundleName": APP_NAME, "CFBundleDisplayName": APP_NAME, "CFBundleExecutable": APP_NAME,
             "CFBundleIdentifier": BUNDLE_ID, "CFBundlePackageType": "APPL", "CFBundleInfoDictionaryVersion": "6.0",
             "CFBundleShortVersionString": version, "CFBundleVersion": version,
-            "LSMinimumSystemVersion": MINIMUM_MACOS, "NSHighResolutionCapable": True,
+            "CFBundleIconFile": "AppIcon", "LSMinimumSystemVersion": MINIMUM_MACOS, "NSHighResolutionCapable": True,
             "NSHumanReadableCopyright": "MIT licence. BepInEx, .NET and Il2CppInterop are under their own licences.",
         }, handle)
     resources = contents / "Resources"
+    resources.mkdir()
+    build_icon(resources / "AppIcon.icns", work)
     machos = []
     for name, (data, mode) in sorted(payload.items()):
         path = resources / "FM26-macOS" / name

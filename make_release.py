@@ -43,6 +43,7 @@ PUBLIC_FILES = (
     "hotreload/macos/build.py",
     "hotreload/macos/make_installer.py",
     "hotreload/macos/installer/RegenerateFMInstaller.swift",
+    "hotreload/macos/installer/AppIcon.png",
     "hotreload/macos/run_regeneratefm.sh",
     "hotreload/macos/patches/funchook-rosetta.patch",
     "hotreload/macos/patches/il2cppinterop-macos.patch",
