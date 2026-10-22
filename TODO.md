@@ -263,11 +263,23 @@
   only a slight family resemblance. Checked: Jobe Bellingham's brother Jude
   read in game, and Jobe's request went to the edits endpoint with Jude's
   face (image stand-in); a billed father-and-son pair in Python looked
-  related but clearly different. Still to do: FM24 (its person records'
-  relationships aren't read yet), group names in other languages (only
+  related but clearly different. Still to do: FM24 (see below), group
+  names in other languages (only
   English is matched), and the game's own photos as references (only
   RegenerateFM faces are used). Traits already saved for a person are kept,
   so a face made before this keeps its own look.
+- **FM24 relatives (research, 2026-10-22, Mac build, MK Dons save):** FM24
+  uses the same person IDs as FM26 (Jude Bellingham 29232937, Jobe
+  2000205927). A player object's +0x2d8 (a staff object's +0x158) points to
+  a 0x50-byte holder of three vectors {begin, end, capacity}; the first is
+  the person's favoured people, clubs and nations, as 16-byte entries
+  {object pointer, info}. Person entries have info `TT 00 03 01 LL 4f 00 ff`
+  (TT a type: 05 former team-mate, 06 former manager, 09 admired, 07/08 seen
+  on staff lists; LL a level). No family was found there: neither the
+  Bellingham nor the Thuram brothers list each other, and no memory holds
+  Jude's and Jobe's IDs or handles together. Either FM24's database doesn't
+  record these families or keeps them elsewhere; check a family FM24 shows
+  as related on a profile next. The probe scripts were read-only.
 - **Women's football.** FM26: done (2026-10-22). The plugin reads
   `Person.IsPersonFemale` from the profile header's bindings for players
   and staff, and the prompt says who is a woman; only men get facial hair.
