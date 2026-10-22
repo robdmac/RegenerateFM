@@ -1,0 +1,4 @@
+# Text files keep LF line endings in every checkout, Windows included: the
+# release ZIP (make_release.py) packs them as they are, and its shell scripts
+# must run on Linux and macOS.
+* text=auto eol=lf

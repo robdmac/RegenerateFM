@@ -19,6 +19,7 @@ import argparse
 import hashlib
 import re
 import shutil
+import subprocess
 import urllib.request
 import zipfile
 from pathlib import Path, PurePosixPath
@@ -101,6 +102,7 @@ PUBLIC_FILES = (
     "tests/test_macos_installer.py",
     "tests/test_steam_launch.py",
     "tests/test_linux_installer.py",
+    "tests/test_make_release.py",
     "tests/test_fm24.py",
     "tests/test_fm24_setup.py",
     "tests/test_fm24_existing_portrait.py",
@@ -204,6 +206,46 @@ def write(archive: zipfile.ZipFile, name: str, data: bytes, mode: int) -> None:
     archive.writestr(info, data)
 
 
+def has_crlf(data: bytes) -> bool:
+    """Whether text (not a binary file) has Windows line endings."""
+    return b"\r\n" in data and b"\0" not in data[:8192]
+
+
+def crlf_files(root: Path, names: tuple[str, ...], companion: Path, packaged: list[Path]) -> list[str]:
+    """The release's own text files with Windows line endings, as in a Windows
+    checkout made before .gitattributes or a file an editor saved that way;
+    install-linux.sh then fails on Linux. The companion's own text files
+    (outside _internal) are copies of the checkout's."""
+    found = [name for name in names if has_crlf((root / name).read_bytes())]
+    found += [path.relative_to(root).as_posix() for path in packaged
+              if "_internal" not in path.relative_to(companion).parts and has_crlf(path.read_bytes())]
+    return found
+
+
+def git_modes() -> dict[str, int]:
+    """Each tracked file's mode as git records it. A Windows checkout has no
+    executable bits (every file reads as 0o666), so scripts take theirs from git."""
+    try:
+        listing = subprocess.run(["git", "ls-files", "--stage"], cwd=ROOT, capture_output=True,
+                                 text=True, encoding="utf-8", check=True).stdout
+    except (OSError, subprocess.CalledProcessError):
+        raise SystemExit("make_release.py needs git, run in a checkout, to know which files are executable.")
+    modes = {}
+    for line in listing.splitlines():
+        info, _, name = line.partition("\t")
+        modes[name] = 0o755 if info.startswith("100755") else 0o644
+    return modes
+
+
+def file_mode(path: Path, modes: dict[str, int] | None = None) -> int:
+    """A file's mode for the release: git's for a tracked file, else whether
+    the file is executable (Windows reports that for .exe files)."""
+    name = path.relative_to(ROOT).as_posix() if path.is_relative_to(ROOT) else None
+    if modes is not None and name in modes:
+        return modes[name]
+    return 0o755 if path.stat().st_mode & 0o111 else 0o644
+
+
 def plugin_version() -> str:
     source = (ROOT / "hotreload/RegenerateFMHotReload.cs").read_text(encoding="utf-8")
     match = re.search(r'BepInPlugin\("regeneratefm\.hotreload", "RegenerateFM", "([^"]+)"\)', source)
@@ -233,6 +275,12 @@ def main() -> None:
         raise SystemExit("dist/regeneratefm-fm24 has no regeneratefm-fm24.exe; rebuild it with fm24/build_exe.py.")
     if any(path.name in (".env", ".fm24-auth") for path in packaged):
         raise SystemExit("dist/regeneratefm-fm24 holds a private .env or .fm24-auth; remove it first.")
+    crlf = crlf_files(ROOT, PUBLIC_FILES, companion, packaged)
+    if crlf:
+        raise SystemExit(f"{len(crlf)} files have Windows line endings, starting with {', '.join(crlf[:3])}. "
+                         "Check the files out again so .gitattributes applies (with nothing uncommitted: "
+                         "git rm -r -q --cached . && git reset -q --hard), then rebuild the FM24 companion.")
+    modes = git_modes()
     loader = bepinex_files(bepinex_zip(BEPINEX, args.bepinex_zip), "winhttp.dll")
     # The macOS hooking pieces (hotreload/macos/build.py), when they have been built.
     macos = (macos_files(bepinex_zip(BEPINEX_MACOS, args.bepinex_macos_zip))
@@ -240,22 +288,26 @@ def main() -> None:
     top = f"regeneratefm-{version}"
     target.parent.mkdir(exist_ok=True)
     with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        # Every file goes through write(): a fixed date, and a mode from git
+        # rather than from a Windows checkout.
         for name in TOP_LEVEL:
-            archive.write(ROOT / name, f"{top}/{name}")
+            write(archive, f"{top}/{name}", (ROOT / name).read_bytes(), file_mode(ROOT / name, modes))
         write(archive, f"{top}/install-linux.sh", (ROOT / "install-linux.sh").read_bytes(), 0o755)
         for name, (data, mode) in loader.items():
             write(archive, f"{top}/FM26/{name}", data, mode)
-        archive.write(ROOT / PLUGIN_DLL, f"{top}/FM26/BepInEx/plugins/RegenerateFMHotReload/RegenerateFMHotReload.dll")
+        plugin = (ROOT / PLUGIN_DLL).read_bytes()
+        write(archive, f"{top}/FM26/BepInEx/plugins/RegenerateFMHotReload/RegenerateFMHotReload.dll", plugin, 0o644)
         for name, (data, mode) in macos.items():
             write(archive, f"{top}/FM26-macOS/{name}", data, mode)
         if macos:
-            archive.write(ROOT / PLUGIN_DLL, f"{top}/FM26-macOS/BepInEx/plugins/RegenerateFMHotReload/RegenerateFMHotReload.dll")
+            write(archive, f"{top}/FM26-macOS/BepInEx/plugins/RegenerateFMHotReload/RegenerateFMHotReload.dll",
+                  plugin, 0o644)
         for path in packaged:
-            archive.write(path, f"{top}/FM24/{path.relative_to(companion).as_posix()}")
+            write(archive, f"{top}/FM24/{path.relative_to(companion).as_posix()}", path.read_bytes(), file_mode(path))
         if packaged:
             write(archive, f"{top}/FM24/install-linux.sh", (ROOT / "fm24/install-linux.sh").read_bytes(), 0o755)
         for name in PUBLIC_FILES:
-            archive.write(ROOT / name, f"{top}/source/{name}")
+            write(archive, f"{top}/source/{name}", (ROOT / name).read_bytes(), file_mode(ROOT / name, modes))
     note = f"the {len(packaged)}-file FM24 companion" if packaged else "no FM24 companion (not built)"
     mac = (f"FM26-macOS folder ({len(macos)} files and the plugin)" if macos
            else "no FM26-macOS folder (hotreload/macos/build.py not run)")
