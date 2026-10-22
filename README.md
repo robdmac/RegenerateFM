@@ -12,7 +12,7 @@ Regen face packs give a player a stock photo picked from thousands by nationalit
 - **Football Manager 26** (26.3.2, and the FM26 Demo) through a BepInEx plugin.
 - **Football Manager 2024** (24.4.2) through a small DLL and a companion program.
 
-The images come from OpenAI's image API, using your own API key. Each face costs one request on your OpenAI account. RegenerateFM is independent of Sports Interactive, SEGA and the BepInEx project.
+The images come from OpenAI's image API. Pay for them with RegenerateFM credits (one credit a face; sign in with your email from the game's key dialog, in FM26 and FM24), or with your own OpenAI API key, where each face is one request on your OpenAI account. RegenerateFM is independent of Sports Interactive, SEGA and the BepInEx project.
 
 | | Windows | Linux (Steam/Proton) | macOS (Apple Silicon) |
 |---|---|---|---|
@@ -93,7 +93,8 @@ In FM24, the profile's **Overview** tab menu has **Generate new face** and **Upd
 
 | Setting | Meaning |
 |---|---|
-| `OPENAI_API_KEY` | Your OpenAI API key (required). |
+| `OPENAI_API_KEY` | Your OpenAI API key, or a RegenerateFM credits token (`rfm_…`, saved by **Buy credits / Sign in**). Required. |
+| `REGENERATEFM_CREDITS_URL` | The credits service, for testing. The default is `https://credits.regenerate.fm`. |
 | `OPENAI_IMAGE_MODEL` | The image model. The default is `gpt-image-2.5-sunburst`. |
 | `OPENAI_IMAGE_QUALITY` | As `Quality` above. |
 | `FM_GRAPHICS_DIR` | Where the web app and `import` save portraits. FM24's companion takes its folder on the command line instead. |

@@ -24,6 +24,7 @@ import xml.etree.ElementTree as ET
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+import credits
 import keystore
 from appearance import GENDERS, NO_FACIAL_HAIR, appearance_instruction, appearance_traits
 
@@ -344,10 +345,14 @@ def profile_prompt(profile: dict, *, person_id: str | None = None,
     )
 
 
-def api_base(env: dict[str, str]) -> str:
-    """OPENAI_BASE_URL, for testing against a local stand-in (like the FM26
-    plugin's ApiBaseUrl); OpenAI's own address by default. Plain http is
-    accepted only for this computer."""
+def api_base(env: dict[str, str], key: str | None = None) -> str:
+    """The image API for ``key``: the credits service's for a RegenerateFM
+    credits token (REGENERATEFM_CREDITS_URL when testing), otherwise
+    OPENAI_BASE_URL, for testing against a local stand-in (like the FM26
+    plugin's ApiBaseUrl), or OpenAI's own address. Plain http is accepted
+    only for this computer."""
+    if credits.is_token(key):
+        return credits.api_base(credits.service_url(env.get("REGENERATEFM_CREDITS_URL", "")))
     return keystore.api_base(env.get("OPENAI_BASE_URL", ""))
 
 
@@ -371,7 +376,8 @@ def _image_request(key: str, endpoint: str, body: bytes, content_type: str,
                    settings: dict[str, str], metadata: dict | None, base: str) -> bytes:
     request = urllib.request.Request(
         f"{base}/images/{endpoint}", data=body,
-        headers={"Authorization": f"Bearer {key}", "Content-Type": content_type},
+        headers={"Authorization": f"Bearer {key}", "Content-Type": content_type,
+                 "User-Agent": credits.USER_AGENT},
         method="POST",
     )
     try:
@@ -383,9 +389,10 @@ def _image_request(key: str, endpoint: str, body: bytes, content_type: str,
         except (ValueError, AttributeError):
             detail = ""
         detail = str(detail or exc.reason).replace(key, "[REDACTED]")
-        raise RuntimeError(f"OpenAI image API returned HTTP {exc.code}: {detail}") from exc
+        name = "RegenerateFM credits" if credits.is_token(key) else "OpenAI image API"
+        raise RuntimeError(f"{name} returned HTTP {exc.code}: {detail}") from exc
     except (urllib.error.URLError, TimeoutError) as exc:
-        raise RuntimeError(f"Could not reach the OpenAI image API: {exc.reason if isinstance(exc, urllib.error.URLError) else exc}") from exc
+        raise RuntimeError(f"Could not reach {'RegenerateFM credits' if credits.is_token(key) else 'the OpenAI image API'}: {exc.reason if isinstance(exc, urllib.error.URLError) else exc}") from exc
     image = result.get("data", [{}])[0].get("b64_json")
     if not image:
         raise RuntimeError("Image API response did not contain an image.")
@@ -424,7 +431,7 @@ def generate_png(env: dict[str, str], prompt: str, *, metadata: dict | None = No
     key, settings = _image_settings(env)
     payload = dict(settings, prompt=prompt)
     return _image_request(key, "generations", json.dumps(payload).encode("utf-8"),
-                          "application/json", settings, metadata, api_base(env))
+                          "application/json", settings, metadata, api_base(env, key))
 
 
 def edit_png(env: dict[str, str], prompt: str, reference: bytes, *,
@@ -445,7 +452,7 @@ def edit_png(env: dict[str, str], prompt: str, reference: bytes, *,
                  + reference + b"\r\n")
     parts.append(f"--{boundary}--\r\n".encode("ascii"))
     return _image_request(key, "edits", b"".join(parts),
-                          f"multipart/form-data; boundary={boundary}", settings, metadata, api_base(env))
+                          f"multipart/form-data; boundary={boundary}", settings, metadata, api_base(env, key))
 
 
 def _atomic_write(path: Path, content: bytes) -> None:

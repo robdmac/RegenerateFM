@@ -7,6 +7,8 @@
 typedef void (*key_answer_function)(const char *key);
 
 static NSString *const KEYS_PAGE = @"https://platform.openai.com/api-keys";
+/* The answer for Buy credits / Sign in, which the companion handles (companion.CREDITS_CHOICE). */
+static const char *const CREDITS_CHOICE = "regeneratefm:credits";
 
 static SEL edit_action(NSEvent *event)
 {
@@ -20,15 +22,17 @@ static SEL edit_action(NSEvent *event)
     return NULL;
 }
 
-/* Main thread. "Get a key…" opens OpenAI's key page and asks again. */
+/* Main thread. "Get a key…" opens OpenAI's key page and asks again; "Buy
+   credits / Sign in" answers CREDITS_CHOICE. */
 static void show_prompt(NSString *text, key_answer_function answer)
 {
     NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"RegenerateFM: your OpenAI API key";
+    alert.messageText = @"RegenerateFM: credits or your OpenAI API key";
     alert.informativeText = text;
     [alert addButtonWithTitle:@"Save key"];
     [alert addButtonWithTitle:@"Cancel"];
     [alert addButtonWithTitle:@"Get a key…"];
+    [alert addButtonWithTitle:@"Buy credits / Sign in"];
     /* A key is longer than the field, which shows only its last dots, so the
        line below says how much was pasted and how it ends. */
     NSView *accessory = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 380, 46)];
@@ -67,6 +71,10 @@ static void show_prompt(NSString *text, key_answer_function answer)
     void (^finish)(NSModalResponse) = ^(NSModalResponse response) {
         [NSEvent removeMonitor:monitor];
         [[NSNotificationCenter defaultCenter] removeObserver:changed];
+        if (response == NSAlertThirdButtonReturn + 1) {
+            answer(CREDITS_CHOICE);
+            return;
+        }
         if (response == NSAlertThirdButtonReturn) {
             [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:KEYS_PAGE]];
             show_prompt(text, answer);

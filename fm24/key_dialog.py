@@ -13,7 +13,9 @@ import ctypes
 import sys
 from ctypes import wintypes
 
-IDOK, IDCANCEL, ID_GET_KEY = 1, 2, 3
+IDOK, IDCANCEL, ID_GET_KEY, ID_CREDITS = 1, 2, 3, 4
+# What ask() returns for Buy credits / Sign in (companion.CREDITS_CHOICE).
+CREDITS_CHOICE = "regeneratefm:credits"
 _EDIT_ID = 10
 
 if sys.platform == "win32":
@@ -67,12 +69,14 @@ WS_EX_TOPMOST, WS_EX_DLGMODALFRAME, WS_EX_CLIENTEDGE = 0x00000008, 0x00000001, 0
 ES_PASSWORD, ES_AUTOHSCROLL = 0x0020, 0x0080
 BS_DEFPUSHBUTTON = 0x0001
 WM_DESTROY, WM_CLOSE, WM_COMMAND, WM_SETFONT = 0x0002, 0x0010, 0x0111, 0x0030
-WIDTH, HEIGHT = 560, 300
+WIDTH, HEIGHT = 640, 400
 
 
-def ask(text: str, *, title: str = "RegenerateFM: OpenAI key", link: str | None = None) -> str | None:
-    """Show the dialog and return what was entered, or None for Cancel or
-    closing it. ``text`` may have line breaks; ``link`` is opened by Get a key…"""
+def ask(text: str, *, title: str = "RegenerateFM: credits or OpenAI key", link: str | None = None,
+        credits: bool = False) -> str | None:
+    """Show the dialog and return what was entered, None for Cancel or
+    closing it, or CREDITS_CHOICE for Buy credits / Sign in (shown when
+    ``credits``). ``text`` may have line breaks; ``link`` is opened by Get a key…"""
     if sys.platform != "win32":
         raise OSError("The key dialog is a Windows dialog.")
     result: dict[str, str | None] = {"key": None}
@@ -88,6 +92,9 @@ def ask(text: str, *, title: str = "RegenerateFM: OpenAI key", link: str | None 
                 result["key"] = buffer.value
                 _user32.DestroyWindow(window)
             elif command == IDCANCEL:
+                _user32.DestroyWindow(window)
+            elif command == ID_CREDITS:
+                result["key"] = CREDITS_CHOICE
                 _user32.DestroyWindow(window)
             elif command == ID_GET_KEY and link:
                 _shell32.ShellExecuteW(window, "open", link, None, None, 1)
@@ -122,13 +129,17 @@ def ask(text: str, *, title: str = "RegenerateFM: OpenAI key", link: str | None 
         _user32.SendMessageW(handle, WM_SETFONT, font, 1)
         return handle
 
-    child("STATIC", text.replace("\n", "\r\n"), 0, 16, 14, WIDTH - 48, 150, 0)
-    edit = child("EDIT", "", WS_TABSTOP | ES_PASSWORD | ES_AUTOHSCROLL, 16, 172, WIDTH - 48, 24, _EDIT_ID,
+    child("STATIC", text.replace("\n", "\r\n"), 0, 16, 14, WIDTH - 48, 250, 0)
+    edit = child("EDIT", "", WS_TABSTOP | ES_PASSWORD | ES_AUTOHSCROLL, 16, 272, WIDTH - 48, 24, _EDIT_ID,
                  WS_EX_CLIENTEDGE)
-    child("BUTTON", "Save key", WS_TABSTOP | BS_DEFPUSHBUTTON, WIDTH - 288, 212, 120, 30, IDOK)
-    child("BUTTON", "Cancel", WS_TABSTOP, WIDTH - 160, 212, 112, 30, IDCANCEL)
+    child("BUTTON", "Save key", WS_TABSTOP | BS_DEFPUSHBUTTON, WIDTH - 288, 312, 120, 30, IDOK)
+    child("BUTTON", "Cancel", WS_TABSTOP, WIDTH - 160, 312, 112, 30, IDCANCEL)
+    left = 16
+    if credits:
+        child("BUTTON", "Buy credits / Sign in", WS_TABSTOP, left, 312, 160, 30, ID_CREDITS)
+        left += 168
     if link:
-        child("BUTTON", "Get a key…", WS_TABSTOP, 16, 212, 120, 30, ID_GET_KEY)
+        child("BUTTON", "Get a key…", WS_TABSTOP, left, 312, 110, 30, ID_GET_KEY)
     _user32.ShowWindow(window, 5)  # SW_SHOW
     _user32.SetForegroundWindow(window)
     _user32.SetFocus(edit)

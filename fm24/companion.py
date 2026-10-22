@@ -57,9 +57,64 @@ def error_text(exc: Exception, handler=None) -> str:
     return text + REJECTED_KEY
 
 
-def _api() -> str:
-    """The image API address the key is checked against (regeneratefm.api_base)."""
-    return api_base(load_env())
+def _api(key: str | None = None) -> str:
+    """The image API address ``key`` is checked against (regeneratefm.api_base):
+    the credits service's for a RegenerateFM credits token."""
+    return api_base(load_env(), key)
+
+
+# What the key prompts return for Buy credits / Sign in (never a valid key):
+# key_dialog.CREDITS_CHOICE, and key_prompt_macos.m's CREDITS_CHOICE.
+CREDITS_CHOICE = "regeneratefm:credits"
+
+
+def _tell(handler, text: str) -> None:
+    """A message in FM24's own dialog, or the companion's log if FM24 can't show it."""
+    print(text, flush=True)
+    if handler.reload_port:
+        try:
+            show_dialog(handler.reload_port, handler.token, "message", "RegenerateFM credits", clip_text(text))
+        except (DialogUnavailable, OSError, ValueError):
+            pass
+
+
+def sign_in_with_credits(handler, tell=None) -> str | None:
+    """Buy credits / Sign in: start a device sign-in with RegenerateFM credits,
+    open it in the browser, wait for the player to sign in there, and save
+    the token where an OpenAI key goes. None once a token is saved,
+    otherwise the problem to show at the key prompt."""
+    import webbrowser
+    import credits
+    import keystore
+    tell = tell or (lambda text: _tell(handler, text))
+    store = keystore.default_path()
+    if store is None:
+        return "RegenerateFM credits need RegenerateFM's key file, which this system doesn't have."
+    try:
+        service = credits.service_url(load_env().get("REGENERATEFM_CREDITS_URL", ""))
+        sign_in = credits.start(service)
+    except (RuntimeError, ValueError) as exc:
+        return str(exc)
+    opened = webbrowser.open(sign_in.link)
+    tell(("Your browser is open at RegenerateFM credits." if opened else f"Open {sign_in.link} in your browser.") +
+         f" Sign in with your email, buy credits if you need them, and confirm the code {sign_in.user_code}."
+         " RegenerateFM carries on by itself once you've signed in.")
+    try:
+        answer = credits.wait(service, sign_in)
+    except RuntimeError as exc:
+        return str(exc)
+    if answer is None:
+        return "The sign-in expired before it was confirmed. Choose Buy credits / Sign in again."
+    try:
+        keystore.save(store, answer["token"])
+    except (OSError, ValueError) as exc:
+        return f"Could not save the sign-in: {exc}"
+    _handler_class(handler).key_rejected = False
+    count = int(answer.get("credits") or 0)
+    tell(f"Signed in to RegenerateFM credits as {answer.get('email', '')}, with {count} "
+         f"credit{'' if count == 1 else 's'}." + ("" if count else
+         " Buy credits in the browser page, then choose the face command again."))
+    return None
 
 
 def _env_key() -> str:
@@ -101,28 +156,32 @@ def ask_key_in_window(handler, *, tell_fm24: bool = True) -> bool:
                 show_dialog(handler.reload_port, handler.token, "message", "RegenerateFM", KEY_WINDOW)
             except (DialogUnavailable, OSError, ValueError):
                 pass
-        problem = "OpenAI didn't accept the saved key. Paste a new one." if handler.key_rejected else None
+        problem = _rejected_text() if handler.key_rejected else None
         while True:
-            text = (problem or "RegenerateFM makes faces with your own OpenAI API key. Each face is one billed "
-                               "request on your OpenAI account, usually a few cents or less.") + \
-                   ("\n\nPaste the key (it starts with sk-) with Ctrl+V or type it, then choose Save key. "
-                    f"Get a key… opens {keystore.KEYS_PAGE}.\n\n"
-                    f"The key is saved encrypted for your Windows user in {store.parent}. "
+            text = ((problem + "\n\n") if problem else "") + _credits_text() + \
+                   ("\n\nOr use your own OpenAI API key: paste it (it starts with sk-) with Ctrl+V or type it, "
+                    f"then choose Save key. Get a key… opens {keystore.KEYS_PAGE}.\n\n"
+                    f"The key or sign-in is saved encrypted for your Windows user in {store.parent}. "
                     "Delete that folder to forget it.")
             try:
-                entered = key_dialog.ask(text, link=keystore.KEYS_PAGE)
+                entered = key_dialog.ask(text, link=keystore.KEYS_PAGE, credits=True)
             except OSError as exc:
                 print(f"Couldn't show the key dialog ({exc}).", flush=True)
                 return False
             if entered is None:
                 print("No OpenAI key was saved; choosing a face command asks again.", flush=True)
                 return False
+            if entered == CREDITS_CHOICE:
+                problem = sign_in_with_credits(handler)
+                if problem is None:
+                    return True
+                continue
             try:
                 key = keystore.clean(entered)
             except ValueError as exc:
                 problem = str(exc)
                 continue
-            problem = keystore.check(key, base=_api())
+            problem = keystore.check(key, base=_api(key))
             if problem:
                 continue
             try:
@@ -133,6 +192,13 @@ def ask_key_in_window(handler, *, tell_fm24: bool = True) -> bool:
             _handler_class(handler).key_rejected = False
             print(f"OpenAI key checked and saved in {store.parent}.", flush=True)
             return True
+
+
+def _credits_text() -> str:
+    import credits
+    return (credits.BUY_TEXT + " Choose Buy credits / Sign in.\n\n"
+            "With your own OpenAI API key instead, each face is one billed request on your OpenAI account, "
+            "usually a few cents or less.")
 
 
 def ensure_key(handler) -> bool:
@@ -151,15 +217,14 @@ def ensure_key(handler) -> bool:
     if load_env().get("OPENAI_API_KEY", "").strip():
         if not handler.key_rejected:
             return True
-        problem = "OpenAI didn't accept the saved key. Paste a new one."
+        problem = _rejected_text()
     with handler.key_lock:
         while True:
-            text = (problem or "RegenerateFM makes faces with your own OpenAI API key. Each face is one billed "
-                               "request on your OpenAI account, usually a few cents or less.") + \
-                   ("\n\nPaste or type the key (it starts with sk-), then choose Save key. "
+            text = ((problem + "\n\n") if problem else "") + _credits_text() + \
+                   ("\n\nOr paste or type your OpenAI key (it starts with sk-), then choose Save key. "
                     f"Get a key… opens {keystore.KEYS_PAGE}.\n\n"
-                    f"The key is kept on this Mac only, readable only by your user account, in {store.parent}. "
-                    "Delete that folder to forget it.")
+                    f"The key or sign-in is kept on this Mac only, readable only by your user account, in "
+                    f"{store.parent}. Delete that folder to forget it.")
             try:
                 entered = ask_key(handler.reload_port, handler.token, text)
             except (DialogUnavailable, OSError, ValueError, TimeoutError) as exc:
@@ -167,12 +232,17 @@ def ensure_key(handler) -> bool:
                 return True
             if entered is None:
                 return False
+            if entered == CREDITS_CHOICE:
+                problem = sign_in_with_credits(handler)
+                if problem is None:
+                    return True
+                continue
             try:
                 key = keystore.clean(entered)
             except ValueError as exc:
                 problem = str(exc)
                 continue
-            problem = keystore.check(key, base=_api())
+            problem = keystore.check(key, base=_api(key))
             if problem:
                 continue
             try:
@@ -185,11 +255,19 @@ def ensure_key(handler) -> bool:
             return True
 
 
+def _rejected_text() -> str:
+    """The key prompt's first line once the saved key or sign-in was refused."""
+    import credits
+    if credits.is_token(load_env().get("OPENAI_API_KEY", "").strip()):
+        return "Your RegenerateFM credits sign-in has ended. Choose Buy credits / Sign in to sign in again."
+    return "OpenAI didn't accept the saved key. Paste a new one."
+
+
 def _check_saved_key(handler) -> None:
-    """At start on macOS: a saved key OpenAI now rejects is asked for again in game."""
+    """At start: a saved key (or credits sign-in) now refused is asked for again."""
     import keystore
     saved = "" if _env_key() else load_env().get("OPENAI_API_KEY", "").strip()
-    if saved and keystore.check(saved, base=_api()) == keystore.REJECTED:
+    if saved and keystore.check(saved, base=_api(saved)) in (keystore.REJECTED, keystore.SIGNED_OUT):
         _handler_class(handler).key_rejected = True
         print("OpenAI no longer accepts the saved key; FM24 will ask for a new one.", flush=True)
 
@@ -731,12 +809,11 @@ def ask_for_key() -> None:
     if saved:
         # A saved key can be revoked later; checking it is free. Ask again only
         # when OpenAI says no, not when it can't be reached.
-        if keystore.check(saved, base=_api()) != keystore.REJECTED:
+        if keystore.check(saved, base=_api(saved)) not in (keystore.REJECTED, keystore.SIGNED_OUT):
             return
-        print("OpenAI no longer accepts the saved key.", flush=True)
-    print("RegenerateFM makes faces with your own OpenAI API key. Each face is one billed request on your "
-          "OpenAI account, usually a few cents or less.\n"
-          f"Create a key at {keystore.KEYS_PAGE}, then paste it here (right-click or Ctrl+V) or type it. "
+        print(_rejected_text(), flush=True)
+    print(_credits_text().replace("Choose Buy credits / Sign in.", "Type credits and press Enter to sign in.") + "\n"
+          f"For a key, create one at {keystore.KEYS_PAGE}, then paste it here (right-click or Ctrl+V) or type it. "
           "It isn't shown as you type. Press Enter on an empty line to skip.", flush=True)
     while True:
         try:
@@ -747,13 +824,22 @@ def ask_for_key() -> None:
         if not entered.strip():
             print("No key saved. Faces can't be made until you restart the companion and enter one.", flush=True)
             return
+        if entered.strip().lower() == "credits":
+            class _Terminal:
+                reload_port = None
+                key_rejected = False
+            problem = sign_in_with_credits(_Terminal)
+            if problem is None:
+                return
+            print(problem, flush=True)
+            continue
         try:
             key = keystore.clean(entered)
         except ValueError as exc:
             print(exc, flush=True)
             continue
         print("Checking the key with OpenAI (this is free)...", flush=True)
-        problem = keystore.check(key, base=_api())
+        problem = keystore.check(key, base=_api(key))
         if problem:
             print(problem, flush=True)
             continue

@@ -4,7 +4,8 @@ On Windows it is encrypted with DPAPI for the current Windows user, in
 %APPDATA%\\RegenerateFM\\openai-key. On macOS it is in ~/Library/Application
 Support/RegenerateFM/openai-key, readable only by the user. The FM26 plugin
 (hotreload/FaceGenerator.cs, KeyStore) reads and writes the same file in the
-same format, so the plugin and regeneratefm.py share one key.
+same format, so the plugin and regeneratefm.py share one key. The file can
+hold a RegenerateFM credits token instead of a key (credits.py).
 """
 
 from __future__ import annotations
@@ -21,10 +22,12 @@ from pathlib import Path
 PROTECTED = b"RFMK1\n"
 PLAIN = b"RFMK0\n"
 ENTROPY = b"RegenerateFM OpenAI API key"
-KEY_RE = re.compile(r"sk-[A-Za-z0-9_\-]{16,300}")
+# An OpenAI key, or a RegenerateFM credits token (the FM26 plugin's KeyStore uses the same pattern).
+KEY_RE = re.compile(r"sk-[A-Za-z0-9_\-]{16,300}|rfm_[A-Za-z0-9_\-]{20,100}")
 KEYS_PAGE = "https://platform.openai.com/api-keys"
 DEFAULT_API = "https://api.openai.com/v1"
 REJECTED = "OpenAI didn't accept this key. Check that you copied all of it."
+SIGNED_OUT = "Your RegenerateFM credits sign-in has ended. Choose Buy credits / Sign in to sign in again."
 
 
 def default_path() -> Path | None:
@@ -88,15 +91,17 @@ def api_base(configured: str = "") -> str:
 
 
 def check(key: str, timeout: float = 30, base: str = DEFAULT_API) -> str | None:
-    """None if OpenAI accepts the key, otherwise the problem. Listing models is free."""
+    """None if OpenAI (or the credits service, for a token) accepts the key,
+    otherwise the problem. Listing models is free."""
+    import credits
     request = urllib.request.Request(f"{base}/models",
-                                     headers={"Authorization": f"Bearer {key}"})
+                                     headers={"Authorization": f"Bearer {key}", "User-Agent": credits.USER_AGENT})
     try:
         with urllib.request.urlopen(request, timeout=timeout):
             return None
     except urllib.error.HTTPError as exc:
         if exc.code == 401:
-            return REJECTED
+            return SIGNED_OUT if credits.is_token(key) else REJECTED
         try:
             detail = json.loads(exc.read(4096)).get("error", {}).get("message", "")
         except (ValueError, AttributeError):
