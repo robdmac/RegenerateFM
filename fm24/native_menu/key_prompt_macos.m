@@ -1,4 +1,4 @@
-/* MIT. RegenerateFM's OpenAI key prompt for FM24 on macOS, part of libregeneratefm24.dylib.
+/* SPDX-License-Identifier: GPL-3.0-or-later (see NOTICE.md). RegenerateFM's OpenAI key prompt for FM24 on macOS, part of libregeneratefm24.dylib.
    The companion asks for it (REGENERATEFM24K in regeneratefm24_macos.c) when no key is
    saved. It is a sheet on FM24's window with a secure field: the key isn't
    shown, and Cmd+V pastes even though FM24 has no Edit menu. */

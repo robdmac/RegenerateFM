@@ -1,4 +1,4 @@
-/* MIT. Experimental FM24 24.4.2 native UI event bridge for Windows/Proton. */
+/* SPDX-License-Identifier: GPL-3.0-or-later (see NOTICE.md). Experimental FM24 24.4.2 native UI event bridge for Windows/Proton. */
 #define WIN32_LEAN_AND_MEAN
 #include <winsock2.h>
 #include <windows.h>
