@@ -311,7 +311,11 @@
 - **FM24 companion in C#.** The companion is about 6,200 lines of Python,
   so every packaged build carries a Python (the Mac build bundles Apple's
   3.9, which is out of support; kept for now, by choice, rather than
-  switching to python.org's 3.12). Port it to C# and reuse the FM26 plugin's
+  switching to python.org's 3.12). Its ssl module uses macOS's own
+  LibreSSL 2.8.3 (`/usr/lib/libssl.46.dylib`): TLS 1.2 only, no TLS 1.3.
+  Checked 2026-10-22: credits.regenerate.fm and api.openai.com both connect
+  over TLS 1.2 with verified certificates; it would break only if either
+  dropped TLS 1.2. Port it to C# and reuse the FM26 plugin's
   `hotreload/FaceGenerator.cs`, which already does the prompts, appearance,
   relatives, OpenAI and credits requests and saving, with prompt parity
   tested against `regeneratefm.py`. Still to port: the FM24 memory reading,
