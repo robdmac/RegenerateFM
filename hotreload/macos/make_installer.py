@@ -43,9 +43,6 @@ ICON = HERE / "installer" / "AppIcon.png"
 MINIMUM_MACOS = "12.0"
 DMG = ROOT / "dist" / "RegenerateFM-macOS.dmg"
 FM24_COMPANION = ROOT / "dist" / "regeneratefm-fm24-macos" / "regeneratefm-fm24"
-# Shown beside the payload in Contents/Resources.
-NOTICES = ("LICENSE", "NOTICE.md", "licenses/THIRD_PARTY_NOTICES.md", "licenses/BepInEx-LICENSE.txt",
-           "licenses/Il2CppInterop-LICENSE.txt")
 MACHO_MAGIC = (b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe", b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca")
 
 
@@ -140,8 +137,8 @@ def build_app(version: str, payload: dict[str, tuple[bytes, int]], identity: str
     frameworks = sorted(path for path in companion.rglob("*.framework") if not path.is_symlink())
     machos += [path for path in sorted(companion.rglob("*"))
                if path.is_file() and not path.is_symlink() and is_macho(path)]
-    for name in NOTICES:
-        shutil.copy2(ROOT / name, resources / Path(name).name)
+    # The licences, beside the payload in Contents/Resources.
+    make_release.copy_licences(resources)
     # Inside out: the payload's libraries and tools (the companion's
     # executable last), its Python framework, then the app that seals them.
     executable = companion / FM24_COMPANION.name

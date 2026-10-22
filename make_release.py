@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import re
+import shutil
 import urllib.request
 import zipfile
 from pathlib import Path, PurePosixPath
@@ -110,9 +111,8 @@ PUBLIC_FILES = (
     "tests/test_fm26_generator.py",
     "tests/fm26_generator/GeneratorCheck.csproj",
     "tests/fm26_generator/Program.cs",
-    "licenses/THIRD_PARTY_NOTICES.md",
-    "licenses/BepInEx-LICENSE.txt",
-    "licenses/Il2CppInterop-LICENSE.txt",
+    "licenses/fetch_licenses.py",
+    "make_source_archive.py",
 )
 PLUGIN_DLL = "hotreload/bin/Release/net6.0/RegenerateFMHotReload.dll"
 BEPINEX = ("https://builds.bepinex.dev/projects/bepinex_be/760/"
@@ -126,9 +126,25 @@ MACOS_BUILD = ROOT / "hotreload" / "macos" / "build"
 MACOS_NATIVE = {"BepInEx/core/libfunchook.dylib": "libfunchook.dylib",
                 "BepInEx/core/Il2CppInterop.Runtime.dll": "Il2CppInterop.Runtime.dll",
                 "BepInEx/core/Il2CppInterop.Common.dll": "Il2CppInterop.Common.dll"}
+
+
+def licence_files() -> tuple[str, ...]:
+    """RegenerateFM's licence and the bundled software's (licenses/), which
+    the release, the macOS installer and the packaged companions all carry."""
+    texts = sorted(path.relative_to(ROOT).as_posix() for path in (ROOT / "licenses").rglob("*")
+                   if path.is_file() and path.suffix in (".txt", ".md"))
+    return ("LICENSE", "NOTICE.md", *texts)
+
+
+def copy_licences(target: Path) -> None:
+    for name in licence_files():
+        (target / name).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / name, target / name)
+
+
+PUBLIC_FILES += tuple(name for name in licence_files() if name not in PUBLIC_FILES)
 # Copied to the release's top level, beside the FM26 and FM24 folders.
-TOP_LEVEL = ("README.md", "LICENSE", "NOTICE.md", "licenses/THIRD_PARTY_NOTICES.md",
-             "licenses/BepInEx-LICENSE.txt", "licenses/Il2CppInterop-LICENSE.txt")
+TOP_LEVEL = ("README.md", *licence_files())
 
 
 def bepinex_zip(pinned: tuple[str, str], path: Path | None) -> Path:
@@ -223,7 +239,7 @@ def main() -> None:
     target.parent.mkdir(exist_ok=True)
     with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for name in TOP_LEVEL:
-            archive.write(ROOT / name, f"{top}/{Path(name).name}")
+            archive.write(ROOT / name, f"{top}/{name}")
         write(archive, f"{top}/install-linux.sh", (ROOT / "install-linux.sh").read_bytes(), 0o755)
         for name, (data, mode) in loader.items():
             write(archive, f"{top}/FM26/{name}", data, mode)

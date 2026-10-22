@@ -24,6 +24,9 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+import make_release  # noqa: E402
+
 NATIVE = ROOT / "fm24" / "native_menu"
 NAME = "regeneratefm-fm24"
 OUTPUT = ROOT / "dist" / f"{NAME}-macos"
@@ -54,6 +57,8 @@ def main() -> None:
         "--exclude-module", "tkinter", "--exclude-module", "unittest", "--exclude-module", "pydoc",
     ])
     shutil.copy2(ROOT / ".env.example", OUTPUT / NAME / ".env.example")
+    # PyInstaller leaves the bundled packages' licences out; these cover them.
+    make_release.copy_licences(OUTPUT / NAME)
     shutil.rmtree(work, ignore_errors=True)
     print(f"Built {OUTPUT / NAME / NAME}")
 
