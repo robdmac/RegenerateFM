@@ -89,9 +89,13 @@
   and it stops with FM24; Linux installs with `FM24/install-linux.sh` and
   plain `python3`, refusing while Steam runs. Checked under Proton through
   Steam's Play; real Windows is untested.
-- **macOS companion start:** the Mac library and `run_regeneratefm24.sh` don't
-  start the companion, and it isn't packaged for macOS (it needs building on
-  a Mac). `run_regeneratefm24.sh` could start it before FM24.
+- **macOS companion start:** done. `run_regeneratefm24.sh` starts the
+  companion (2026-10-21), and since 2026-10-22 it is packaged for macOS
+  (`fm24/build_companion_macos.py`) and installed by the macOS installer,
+  so FM24 on the Mac needs no Python. Checked: the installer's setup over a
+  source install, and the launcher starting the packaged companion, which
+  stopped with the game. A face in FM24 itself from the packaged companion
+  is still to check (Steam was in use elsewhere).
 - **FM24 people found by class:** done (2026-10-20). Person records,
   teams, club details and nations are recognised by their object's class
   (MSVC RTTI), not by marker bytes or ID copies, which varied from person to

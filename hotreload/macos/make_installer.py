@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Build RegenerateFM Installer.app for FM26 on macOS and pack it in a DMG.
+"""Build RegenerateFM Installer.app for FM26 and FM24 on macOS and pack it in a DMG.
 
     python3 hotreload/macos/make_installer.py [--identity NAME] [--notarize PROFILE]
 
 The app (installer/RegenerateFMInstaller.swift) carries the release ZIP's
 FM26-macOS folder (make_release.macos_files and the plugin), so it needs the
 plugin built (dotnet build -c Release hotreload) and hotreload/macos/build.py
-run first. It writes dist/RegenerateFM-macOS.dmg; the name stays the same in
+run first. For FM24 it carries the packaged companion
+(fm24/build_companion_macos.py, which needs fm24/native_menu/build_macos.py). It writes dist/RegenerateFM-macOS.dmg; the name stays the same in
 every release, so GitHub's releases/latest/download link always finds it.
 
 Every Mach-O file in the payload and the app are signed with the Developer
@@ -41,6 +42,7 @@ SOURCE = HERE / "installer" / "RegenerateFMInstaller.swift"
 ICON = HERE / "installer" / "AppIcon.png"
 MINIMUM_MACOS = "12.0"
 DMG = ROOT / "dist" / "RegenerateFM-macOS.dmg"
+FM24_COMPANION = ROOT / "dist" / "regeneratefm-fm24-macos" / "regeneratefm-fm24"
 # Shown beside the payload in Contents/Resources.
 NOTICES = ("LICENSE", "licenses/THIRD_PARTY_NOTICES.md", "licenses/BepInEx-LICENSE.txt",
            "licenses/Il2CppInterop-LICENSE.txt")
@@ -132,10 +134,20 @@ def build_app(version: str, payload: dict[str, tuple[bytes, int]], identity: str
         path.chmod(mode & 0o777 or 0o644)
         if is_macho(path):
             machos.append(path)
+    # The FM24 companion as PyInstaller made it, symbolic links and all.
+    companion = resources / "FM24-macOS" / FM24_COMPANION.name
+    shutil.copytree(FM24_COMPANION, companion, symlinks=True)
+    frameworks = sorted(path for path in companion.rglob("*.framework") if not path.is_symlink())
+    machos += [path for path in sorted(companion.rglob("*"))
+               if path.is_file() and not path.is_symlink() and is_macho(path)]
     for name in NOTICES:
         shutil.copy2(ROOT / name, resources / Path(name).name)
-    # Inside out: the payload's libraries and tools, then the app that seals them.
-    for path in machos:
+    # Inside out: the payload's libraries and tools (the companion's
+    # executable last), its Python framework, then the app that seals them.
+    executable = companion / FM24_COMPANION.name
+    for path in sorted(machos, key=lambda path: path == executable):
+        sign(path, identity)
+    for path in frameworks:
         sign(path, identity)
     sign(app, identity)
     run("codesign", "--verify", "--deep", "--strict", app)
@@ -155,12 +167,12 @@ def main() -> None:
     if args.notarize and identity == "-":
         raise SystemExit("Apple notarises only Developer ID signed apps.")
     plugin = ROOT / make_release.PLUGIN_DLL
-    missing = [str(path) for path in [plugin] + [make_release.MACOS_BUILD / built
-                                                 for built in make_release.MACOS_NATIVE.values()]
+    missing = [str(path) for path in [plugin, FM24_COMPANION / FM24_COMPANION.name] +
+               [make_release.MACOS_BUILD / built for built in make_release.MACOS_NATIVE.values()]
                if not path.is_file()]
     if missing:
-        raise SystemExit("Build these first (dotnet build -c Release hotreload; python3 hotreload/macos/build.py): "
-                         + ", ".join(missing))
+        raise SystemExit("Build these first (dotnet build -c Release hotreload; python3 hotreload/macos/build.py; "
+                         "fm24/build_companion_macos.py): " + ", ".join(missing))
     payload = make_release.macos_files(make_release.bepinex_zip(make_release.BEPINEX_MACOS, args.bepinex_macos_zip))
     payload["BepInEx/plugins/RegenerateFMHotReload/RegenerateFMHotReload.dll"] = (plugin.read_bytes(), 0o644)
     version = make_release.plugin_version()

@@ -39,6 +39,10 @@ Afterwards RegenerateFM works with whatever skin you use. For the portrait popup
 
 FM24 for Mac is its own program, so RegenerateFM uses a Mac library instead of the DLL: `libregeneratefm24.dylib`, from [native_menu/regeneratefm24_macos.c](native_menu/regeneratefm24_macos.c), pinned to FM24 24.4.2's arm64 build. Its in-game features are the same: the Overview tab rows, the portrait popup, the Squad menu item, FM24's dialogs and the skin reload. macOS doesn't let another program read FM24's memory, so the library also serves the companion's reads.
 
+**With the installer:** the release's `RegenerateFM-macOS.dmg` holds RegenerateFM Installer, which sets FM24 up with the packaged companion (`fm24/build_companion_macos.py`, a PyInstaller build carrying the library and launcher): it copies the companion to `<game folder>/RegenerateFM/regeneratefm-fm24`, runs its `setup --no-launch-option` and then sets the launch option itself. `run_regeneratefm24.sh` starts that companion directly, as `regeneratefm24.ini`'s `companion=` names it with no `python=`. It logs to `regeneratefm-fm24.log` beside itself, and reads a `.env` there (`OPENAI_BASE_URL` for a stand-in image API).
+
+**From source:**
+
 1. Install Xcode's command-line tools (`xcode-select --install`) and the companion's Python packages (`pip install -r fm24/requirements.txt`).
 2. Build the library: `python3 fm24/native_menu/build_macos.py`.
 3. Close FM24 and run `python3 fm24/setup_fm24.py`. It finds FM24 in `~/Library/Application Support/Steam`, builds the skin in `~/Library/Application Support/Sports Interactive/Football Manager 2024/skins/regeneratefm`, and puts `libregeneratefm24.dylib`, `run_regeneratefm24.sh` and `regeneratefm24.ini` beside `fm.app`.

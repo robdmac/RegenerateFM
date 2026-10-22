@@ -54,6 +54,7 @@ PUBLIC_FILES = (
     "fm24/setup_fm24.py",
     "fm24/install-linux.sh",
     "fm24/build_exe.py",
+    "fm24/build_companion_macos.py",
     "fm24/requirements-exe.txt",
     "fm24/companion.py",
     "fm24/companion_client.py",

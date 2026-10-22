@@ -59,9 +59,9 @@ The patched libraries stay under their own licences: funchook is GPL-2.0-or-late
 
 ## The installer
 
-`installer/RegenerateFMInstaller.swift` is RegenerateFM Installer.app, which the release ships as `RegenerateFM-macOS.dmg`. It carries the FM26-macOS folder in `Contents/Resources`, copies it beside `fm.app` (clearing quarantine from what it copies) and sets the Steam launch option the way `steam_launch.py` does, while Steam is closed. Uninstall takes the launch option out and removes the files; if other BepInEx plugins are installed it removes only RegenerateFM's. `tests/test_macos_installer.py` runs it with `--cli` against a stand-in Steam folder and checks its launch options against `steam_launch.py`.
+`installer/RegenerateFMInstaller.swift` is RegenerateFM Installer.app, which the release ships as `RegenerateFM-macOS.dmg`. For FM24 it carries the packaged companion and runs its setup (see [fm24/README.md](../../fm24/README.md#macos-apple-silicon)). For FM26 it carries the FM26-macOS folder in `Contents/Resources`, copies it beside `fm.app` (clearing quarantine from what it copies) and sets the Steam launch option the way `steam_launch.py` does, while Steam is closed. Uninstall takes the launch option out and removes the files; if other BepInEx plugins are installed it removes only RegenerateFM's. `tests/test_macos_installer.py` runs it with `--cli` against a stand-in Steam folder and checks its launch options against `steam_launch.py`.
 
-Build it, after the plugin and `build.py`:
+Build it, after the plugin, `build.py`, `fm24/native_menu/build_macos.py` and `fm24/build_companion_macos.py`:
 
 ```sh
 python3 hotreload/macos/make_installer.py                          # signed with the Developer ID certificate

@@ -54,11 +54,20 @@ def bundled_dll(companion: Path | None = None) -> Path:
 
 
 def packaged_companion() -> Path | None:
-    """This packaged companion, which FM24 then starts itself; on macOS, this
-    source's companion.py, which run_regeneratefm24.sh starts with this Python."""
-    if sys.platform == "darwin":
-        return HERE / "companion.py"
-    return Path(sys.executable).resolve() if getattr(sys, "frozen", False) and sys.platform == "win32" else None
+    """This packaged companion, which FM24 (on macOS run_regeneratefm24.sh) then
+    starts itself; from source on macOS, this source's companion.py, which
+    run_regeneratefm24.sh starts with this Python."""
+    if getattr(sys, "frozen", False) and sys.platform in ("win32", "darwin"):
+        return Path(sys.executable).resolve()
+    return HERE / "companion.py" if sys.platform == "darwin" else None
+
+
+def companion_python() -> tuple[str, str] | tuple[None, None]:
+    """macOS: the Python run_regeneratefm24.sh starts companion.py with, and the
+    architecture to run it as; none for the packaged companion, which runs itself."""
+    if getattr(sys, "frozen", False):
+        return None, None
+    return sys.executable, platform.machine()
 
 
 def windows_path(companion: Path) -> str:
@@ -163,8 +172,7 @@ def is_set_up(game: Path, skin_dir: Path, auth_file: Path, companion: Path | Non
                     metadata["dllSha256"] and
                     (companion is None or installed_config(game).get("companion") == windows_path(companion)) and
                     (not native_install.MACOS or (installed_config(game).get("python"),
-                                                  installed_config(game).get("python_arch")) ==
-                     (sys.executable, platform.machine())) and
+                                                  installed_config(game).get("python_arch")) == companion_python()) and
                     installed_token(game) == auth_file.read_text(encoding="ascii").strip() and
                     (not native_install.LAUNCHER or native_install.digest(game / native_install.LAUNCHER) ==
                      native_install.digest(native_install.HERE / native_install.LAUNCHER)))
@@ -183,12 +191,15 @@ def check_steam_closed(game: Path, *, remove: bool = False) -> None:
         raise SystemExit(QUIT_STEAM)
 
 
-def setup(game: Path, user_data: Path, auth_file: Path, companion: Path | None = None) -> None:
+def setup(game: Path, user_data: Path, auth_file: Path, companion: Path | None = None,
+          launch_option: bool = True) -> None:
     skin_dir = user_data / "skins" / "regeneratefm"
-    check_steam_closed(game)
+    if launch_option:
+        check_steam_closed(game)
     if is_set_up(game, skin_dir, auth_file, companion):
         print("RegenerateFM is already set up for FM24.", flush=True)
-        _launch_option(game)
+        if launch_option:
+            _launch_option(game)
         return
     if native_install.game_running(game):
         raise SystemExit("Close FM24, then run the RegenerateFM setup again.")
@@ -214,16 +225,18 @@ def setup(game: Path, user_data: Path, auth_file: Path, companion: Path | None =
     command = ["--game-dir", str(game), "--skin-dir", str(skin_dir), "--auth-file", str(auth_file), "--dll", str(dll)]
     if companion is not None:
         command += ["--companion", windows_path(companion)]
-    if native_install.MACOS:
+    python, arch = companion_python()
+    if native_install.MACOS and python:
         # Steam runs the launcher under Rosetta; the companion must run as this
         # Python does now, which its packages were installed for.
-        command += ["--python", sys.executable, "--python-arch", platform.machine()]
+        command += ["--python", python, "--python-arch", arch]
         if missing := missing_modules():
             print(f"FM24 starts the companion with {sys.executable}, which lacks {', '.join(missing)}. "
                   "Install them (pip install -r fm24/requirements.txt), or run this setup with a Python "
                   "that has them.", flush=True)
     native_install.main(command)
-    _launch_option(game)
+    if launch_option:
+        _launch_option(game)
     print("\nIn FM24, Generate new face and Update face are in a profile's Overview tab menu, with any skin.\n"
           "For them on the portrait too, choose the \"RegenerateFM\" skin in Preferences > Interface.\n", flush=True)
 
@@ -258,6 +271,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--companion", type=Path,
                         help="the packaged regeneratefm-fm24.exe for FM24 to start (Linux; the packaged companion sets itself)")
     parser.add_argument("--remove", action="store_true", help="uninstall the DLL and restore the skin's panels")
+    parser.add_argument("--no-launch-option", action="store_true",
+                        help="leave Steam's launch option alone (the macOS installer sets it itself)")
     args = parser.parse_args(argv)
     companion = args.companion.expanduser().resolve() if args.companion else packaged_companion()
     if companion is not None and not companion.is_file():
@@ -268,11 +283,13 @@ def main(argv: list[str] | None = None) -> None:
     game, user_data = resolve_dirs(args.game_dir, args.user_data_dir)
     print(f"FM24: {game}\nFM24 user data: {user_data}", flush=True)
     if args.remove:
-        check_steam_closed(game, remove=True)
+        if not args.no_launch_option:
+            check_steam_closed(game, remove=True)
         native_install.main(["--game-dir", str(game), "--skin-dir", str(user_data / "skins" / "regeneratefm"), "--remove"])
-        _launch_option(game, remove=True)
+        if not args.no_launch_option:
+            _launch_option(game, remove=True)
         return
-    setup(game, user_data, auth_file, companion)
+    setup(game, user_data, auth_file, companion, launch_option=not args.no_launch_option)
 
 
 if __name__ == "__main__":
