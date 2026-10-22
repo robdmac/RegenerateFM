@@ -522,6 +522,54 @@ class NativeInstallerTests(unittest.TestCase):
         self.assertEqual(squad.read_text(), SQUAD_PANEL)
         self.assertFalse(Path(str(squad) + install.BACKUP_SUFFIX).exists())
 
+    def _fmface_install(self, *, edited=False):
+        """Reproduce an FM Face install: its DLL, settings and manifest, and its own skin."""
+        fmface = self.skin.parent / install.FMFACE["skin"]
+        names = [install.PANEL_FILES["player"], install.PANEL_FILES["staff"]]
+        for name, kind, text in zip(names, ("player", "staff"), (PLAYER_PANEL, STAFF_PANEL)):
+            panel = fmface / name
+            panel.parent.mkdir(parents=True, exist_ok=True)
+            Path(str(panel) + install.FMFACE["backup"]).write_text(text)
+            panel.write_text(skin.modify_panel(text, kind))
+        dll = self.game / "winmm.dll"
+        dll.write_bytes(b"MZ...FMFACE24_COMPANION_STARTED...")
+        (self.game / "fmface24.ini").write_text("[fmface]\n")
+        (self.game / "fmface24-install.json").write_text(json.dumps({"version": 2, "dllSha256": sha(dll),
+            "panels": {name: {"sha256": sha(fmface / name), "created": False} for name in names}}))
+        if edited:
+            (fmface / names[0]).write_text("edited")
+        return fmface, names
+
+    def test_install_replaces_an_fm_face_install(self):
+        fmface, names = self._fmface_install()
+        with patch("builtins.print") as printed:
+            self.run_installer("--auth-file", str(self.auth))
+        self.assertIn("FM Face", " ".join(str(call) for call in printed.call_args_list))
+        self.assertEqual((fmface / names[0]).read_text(), PLAYER_PANEL)
+        self.assertEqual((fmface / names[1]).read_text(), STAFF_PANEL)
+        self.assertEqual(sorted(path.name for path in fmface.rglob("*backup")), [])
+        for name in ("fmface24.ini", "fmface24-install.json"):
+            self.assertFalse((self.game / name).exists())
+        self.assertEqual((self.game / "winmm.dll").read_bytes(), self.dll.read_bytes())
+        self.run_installer("--remove")
+        self.assertFalse((self.game / "winmm.dll").exists())
+
+    def test_an_edited_fm_face_panel_is_left_and_a_bare_fm_face_dll_replaced(self):
+        fmface, names = self._fmface_install(edited=True)
+        self.run_installer("--auth-file", str(self.auth))
+        self.assertEqual((fmface / names[0]).read_text(), "edited")
+        self.assertEqual((fmface / names[1]).read_text(), STAFF_PANEL)
+        self.run_installer("--remove")
+        (self.game / "winmm.dll").write_bytes(b"MZ...FMFACE24_COMPANION_STARTED...")
+        self.run_installer("--auth-file", str(self.auth))
+        self.assertEqual((self.game / "winmm.dll").read_bytes(), self.dll.read_bytes())
+
+    def test_another_winmm_dll_is_still_refused(self):
+        (self.game / "winmm.dll").write_bytes(b"MZ...someone else's...")
+        with patch("sys.stderr"), self.assertRaises(SystemExit):
+            self.run_installer("--auth-file", str(self.auth))
+        self.assertEqual((self.game / "winmm.dll").read_bytes(), b"MZ...someone else's...")
+
     def test_failed_install_rolls_back_every_write(self):
         before = self.snapshot()
         real_write = install._atomic_write

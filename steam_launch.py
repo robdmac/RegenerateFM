@@ -54,7 +54,8 @@ def steam_roots() -> list[Path]:
         home = Path.home()
         roots += [home / ".steam" / "steam", home / ".local" / "share" / "Steam",
                   home / ".steam" / "debian-installation",
-                  home / ".var" / "app" / "com.valvesoftware.Steam" / ".local" / "share" / "Steam"]
+                  home / ".var" / "app" / "com.valvesoftware.Steam" / ".local" / "share" / "Steam",
+                  home / "snap" / "steam" / "common" / ".local" / "share" / "Steam"]
     return roots
 
 

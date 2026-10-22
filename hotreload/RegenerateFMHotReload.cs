@@ -22,7 +22,7 @@ using UnityEngine.UIElements;
 
 namespace RegenerateFMHotReload
 {
-    [BepInPlugin("regeneratefm.hotreload", "RegenerateFM", "0.9.0")]
+    [BepInPlugin("regeneratefm.hotreload", "RegenerateFM", "1.0.0")]
     public sealed class HotReloadPlugin : BasePlugin
     {
         internal static HotReloadPlugin Instance;

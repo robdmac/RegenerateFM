@@ -9,6 +9,7 @@ Layout of regeneratefm-<version>.zip, in regeneratefm-<version>/:
                hotreload/macos/build.py makes, and run_regeneratefm.sh; only when
                they have been built
   FM24/        regeneratefm-fm24.exe (fm24/build_exe.py), which sets FM24 up itself
+  install-linux.sh  sets up FM26, the FM26 Demo and FM24 on Linux (install_linux.py)
   source/      the public source, docs and tests
 """
 
@@ -33,6 +34,8 @@ PUBLIC_FILES = (
     "credits.py",
     "steam_launch.py",
     "install_service.py",
+    "install_linux.py",
+    "install-linux.sh",
     "make_release.py",
     "hotreload/RegenerateFMHotReload.cs",
     "hotreload/FaceGenerator.cs",
@@ -94,6 +97,7 @@ PUBLIC_FILES = (
     "tests/test_credits.py",
     "tests/test_macos_installer.py",
     "tests/test_steam_launch.py",
+    "tests/test_linux_installer.py",
     "tests/test_fm24.py",
     "tests/test_fm24_setup.py",
     "tests/test_fm24_existing_portrait.py",
@@ -202,7 +206,9 @@ def main() -> None:
         raise SystemExit("Release files are missing: " + ", ".join(missing))
     # The packaged FM24 companion (fm24/build_exe.py), when it has been built.
     companion = ROOT / "dist" / "regeneratefm-fm24"
-    packaged = sorted(path for path in companion.rglob("*") if path.is_file()) if companion.is_dir() else []
+    # Its log, from a test run, stays out.
+    packaged = sorted(path for path in companion.rglob("*") if path.is_file() and path.suffix != ".log") \
+        if companion.is_dir() else []
     if packaged and not (companion / "regeneratefm-fm24.exe").is_file():
         raise SystemExit("dist/regeneratefm-fm24 has no regeneratefm-fm24.exe; rebuild it with fm24/build_exe.py.")
     if any(path.name in (".env", ".fm24-auth") for path in packaged):
@@ -216,6 +222,7 @@ def main() -> None:
     with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for name in TOP_LEVEL:
             archive.write(ROOT / name, f"{top}/{Path(name).name}")
+        write(archive, f"{top}/install-linux.sh", (ROOT / "install-linux.sh").read_bytes(), 0o755)
         for name, (data, mode) in loader.items():
             write(archive, f"{top}/FM26/{name}", data, mode)
         archive.write(ROOT / PLUGIN_DLL, f"{top}/FM26/BepInEx/plugins/RegenerateFMHotReload/RegenerateFMHotReload.dll")
