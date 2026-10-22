@@ -19,6 +19,10 @@ from live_memory import (RECORD_TYPES, MemoryUnavailable, PersonIdentity, _parse
 from process_memory import MemoryScan, fm24_image_base, read_process_bytes
 
 
+# FM24's database has only men: women's football arrived in FM26. The prompt
+# gives facial hair only to a person said to be a man.
+GENDER = "male"
+
 PHYSICAL = {"Acceleration": 34, "Agility": 46, "Balance": 42,
             "Jumping Reach": 39, "Natural Fitness": 50, "Pace": 38,
             "Stamina": 37, "Strength": 36}
@@ -442,12 +446,12 @@ def _profile(pid: int, record: int, identity: PersonIdentity, names: list[str], 
         if len(jobs) != 1 or not next(iter(jobs)):
             raise MemoryUnavailable("Could not verify the FM24 staff job title.")
         if identity_only:
-            return {"type": "staff", "name": identity.name, "age": age, "club": club}
-        return {"type": "staff", "name": identity.name,
+            return {"type": "staff", "gender": GENDER, "name": identity.name, "age": age, "club": club}
+        return {"type": "staff", "gender": GENDER, "name": identity.name,
                 "age": age, "nationality": nation,
                 "jobTitle": jobs.pop(), "club": club}
     if identity_only:
-        return {"type": "player", "name": identity.name, "age": age, "club": playing}
+        return {"type": "player", "gender": GENDER, "name": identity.name, "age": age, "club": playing}
     raw = read_process_bytes(pid, record + LAYOUT["attributes"], 54)
     height_cm = struct.unpack("<H", read_process_bytes(pid, record + LAYOUT["height"], 2))[0]
     rated_position = _position(pid, record)
@@ -458,7 +462,7 @@ def _profile(pid: int, record: int, identity: PersonIdentity, names: list[str], 
     family = rated_position.split(" (")[0]
     if family not in position and not (family == "Midfielder" and "M (" in position):
         raise MemoryUnavailable("FM24 position ratings and title disagree.")
-    profile = {"type": "player", "name": identity.name, "age": age,
+    profile = {"type": "player", "gender": GENDER, "name": identity.name, "age": age,
                "nationality": nation, "position": position, "club": playing,
                "height": _height(height_cm),
                "physical": _attributes(raw, PHYSICAL),
@@ -520,7 +524,7 @@ def squad_player_profile(pid: int, record: int, name: str, club: str, today: dt.
     ratings = read_process_bytes(pid, record + LAYOUT["attributes"], 54)
     height_cm = struct.unpack("<H", read_process_bytes(pid, record + LAYOUT["height"], 2))[0]
     position = _position(pid, record)
-    profile = {"type": "player", "name": name, "age": age,
+    profile = {"type": "player", "gender": GENDER, "name": name, "age": age,
                "nationality": _nation(pid, record), "position": position,
                "club": _playing_club(pid, record, club),
                "height": _height(height_cm),

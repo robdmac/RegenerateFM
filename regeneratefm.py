@@ -24,8 +24,9 @@ import xml.etree.ElementTree as ET
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+import credits
 import keystore
-from appearance import appearance_instruction, appearance_traits
+from appearance import GENDERS, NO_FACIAL_HAIR, appearance_instruction, appearance_traits
 
 # A packaged FM24 companion (fm24/build_exe.py) keeps .env beside its executable.
 ROOT = Path(sys.executable if getattr(sys, "frozen", False) else __file__).resolve().parent
@@ -60,16 +61,23 @@ PORTRAIT_BACKGROUND = (
     "Use a genuinely transparent background with clean hair edges, "
     "without a backdrop, halo or vignette. "
 )
-PORTRAIT_STYLE = (
-    PORTRAIT_FRAMING +
-    "Follow the individual's supplied expression; otherwise use a relaxed neutral expression. "
-    + PORTRAIT_PHOTOGRAPHY +
-    "Give this individual distinctive facial proportions, nose, jaw, eyes, hairline and hairstyle "
-    "consistent with the supplied appearance details and age. Allow varied hair lengths and "
-    "textures and age-appropriate facial hair; avoid defaulting to a model-like face or the "
-    "same tousled brown haircut. " + PORTRAIT_BACKGROUND
-)
+def portrait_style(facial_hair: str) -> str:
+    """The shared look of a generated portrait; ``facial_hair`` finishes the
+    sentence about hair (see _facial_hair_text)."""
+    return (
+        PORTRAIT_FRAMING +
+        "Follow the individual's supplied expression; otherwise use a relaxed neutral expression. "
+        + PORTRAIT_PHOTOGRAPHY +
+        "Give this individual distinctive facial proportions, nose, jaw, eyes, hairline and hairstyle "
+        f"consistent with the supplied appearance details and age. Allow varied hair lengths and "
+        f"textures{facial_hair}; avoid defaulting to a model-like face or the "
+        "same tousled brown haircut. " + PORTRAIT_BACKGROUND
+    )
 
+
+def _facial_hair_text(gender: str | None) -> str:
+    # Only a man may have facial hair; for anyone else the prompt rules it out.
+    return " and age-appropriate facial hair" if gender == "male" else ", with no facial hair"
 
 def load_env(path: Path = ROOT / ".env", use_key_file: bool = True) -> dict[str, str]:
     values = dict(os.environ)
@@ -112,7 +120,7 @@ def portrait_prompt(description: str) -> str:
         raise ValueError("Description must be 800 characters or fewer.")
     return (
         "Create one fictional footballer's tight profile headshot for a sports management game. "
-        "Adult subject. " + PORTRAIT_STYLE +
+        "Adult subject. " + portrait_style(", and facial hair only if the description asks for it") +
         "Wear a football shirt in the kit and colours of the team specified in the description. "
         "If no team is specified, use a plain unbranded football shirt. "
         "No text, logos, badges, borders, or other people. "
@@ -167,11 +175,11 @@ def _stat_strength(score: int | str) -> float:
 
 
 def _appearance_prompt(name: str, age: int, person_id: str | None,
-                       directory: Path | None) -> str:
+                       directory: Path | None, gender: str | None, family: str | None = None) -> str:
     if person_id is None:
         if directory is not None:
             raise ValueError("A person ID is required to save an appearance profile.")
-        return appearance_instruction(appearance_traits("name:" + name.casefold(), age))
+        return _appearance_instruction(appearance_traits("name:" + name.casefold(), age, gender, family), gender)
     person_id = validate_id(person_id)
     path = Path(directory) / ".regeneratefm-appearances" / f"{person_id}.json" if directory is not None else None
     if path is not None and path.exists():
@@ -179,13 +187,72 @@ def _appearance_prompt(name: str, age: int, person_id: str | None,
         if (not isinstance(saved, dict) or saved.get("schemaVersion") != 1
                 or saved.get("personId") != person_id):
             raise ValueError(f"Saved appearance profile is invalid: {path.name}")
-        return appearance_instruction(saved.get("traits"))
-    traits = appearance_traits(person_id, age)
-    instruction = appearance_instruction(traits)
+        # Traits chosen before the person's gender was known (or for another
+        # one) are chosen again for it.
+        if gender is None or saved.get("gender") == gender:
+            return _appearance_instruction(saved.get("traits"), gender)
+    traits = appearance_traits(person_id, age, gender, family)
+    instruction = _appearance_instruction(traits, gender)
     if path is not None:
         saved = {"schemaVersion": 1, "personId": person_id, "traits": traits}
+        if gender is not None:
+            saved["gender"] = gender
         _atomic_write(path, (json.dumps(saved, ensure_ascii=False, indent=2) + "\n").encode())
     return instruction
+
+
+def _appearance_instruction(traits, gender: str | None) -> str:
+    # Saved traits may hold facial hair chosen for a man; only a man keeps it.
+    if isinstance(traits, dict) and gender != "male" and "facialHair" in traits:
+        traits = dict(traits, facialHair=NO_FACIAL_HAIR)
+    return appearance_instruction(traits)
+
+
+def _gender(profile: dict) -> str | None:
+    """"female", "male", or None when the game didn't say."""
+    gender = profile.get("gender")
+    if gender is None or gender == "":
+        return None
+    if gender not in GENDERS:
+        raise ValueError("Gender must be female or male.")
+    return gender
+
+
+# The game's family groups, as FM26 names them on the Favoured Personnel
+# list ("Brothers", "Father", "Half-Sisters"): only these count as relatives.
+FAMILY_RELATIONS = ("twin brother", "twin sister", "twin", "father", "mother", "brother", "sister", "sibling",
+                    "son", "daughter", "parent", "child", "half-brother", "half-sister", "grandfather",
+                    "grandmother", "grandson", "granddaughter", "grandparent", "grandchild", "uncle", "aunt",
+                    "nephew", "niece", "cousin", "relative")
+_FAMILY_GROUP = re.compile(r"^(" + "|".join(re.escape(r) for r in FAMILY_RELATIONS) + r")(?:s|ren)?$")
+
+
+def family_relatives(profile: dict) -> list[tuple[str, str]]:
+    """The profile's relatives as (relation, person ID), closest first: a
+    "Brothers" group gives ("brother", id). Team-mates and coaches are left out."""
+    found = []
+    relatives = profile.get("relatives") or []
+    if not isinstance(relatives, list):
+        raise ValueError("Relatives must be a list.")
+    for relative in relatives:
+        if not isinstance(relative, dict):
+            raise ValueError("Each relative must have a relation and a person ID.")
+        match = _FAMILY_GROUP.match(" ".join(str(relative.get("relation") or "").split()).casefold())
+        if match:
+            found.append((match.group(1), validate_id(str(relative.get("personId") or ""))))
+    return sorted(found, key=lambda item: FAMILY_RELATIONS.index(item[0]))
+
+
+def family_seed(person_id: str | None, relatives: list[tuple[str, str]]) -> str | None:
+    """The seed relatives share (appearance.FAMILY_TRAITS): the family's lowest person ID."""
+    if not relatives:
+        return None
+    ids = [int(person) for _, person in relatives] + ([int(person_id)] if person_id is not None else [])
+    return f"family:{min(ids)}"
+
+
+def _gender_text(name: str, gender: str | None) -> str:
+    return {"female": f" {name} is a woman.", "male": f" {name} is a man."}.get(gender, "")
 
 
 def _no_club(club: str) -> bool:
@@ -216,6 +283,22 @@ def _profile_kind_and_age(profile: dict) -> tuple[str, str, int]:
     return kind, label, age
 
 
+def relative_prompt(profile: dict, relation: str, *, person_id: str | None = None,
+                    appearance_dir: Path | None = None) -> str:
+    """profile_prompt, for an image request whose input image is a relative's
+    RegenerateFM face: the new face takes only a slight family resemblance."""
+    if relation not in FAMILY_RELATIONS:
+        raise ValueError("Relation must be one of the family relations.")
+    prompt = profile_prompt(profile, person_id=person_id, appearance_dir=appearance_dir)
+    name = _profile_text(profile, "name", "Staff" if profile.get("type") == "staff" else "Player")
+    return (
+        f"{prompt} The supplied image is a portrait of {name}'s {relation}, not of {name}. "
+        f"Give {name} only a slight family resemblance to them, such as a similar face shape, eye shape or "
+        f"colouring, while keeping {name} clearly a different person, with their own age, build, hairstyle and "
+        "features as described above. Do not copy the supplied face, its expression or its pose."
+    )
+
+
 def update_prompt(profile: dict) -> str:
     """Instructions for refreshing an existing portrait supplied as the input image.
 
@@ -224,14 +307,16 @@ def update_prompt(profile: dict) -> str:
     """
     kind, label, age = _profile_kind_and_age(profile)
     name = _profile_text(profile, "name", label)
+    gender = _gender(profile)
     if kind == "staff":
         attire = "Dress them in a simple unbranded dark jacket or training top. "
     else:
         attire = _kit_text(_profile_text(profile, "club"))
     return (
         f"Update this Football Manager profile picture of {name}. The supplied image is "
-        f"{name}'s current portrait. Keep them clearly the same person, with the same face shape, "
+        f"{name}'s current portrait.{_gender_text(name, gender)} Keep them clearly the same person, with the same face shape, "
         "features, skin tone, eye colour, hairstyle, facial hair and distinguishing marks. "
+        + ("" if gender == "male" else "Do not add any facial hair. ") +
         f"Show {name} as they look now, at age {age}: if the supplied picture looks younger or "
         "older, change only the natural signs of age, such as hairline, hair colour, skin "
         "texture and facial lines. " + attire + PORTRAIT_FRAMING + PORTRAIT_PHOTOGRAPHY +
@@ -250,6 +335,8 @@ def profile_prompt(profile: dict, *, person_id: str | None = None,
     label = "Staff" if kind == "staff" else "Player"
     name = _profile_text(profile, "name", label)
     nationality = _profile_text(profile, "nationality", label)
+    gender = _gender(profile)
+    family = family_seed(person_id, family_relatives(profile))
     biography = _biography_headline(profile)
     biography_text = f" Biography headline: {biography}{'' if biography.endswith(('.', '!', '?')) else '.'}" if biography else ""
     age = profile.get("age")
@@ -261,12 +348,12 @@ def profile_prompt(profile: dict, *, person_id: str | None = None,
         if club is not None and club != "":
             club = _profile_text(profile, "club", label)
         club_text = f" at {club}" if club else ""
-        appearance = _appearance_prompt(name, age, person_id, appearance_dir)
+        appearance = _appearance_prompt(name, age, person_id, appearance_dir, gender, family)
         return (
             f"Football Manager profile picture for {name}, age {age}, nationality {nationality}, "
-            f"job title {job_title}{club_text}.{biography_text} "
+            f"job title {job_title}{club_text}.{_gender_text(name, gender)}{biography_text} "
             "Create one plausible, original staff portrait for a sports management game. "
-            + appearance + PORTRAIT_STYLE +
+            + appearance + portrait_style(_facial_hair_text(gender)) +
             "Wear a simple unbranded dark jacket or training top. "
             "Use age and biography to guide appearance, but do not infer "
             "ethnicity from nationality. No text, logos, badges, borders, or other people."
@@ -294,24 +381,28 @@ def profile_prompt(profile: dict, *, person_id: str | None = None,
     first_name = name.split()[0]
     kit_text = _kit_text(club)
     plays = "who is a free agent" if _no_club(club) else f"who plays for {club}"
-    appearance = _appearance_prompt(name, age, person_id, appearance_dir)
+    appearance = _appearance_prompt(name, age, person_id, appearance_dir, gender, family)
     return (
         f"Football Manager profile picture for {name}, a {age}-year-old {position} "
-        f"{plays}. Nationality: {nationality}. {first_name} is {height} tall.{biography_text} "
+        f"{plays}. Nationality: {nationality}.{_gender_text(first_name, gender)} {first_name} is {height} tall.{biography_text} "
         + ("Physical stats: " + ", ".join(f"{stat} {physical[stat]}/20" for stat in known_physical) + ". "
            if known_physical else "") +
         f"Best non-physical stats: {fmt(best)}. Weakest non-physical stats: {fmt(worst)}. "
         "Create one plausible, original footballer portrait for a sports management game. "
-        + appearance + PORTRAIT_STYLE +
+        + appearance + portrait_style(_facial_hair_text(gender)) +
         f"{kit_text}Use age and physical details to guide appearance, but do not depict "
         "numbers or infer ethnicity from nationality. No text, logos, badges, borders, or other people."
     )
 
 
-def api_base(env: dict[str, str]) -> str:
-    """OPENAI_BASE_URL, for testing against a local stand-in (like the FM26
-    plugin's ApiBaseUrl); OpenAI's own address by default. Plain http is
-    accepted only for this computer."""
+def api_base(env: dict[str, str], key: str | None = None) -> str:
+    """The image API for ``key``: the credits service's for a RegenerateFM
+    credits token (REGENERATEFM_CREDITS_URL when testing), otherwise
+    OPENAI_BASE_URL, for testing against a local stand-in (like the FM26
+    plugin's ApiBaseUrl), or OpenAI's own address. Plain http is accepted
+    only for this computer."""
+    if credits.is_token(key):
+        return credits.api_base(credits.service_url(env.get("REGENERATEFM_CREDITS_URL", "")))
     return keystore.api_base(env.get("OPENAI_BASE_URL", ""))
 
 
@@ -335,7 +426,8 @@ def _image_request(key: str, endpoint: str, body: bytes, content_type: str,
                    settings: dict[str, str], metadata: dict | None, base: str) -> bytes:
     request = urllib.request.Request(
         f"{base}/images/{endpoint}", data=body,
-        headers={"Authorization": f"Bearer {key}", "Content-Type": content_type},
+        headers={"Authorization": f"Bearer {key}", "Content-Type": content_type,
+                 "User-Agent": credits.USER_AGENT},
         method="POST",
     )
     try:
@@ -347,9 +439,10 @@ def _image_request(key: str, endpoint: str, body: bytes, content_type: str,
         except (ValueError, AttributeError):
             detail = ""
         detail = str(detail or exc.reason).replace(key, "[REDACTED]")
-        raise RuntimeError(f"OpenAI image API returned HTTP {exc.code}: {detail}") from exc
+        name = "RegenerateFM credits" if credits.is_token(key) else "OpenAI image API"
+        raise RuntimeError(f"{name} returned HTTP {exc.code}: {detail}") from exc
     except (urllib.error.URLError, TimeoutError) as exc:
-        raise RuntimeError(f"Could not reach the OpenAI image API: {exc.reason if isinstance(exc, urllib.error.URLError) else exc}") from exc
+        raise RuntimeError(f"Could not reach {'RegenerateFM credits' if credits.is_token(key) else 'the OpenAI image API'}: {exc.reason if isinstance(exc, urllib.error.URLError) else exc}") from exc
     image = result.get("data", [{}])[0].get("b64_json")
     if not image:
         raise RuntimeError("Image API response did not contain an image.")
@@ -388,7 +481,7 @@ def generate_png(env: dict[str, str], prompt: str, *, metadata: dict | None = No
     key, settings = _image_settings(env)
     payload = dict(settings, prompt=prompt)
     return _image_request(key, "generations", json.dumps(payload).encode("utf-8"),
-                          "application/json", settings, metadata, api_base(env))
+                          "application/json", settings, metadata, api_base(env, key))
 
 
 def edit_png(env: dict[str, str], prompt: str, reference: bytes, *,
@@ -409,7 +502,7 @@ def edit_png(env: dict[str, str], prompt: str, reference: bytes, *,
                  + reference + b"\r\n")
     parts.append(f"--{boundary}--\r\n".encode("ascii"))
     return _image_request(key, "edits", b"".join(parts),
-                          f"multipart/form-data; boundary={boundary}", settings, metadata, api_base(env))
+                          f"multipart/form-data; boundary={boundary}", settings, metadata, api_base(env, key))
 
 
 def _atomic_write(path: Path, content: bytes) -> None:

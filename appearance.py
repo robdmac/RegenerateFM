@@ -1,15 +1,32 @@
 """Stable, understated appearance choices for generated FM portraits."""
 
+from __future__ import annotations
+
 import hashlib
 
 
 TRAIT_KEYS = ("face", "features", "hair", "facialHair", "expression")
+GENDERS = ("female", "male")
+# Facial hair is only ever chosen for a man: anyone else, including a person
+# whose gender isn't known, gets this.
+NO_FACIAL_HAIR = "no facial hair"
 
 
-def appearance_traits(seed: str, age: int) -> dict[str, str]:
-    """Choose independently per trait; never use Python's randomized hash()."""
+# Relatives share these, chosen from the family's seed: a slight family
+# resemblance, while jaw, cheeks, hairstyle and expression stay their own.
+FAMILY_TRAITS = ("faceShape", "features", "hairColour")
+
+
+def appearance_traits(seed: str, age: int, gender: str | None = None,
+                      family: str | None = None) -> dict[str, str]:
+    """Choose independently per trait; never use Python's randomized hash().
+
+    ``gender`` is "female", "male" or None (not known). Women get their own
+    hairstyles, and only men get facial hair. ``family``, a seed shared by
+    relatives (family_seed in regeneratefm.py), chooses FAMILY_TRAITS."""
     def pick(category, choices):
-        digest = hashlib.sha256(f"regeneratefm-appearance-v1\0{seed}\0{category}".encode()).digest()
+        chosen_by = family if family is not None and category in FAMILY_TRAITS else seed
+        digest = hashlib.sha256(f"regeneratefm-appearance-v1\0{chosen_by}\0{category}".encode()).digest()
         return choices[int.from_bytes(digest[:8], "big") % len(choices)]
 
     shape = pick("faceShape", ("a relatively long face", "a broad face", "an oval face",
@@ -29,16 +46,25 @@ def appearance_traits(seed: str, age: int) -> dict[str, str]:
         "a long, straight nose and widely spaced, moderately thick eyebrows",
         "a gently convex nose bridge and short, straight eyebrows",
     ))
-    styles = (
-        "a close buzz cut", "short, tightly curled hair", "short, straight hair brushed forward",
-        "short, coiled hair with a simple rounded outline", "a plain short side-parted haircut",
-        "medium-length, loosely wavy hair pushed back", "a shaved head",
-        "short hair with an uneven fringe", "longer curls loosely swept away from the forehead",
-        "short, close-cropped hair with a naturally uneven hairline",
-    )
-    if age >= 25:
-        styles += ("very short hair with a mildly receding hairline",)
-    style = pick("hairStyle", styles)
+    if gender == "female":
+        styles = (
+            "hair tied back in a neat ponytail", "hair pulled back into a low bun", "a high ponytail",
+            "shoulder-length straight hair tucked behind the ears", "a short pixie cut",
+            "tightly coiled hair pulled back from the face", "braids tied back", "a chin-length bob",
+            "curly hair tied up loosely", "short, cropped natural hair",
+        )
+        style = pick("hairStyleFemale", styles)
+    else:
+        styles = (
+            "a close buzz cut", "short, tightly curled hair", "short, straight hair brushed forward",
+            "short, coiled hair with a simple rounded outline", "a plain short side-parted haircut",
+            "medium-length, loosely wavy hair pushed back", "a shaved head",
+            "short hair with an uneven fringe", "longer curls loosely swept away from the forehead",
+            "short, close-cropped hair with a naturally uneven hairline",
+        )
+        if age >= 25:
+            styles += ("very short hair with a mildly receding hairline",)
+        style = pick("hairStyle", styles)
     colours = ("black", "dark brown", "medium brown", "light brown", "dark blond", "auburn")
     if age >= 45:
         colours += ("salt-and-pepper", "greying brown", "silver-grey")
@@ -48,6 +74,7 @@ def appearance_traits(seed: str, age: int) -> dict[str, str]:
         facial_hair += ("clean-shaven", "very light, patchy stubble", "a faint moustache")
     if age >= 23:
         facial_hair += ("short, uneven stubble", "a short, neatly trimmed beard", "a modest moustache")
+    facial_hair = pick("facialHair", facial_hair) if gender == "male" else NO_FACIAL_HAIR
     expression = pick("expression", (
         "a relaxed neutral expression with closed lips",
         "a relaxed neutral expression with closed lips",
@@ -56,7 +83,7 @@ def appearance_traits(seed: str, age: int) -> dict[str, str]:
         "a small, natural closed-mouth smile",
         "a restrained, natural smile showing a little teeth",
     ))
-    return dict(zip(TRAIT_KEYS, (face, features, hair, pick("facialHair", facial_hair), expression)))
+    return dict(zip(TRAIT_KEYS, (face, features, hair, facial_hair, expression)))
 
 
 def appearance_instruction(traits: dict[str, str]) -> str:

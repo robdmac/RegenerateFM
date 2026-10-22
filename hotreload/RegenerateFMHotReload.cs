@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.IO;
 using System.Net;
 using System.Security.Cryptography;
@@ -93,6 +94,7 @@ namespace RegenerateFMHotReload
         // How long an opened profile's attributes may show as unknown before the
         // batch takes the player as needing scouting rather than still loading.
         private static readonly TimeSpan ScoutingSettle = TimeSpan.FromSeconds(5);
+        private static readonly TimeSpan GenderWait = TimeSpan.FromSeconds(3);
 
         public override void Load()
         {
@@ -271,7 +273,8 @@ namespace RegenerateFMHotReload
                 Log.LogInfo((update ? "Updating face for " : "Generating face for ") + snapshot.Name + " (" + personId.Value + "): " +
                             snapshot.Physical.Count + " physical, " + snapshot.Technical.Count + " technical, " +
                             snapshot.Mental.Count + " mental, " + snapshot.Goalkeeping.Count + " goalkeeping attributes; bio=" +
-                            (snapshot.BiographyHeadline != null));
+                            (snapshot.BiographyHeadline != null) + "; family: " +
+                            (FamilyText(snapshot) ?? "none"));
                 _pending = new PendingGeneration
                 {
                     Task = RequestPortrait(personId.Value, snapshot, settings, update ? "update" : "generate", reference),
@@ -395,6 +398,8 @@ namespace RegenerateFMHotReload
                 }
             profile.Position = FirstText(FindNamed(banner, "Frame 1000003901"));
             profile.Club = FirstText(FindNamed(header, "PlayingTeam"));
+            profile.Gender = HeaderGender(header, playerId);
+            profile.Relatives = HeaderRelatives(header, playerId);
             // "PlayingTeam" is the contract club; a loaned player's header also
             // shows the loan club, so the face wears the kit they play in now.
             var loanClub = FirstText(FindNamed(header, "TeamAwayFromOrTo"));
@@ -529,7 +534,8 @@ namespace RegenerateFMHotReload
             var texts = TextValues(header);
             if (!HeaderId(header, out long visibleId) || visibleId != personId)
                 throw new InvalidOperationException("Staff profile changed; reopen it and try again.");
-            var profile = new ProfileSnapshot { Type = "staff" };
+            var profile = new ProfileSnapshot { Type = "staff", Gender = HeaderGender(header, personId),
+                                                Relatives = HeaderRelatives(header, personId) };
             var banner = FindNamed(header, "report-player-banner-max") ?? header;
             var bannerTexts = TextValues(banner);
             for (int i = 0; i < bannerTexts.Count; i++)
@@ -644,6 +650,212 @@ namespace RegenerateFMHotReload
             return false;
         }
 
+        // FM26 binds a person's gender as Person.IsPersonFemale. The header's
+        // objectID aliases Person.UniqueId, so the Person node is that alias's
+        // parent. Bound values arrive a frame or more after the bind, so the
+        // answer is kept by person ID, and the header is bound when it appears.
+        private static readonly Dictionary<long, bool> FemaleById = new Dictionary<long, bool>();
+        private static readonly Dictionary<long, Bindings.ValueChangedCallback> GenderCallbacks =
+            new Dictionary<long, Bindings.ValueChangedCallback>();
+        private static readonly Il2CppSystem.String GenderProperty = "IsPersonFemale";
+
+        private void CheckGender()
+        {
+            var root = CurrentRoot();
+            var header = root == null ? null : FindNamed(root, "ReportHeader");
+            if (header != null && BoundObjectId(header, out long id))
+            {
+                WatchGender(header, id);
+                WatchFavoured(header, id);
+            }
+        }
+
+        private static string HeaderGender(VisualElement header, long id)
+        {
+            WatchGender(header, id);
+            return FemaleById.TryGetValue(id, out bool female) ? (female ? "female" : "male") : null;
+        }
+
+        private static void WatchGender(VisualElement header, long id)
+        {
+            if (FemaleById.ContainsKey(id) || !PersonNodeKey(header, out var bindings, out var personKey))
+                return;
+            var span = Il2CppSystem.MemoryExtensions.AsSpan(GenderProperty);
+            if (bindings.Exists(ref personKey, ref span))
+            {
+                var value = bindings.Get(ref personKey, ref span);
+                if (value != null && !value.IsNull && bool.TryParse(value.AsString(), out bool known))
+                {
+                    FemaleById[id] = known;
+                    Instance?.Log.LogInfo($"Person {id} is {(known ? "female" : "male")}");
+                    return;
+                }
+            }
+            if (GenderCallbacks.ContainsKey(id))
+                return;
+            Bindings.ValueChangedCallback callback = null;
+            callback = new Action<Bindings.Key, SI.Core.TypedValue>((key, value) =>
+            {
+                if (value == null || value.IsNull || !bool.TryParse(value.AsString(), out bool female))
+                    return;
+                FemaleById[id] = female;
+                Instance?.Log.LogInfo($"Person {id} is {(female ? "female" : "male")}");
+                // One answer is enough; drop the binding so viewed people don't pile up.
+                if (GenderCallbacks.Remove(id) && GameSubsystems.TryGet<Bindings>(out var current) && current != null)
+                {
+                    var unbindKey = key;
+                    try { current.Unbind(ref unbindKey, callback); }
+                    catch (Exception) { }
+                }
+            });
+            GenderCallbacks[id] = callback;
+            var bindSpan = Il2CppSystem.MemoryExtensions.AsSpan(GenderProperty);
+            bindings.Bind(ref personKey, ref bindSpan, callback);
+        }
+
+        private static bool PersonNodeKey(VisualElement header, out Bindings bindings, out Bindings.Key personKey)
+        {
+            personKey = default;
+            bindings = null;
+            var view = ObjectIdRemapper(header)?.TryCast<IBindableElement>()?.GetView();
+            if (view == null || !GameSubsystems.TryGet<Bindings>(out bindings) || bindings == null)
+                return false;
+            var key = view.Key;
+            if (!bindings.TryGetNode(ref key, out var node) || node == null)
+                return false;
+            for (var child = node.FirstChild; child != null; child = child.NextSibling)
+                if (child.Name == "objectID")
+                {
+                    var alias = child.Alias;
+                    if (!bindings.TryGetNode(ref alias, out var target) || target?.Parent == null)
+                        return false;
+                    personKey = target.Parent.Key;
+                    return true;
+                }
+            return false;
+        }
+
+        // FM26 lists a person's family under Person.FavouredPeople, with
+        // team-mates and former coaches: a list of groups, each a DisplayString
+        // ("Brothers", "Father") and a PersonList. Each group, and then each
+        // person, is copied into a node of RegenerateFM's own so that its
+        // properties can be bound, as FM26's own lists do. Only the person on
+        // screen keeps those nodes and bindings; a person whose list was still
+        // arriving when another opened is read again next time.
+        private static readonly Dictionary<long, List<(string Relation, string PersonId)>> FavouredById =
+            new Dictionary<long, List<(string Relation, string PersonId)>>();
+        private static readonly List<(Bindings.Key Root, Il2CppSystem.String Path, Bindings.ValueChangedCallback Callback)> FavouredBindings =
+            new List<(Bindings.Key, Il2CppSystem.String, Bindings.ValueChangedCallback)>();
+        private static readonly List<Bindings.Key> FavouredProbes = new List<Bindings.Key>();
+        private static long _favouredId;
+        private static int _favouredPending;
+        private static int _probeSerial;
+
+        private static string FamilyText(ProfileSnapshot profile)
+        {
+            try
+            {
+                var family = FaceGenerator.FamilyRelatives(profile);
+                return family.Count == 0 ? null : string.Join(", ", family.Select(item => item.Relation + " " + item.PersonId));
+            }
+            catch (ArgumentException error) { return error.Message; }
+        }
+
+        private static List<(string Relation, string PersonId)> HeaderRelatives(VisualElement header, long id)
+        {
+            WatchFavoured(header, id);
+            return FavouredById.TryGetValue(id, out var found) && !(id == _favouredId && _favouredPending > 0)
+                ? new List<(string Relation, string PersonId)>(found) : new List<(string Relation, string PersonId)>();
+        }
+
+        private static void WatchFavoured(VisualElement header, long id)
+        {
+            if (id == _favouredId || !PersonNodeKey(header, out var bindings, out var personKey))
+                return;
+            ReleaseFavoured(bindings);
+            if (FavouredById.ContainsKey(id))
+                return;
+            _favouredId = id;
+            var found = FavouredById[id] = new List<(string Relation, string PersonId)>();
+            BindValue(bindings, personKey, "FavouredPeople.FavouredPeopleReasonList", groups =>
+            {
+                var list = groups.Get()?.TryCast<Il2CppSystem.Collections.Generic.List<SI.Core.TypedValue>>();
+                for (int i = 0; list != null && i < list.Count; i++)
+                {
+                    var group = Probe(bindings, list[i]);
+                    BindValue(bindings, group, "DisplayString", display =>
+                    {
+                        string relation = display.AsString();
+                        BindValue(bindings, group, "PersonList", people =>
+                        {
+                            var members = people.Get()?.TryCast<Il2CppSystem.Collections.Generic.List<SI.Core.TypedValue>>();
+                            for (int j = 0; members != null && j < members.Count; j++)
+                                BindValue(bindings, Probe(bindings, members[j]), "UniqueId", unique =>
+                                {
+                                    if (long.TryParse(unique.AsString(), out long other) && other > 0 &&
+                                        !found.Contains((relation, other.ToString())))
+                                        found.Add((relation, other.ToString()));
+                                });
+                        });
+                    });
+                }
+            });
+        }
+
+        // Drops the nodes and bindings made for the last person; their list is
+        // forgotten if it hadn't all arrived.
+        private static void ReleaseFavoured(Bindings bindings)
+        {
+            if (_favouredPending > 0)
+                FavouredById.Remove(_favouredId);
+            foreach (var (root, path, callback) in FavouredBindings)
+            {
+                var key = root;
+                var span = Il2CppSystem.MemoryExtensions.AsSpan(path);
+                try { bindings.Unbind(ref key, ref span, callback); }
+                catch (Exception) { }
+            }
+            foreach (var probe in FavouredProbes)
+            {
+                var key = probe;
+                try { bindings.Remove(ref key); }
+                catch (Exception) { }
+            }
+            FavouredBindings.Clear();
+            FavouredProbes.Clear();
+            _favouredId = 0;
+            _favouredPending = 0;
+        }
+
+        // A node of RegenerateFM's own holding ``value``, so its properties can be bound.
+        private static Bindings.Key Probe(Bindings bindings, SI.Core.TypedValue value)
+        {
+            var path = Il2CppSystem.MemoryExtensions.AsSpan((Il2CppSystem.String)("RegenerateFMFavoured" + (++_probeSerial)));
+            var key = bindings.Set(ref path, value, default, default);
+            FavouredProbes.Add(key);
+            return key;
+        }
+
+        // Binds root's path; got runs once, with the first value FM26 sends.
+        private static void BindValue(Bindings bindings, Bindings.Key root, string path, Action<SI.Core.TypedValue> got)
+        {
+            Il2CppSystem.String text = path;
+            bool answered = false;
+            Bindings.ValueChangedCallback callback = new Action<Bindings.Key, SI.Core.TypedValue>((key, value) =>
+            {
+                if (answered || value == null || value.IsNull)
+                    return;
+                answered = true;
+                _favouredPending--;
+                try { got(value); }
+                catch (Exception error) { Instance?.Log.LogWarning("Reading " + path + " failed: " + error.Message); }
+            });
+            _favouredPending++;
+            FavouredBindings.Add((root, text, callback));
+            var span = Il2CppSystem.MemoryExtensions.AsSpan(text);
+            bindings.Bind(ref root, ref span, callback);
+        }
+
         private static BindingRemapper ObjectIdRemapper(VisualElement element)
         {
             if (element == null)
@@ -723,6 +935,8 @@ namespace RegenerateFMHotReload
                 if (Time.unscaledTime < _nextScan)
                     return;
                 _nextScan = Time.unscaledTime + 0.5f;
+                try { plugin.CheckGender(); }
+                catch (Exception error) { plugin.Log.LogWarning("Gender scan failed: " + error.Message); }
                 try { plugin.CheckBiographyCache(); }
                 catch (Exception error) { plugin.Log.LogWarning("Biography scan failed: " + error.Message); }
                 try { plugin.CheckPortraitTrigger(); }
@@ -784,6 +998,9 @@ namespace RegenerateFMHotReload
             // the Overview, so the batch goes on to this team's tab from there.
             // Null when the batch started on Squad > Overview's own table.
             public string ReturnTab;
+            // A team page outside Squad (another club's, or the club's women's team
+            // from its club page): return to it with FM26's Back button.
+            public bool ReturnByBack;
             public bool TabClicked;
             public int NeedsScouting;
         }
@@ -970,7 +1187,8 @@ namespace RegenerateFMHotReload
             int expected = 0;
             foreach (var value in TextValues(table.parent))
             {
-                var match = Regex.Match(value, @"^(?:Senior Squad )?Players\s*\((\d+)\)$");
+                // "Players (28)" on the first team, "U21 Squad Players (21)" on youth teams.
+                var match = Regex.Match(value, @"^(?:Senior Squad |U\d{2} Squad |Squad )?Players\s*\((\d+)\)$");
                 if (match.Success && int.TryParse(match.Groups[1].Value, out expected))
                     break;
             }
@@ -1017,7 +1235,7 @@ namespace RegenerateFMHotReload
                 if (candidate == null)
                     continue;
                 scan.Portraits[candidate.Key] = candidate;
-                if (candidate.Address == "person_default")
+                if (IsDefaultPortrait(candidate.Address))
                     scan.Missing.Add(candidate.Key);
                 else
                     scan.Missing.Remove(candidate.Key);
@@ -1047,6 +1265,11 @@ namespace RegenerateFMHotReload
                 }
                 scan.List.scrollOffset = new Vector2(scan.List.scrollOffset.x, scan.OriginalY);
                 _squadScan = null;
+                var kinds = new SortedSet<string>();
+                foreach (var seen in scan.Portraits.Values)
+                    if (seen.Address != null && !Regex.IsMatch(seen.Address, @"\d{4}"))
+                        kinds.Add(seen.Address);
+                Log.LogInfo("DIAG squad portrait kinds: " + string.Join(", ", kinds));
                 Log.LogInfo("RegenerateFM squad scan finished: " + scan.Portraits.Count +
                             " of " + scan.ExpectedCount + " players, " + scan.Missing.Count + " missing portraits");
                 if (scan.Status != null)
@@ -1129,11 +1352,12 @@ namespace RegenerateFMHotReload
             var status = ShowDialog("Opening the first missing player…", "Stop after current face",
                 () => RequestStopSquadBatch());
             var batch = new SquadBatch { List = list, Status = status, Settings = settings,
-                ReturnTab = SquadPageTeam(CurrentRoot()) };
+                ReturnTab = SquadPageTeam(CurrentRoot()), ReturnByBack = FindNamed(CurrentRoot(), "SquadScreen") == null };
             batch.Queue.AddRange(missing);
             _squadBatch = batch;
             list.scrollOffset = new Vector2(list.scrollOffset.x, 0);
-            Log.LogInfo("RegenerateFM squad batch started for " + missing.Count + " players");
+            Log.LogInfo("RegenerateFM squad batch started for " + missing.Count + " players" +
+                        (batch.ReturnByBack ? " (returning with Back)" : ""));
         }
 
         private void PollSquadBatch()
@@ -1249,7 +1473,7 @@ namespace RegenerateFMHotReload
                     readable++;
                 if (candidate == null || candidate.Key != target.Key)
                     continue;
-                if (candidate.Address != "person_default")
+                if (!IsDefaultPortrait(candidate.Address))
                 {
                     Log.LogInfo("Skipping " + target.Name + ": portrait now exists");
                     SetBatchStage(batch, SquadStage.ReturnToSquad);
@@ -1331,12 +1555,16 @@ namespace RegenerateFMHotReload
                 throw new InvalidOperationException("Opened player does not match " + target.Name + "; no image requested");
             }
             var address = FindNamed(picture, "PersonImage")?.TryCast<SI.UI.Image>()?.m_imageAddressableID?.ToString();
-            if (address != "person_default")
+            if (!IsDefaultPortrait(address))
             {
                 Log.LogInfo("Skipping " + target.Name + ": profile portrait is not missing (" + address + ")");
                 SetBatchStage(batch, SquadStage.ReturnToSquad);
                 return;
             }
+            // Gender arrives through its own binding; give it a moment, then go
+            // without (the prompt then rules out facial hair).
+            if (profile.Gender == null && System.DateTime.UtcNow - batch.StageStartedUtc < GenderWait)
+                return;
             if (profile.BiographyHeadline == null && _biographyCache.TryGetValue(personId, out string biography))
                 profile.BiographyHeadline = biography;
             batch.PersonId = personId;
@@ -1394,7 +1622,11 @@ namespace RegenerateFMHotReload
                 nav = nav.parent;
             if (nav == null)
                 return;
-            var label = FindText(nav, batch.ReturnTab) ?? FindText(nav, "First Team");
+            // English clubs label youth tabs by age ("Under 21s" for "Arsenal U21s").
+            var age = Regex.Match(batch.ReturnTab ?? "", @"\bU(\d{2})s?$");
+            var label = FindText(nav, batch.ReturnTab) ??
+                        (age.Success ? FindText(nav, "Under " + age.Groups[1].Value + "s") : null) ??
+                        FindText(nav, "First Team");
             var button = label;
             while (button != null && button.TryCast<Button>() == null)
                 button = button.parent;
@@ -1412,6 +1644,22 @@ namespace RegenerateFMHotReload
             if (BatchList(batch) != null)
             {
                 SetBatchStage(batch, SquadStage.AwaitSquad);
+                return;
+            }
+            if (batch.ReturnByBack)
+            {
+                Button back = null;
+                var named = new List<VisualElement>();
+                CollectNamed(CurrentRoot(), "BackButton", named);
+                foreach (var element in named)
+                    if (back == null && element.worldBound.width > 0)
+                        back = element.TryCast<Button>();
+                if (back == null)
+                    throw new InvalidOperationException("FM26's Back button was not found (" + named.Count + " named BackButton)");
+                batch.TabClicked = true;
+                SetBatchStage(batch, SquadStage.AwaitSquad);
+                back.clickable.SimulateSingleClick(null);
+                Log.LogInfo("Went back to " + batch.ReturnTab + " after " + batch.Queue[batch.Index].Name);
                 return;
             }
             var label = FindText(CurrentRoot(), "Squad");
@@ -1527,8 +1775,9 @@ namespace RegenerateFMHotReload
             text("RegenerateFM: paying for faces", 18);
             if (problem != null)
                 text(problem, 14).style.color = new Color(1f, 0.82f, 0.45f, 1f);
-            text("Buy RegenerateFM credits: 50 faces for £1, 400 for £5 or 1000 for £10. You sign in with your email " +
-                 "in your browser; there's nothing to paste.", 14);
+            text("Buy RegenerateFM credits: one credit makes or updates one face. Packs go from 75 credits for " +
+                 "£2 / €2.50 / $2.50 to 1000 for £20 / €24 / $24. You sign in with your email in your browser; " +
+                 "there's nothing to paste.", 14);
             var buy = new Button((Il2CppSystem.Action)(System.Action)(() => BuyCredits()))
             { text = "Buy credits / Sign in", focusable = false };
             buy.style.height = 34;
@@ -1696,7 +1945,7 @@ namespace RegenerateFMHotReload
         }
 
         // The key dialog's questions (the same as the credits pages' FAQ, in
-        // regeneratefm-credits/src/pages.ts), shown in place of the dialog's
+        // regeneratefm-server/src/pages.ts), shown in place of the dialog's
         // controls until Back. A question's link opens in the browser.
         private static readonly (string Question, string Answer, string LinkText, string Link)[] KeyFaq =
         {
@@ -1705,13 +1954,14 @@ namespace RegenerateFMHotReload
              "its own AI, so every face is one paid request to OpenAI, whether you use credits or your own key.", null, null),
             ("Which is cheaper, credits or my own OpenAI API key?",
              "Your own key. You then pay OpenAI's price for each image directly, which at RegenerateFM's default quality is " +
-             "usually around a penny or less. Credits cost 1p to 2p a face, but you don't need an OpenAI account, " +
-             "billing set up with OpenAI, or a key to copy into the game.",
+             "about 1.2p (1.6 US cents) a face. Credits cost 2p to 2.7p each (2.4 to 3.3 cents in euros or dollars), " +
+             "but you don't need an OpenAI account, billing set up with OpenAI, or a key to copy into the game.",
              "OpenAI's API pricing", "https://openai.com/api/pricing/"),
             ("Why do credits cost more than OpenAI's own price?",
-             "Credits pay for more than the image: the card payment (each payment costs us about 20p plus 1.5%, which is " +
-             "why small packs cost more per face), the service that signs you in and passes each request on to OpenAI, " +
-             "and the credit we give back when an image fails.", null, null),
+             "Credits pay for more than the image: VAT or sales tax, the card payment (each payment has a fixed fee, which " +
+             "is why small packs cost more per credit), Stripe handling tax, fraud and refunds for every sale, the service " +
+             "that signs you in and passes each request on to OpenAI, and the credit we give back when an image fails.",
+             null, null),
             ("Can I use my ChatGPT Plus or Pro subscription instead?",
              "Not yet. A ChatGPT subscription and OpenAI's API are separate products. OpenAI has started letting some apps " +
              "use a ChatGPT plan through \u201cSign in with ChatGPT\u201d, but it's a preview, and image generation is one " +
@@ -2300,6 +2550,11 @@ namespace RegenerateFMHotReload
             }
         }
 
+        // FM26 shows a silhouette when a person has no face (neither a generated
+        // one nor a game photo): "person_default", or a variant of it.
+        private static bool IsDefaultPortrait(string address) =>
+            address != null && address.StartsWith("person_default", StringComparison.Ordinal);
+
         // FM26 shows "person_default" (a silhouette) when a person has no face:
         // neither a generated one nor a game photo.
         private static bool HasFace(VisualElement picture) => FaceState(picture) == true;
@@ -2309,7 +2564,7 @@ namespace RegenerateFMHotReload
         {
             var image = picture == null ? null : FindNamed(picture, "PersonImage")?.TryCast<SI.UI.Image>();
             var address = image?.m_imageAddressableID?.ToString();
-            return string.IsNullOrEmpty(address) ? (bool?)null : address != "person_default";
+            return string.IsNullOrEmpty(address) ? (bool?)null : !IsDefaultPortrait(address);
         }
 
         // An Actions menu choice: act on the profile open now. ``expected`` is the

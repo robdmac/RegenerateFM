@@ -250,3 +250,54 @@
   the launcher starts the app's own executable ("Football Manager 26 Demo"),
   and `steam_launch.py fm26demo` sets its launch option. Checked with the
   image stand-in: a 21-face batch and staff Generate and Update.
+
+## Requested (2026-10-21)
+
+- **Relatives.** FM26: done (2026-10-22). The plugin reads the person's
+  family from `Person.FavouredPeople.FavouredPeopleReasonList` (FM26's
+  Favoured Personnel groups: "Brothers", "Father" and so on, with each
+  person's ID); team-mates and former coaches are left out. Relatives share
+  face shape, nose and eyebrows, and hair colour (chosen from the family's
+  lowest person ID), and when a relative already has a RegenerateFM face, a
+  new face is made from it with the edits endpoint and a prompt asking for
+  only a slight family resemblance. Checked: Jobe Bellingham's brother Jude
+  read in game, and Jobe's request went to the edits endpoint with Jude's
+  face (image stand-in); a billed father-and-son pair in Python looked
+  related but clearly different. Still to do: FM24 (see below), group
+  names in other languages (only
+  English is matched), and the game's own photos as references (only
+  RegenerateFM faces are used). Traits already saved for a person are kept,
+  so a face made before this keeps its own look.
+- **FM24 relatives (research, 2026-10-22, Mac build, MK Dons save):** FM24
+  uses the same person IDs as FM26 (Jude Bellingham 29232937, Jobe
+  2000205927). A player object's +0x2d8 (a staff object's +0x158) points to
+  a 0x50-byte holder of three vectors {begin, end, capacity}; the first is
+  the person's favoured people, clubs and nations, as 16-byte entries
+  {object pointer, info}. Person entries have info `TT 00 03 01 LL 4f 00 ff`
+  (TT a type: 05 former team-mate, 06 former manager, 09 admired, 07/08 seen
+  on staff lists; LL a level). No family was found there: neither the
+  Bellingham nor the Thuram brothers list each other, and no memory holds
+  Jude's and Jobe's IDs or handles together. Either FM24's database doesn't
+  record these families or keeps them elsewhere; check a family FM24 shows
+  as related on a profile next. The probe scripts were read-only.
+- **Women's football.** FM26: done (2026-10-22). The plugin reads
+  `Person.IsPersonFemale` from the profile header's bindings for players
+  and staff, and the prompt says who is a woman; only men get facial hair.
+  Women's silhouettes are `person_default_w`, not `person_default`, so
+  they now count as missing faces. A squad batch on a team page outside
+  Squad (the club's women's team, reached from its club page) returns to
+  it with FM26's Back button. Checked live in an Arsenal save with the WSL:
+  Leah Williamson (Generate), a two-face batch on the women's squad, and
+  head coach Renée Slegers, all billed; no facial hair. FM24: profiles say
+  male, assumed from FM24's men-only database; not verified.
+- **FM26 youth squads:** done (2026-10-22). Arsenal's Under 21s and Under
+  18s tabs: the squad count reads "U21 Squad Players (21)", and the batch
+  returns to the "Under 21s" tab for "Arsenal U21s". Checked with the image
+  stand-in: 17 and 3 faces.
+- **FM26 first Actions menu after loading:** once, the first Actions menu
+  opened after a career loaded lacked Generate face and Update face; the
+  next one had them.
+- **Launch.** Put the server code (`~/work/regeneratefm-server`) in a
+  private repo; make this repo public; switch Stripe from the sandbox to the
+  live account (restricted key, webhook and its secret); check every link,
+  including the front page's `DOWNLOAD_URL` once there is a release.

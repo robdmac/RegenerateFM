@@ -66,6 +66,8 @@ FM24 for Mac is its own program, so RegenerateFM uses a Mac library instead of t
 
 **When a key is needed later** (none was saved, or OpenAI rejects the saved one), choosing a face command opens the key window again, and FM24 says so. Closing it saves nothing.
 
+**RegenerateFM credits instead of a key:** the key prompt (FM24's on the Mac, the key window on Windows and Linux; typing `credits` in a terminal companion) has **Buy credits / Sign in**. It opens the credits page in the browser and FM24 shows the code to confirm; once you've signed in there, the companion saves a credits token where the key goes and carries on with the face. Each face then uses one credit. Checked on the Mac on 2026-10-22 (sign-in, then a face paid with a credit); the Windows key window's button is untested.
+
 **Options:** it reads `.fm24-auth` from its own folder (or the token in `regeneratefm24.ini`) and finds `Documents\Sports Interactive\Football Manager 2024\graphics\regeneratefm` itself. `regeneratefm-fm24.exe setup [--game-dir ...] [--remove]` runs only the setup; `install-linux.sh --remove` uninstalls on Linux (with Steam closed). Double-clicked while FM24 is running, it runs as the companion in its window, as before. The companion options below (`--graphics-dir`, `--preview-only` and so on) still work. If it stops with an error, the window stays open until you press Enter.
 
 **Building it:** build the DLL first (see [native_menu/README.md](native_menu/README.md); it needs MinGW), then run `fm24/build_exe.py` with a Windows Python 3.11 that has `fm24/requirements-exe.txt` installed. On Linux, a Windows Python under Wine works:
