@@ -253,13 +253,21 @@
 
 ## Requested (2026-10-21)
 
-- **Relatives.** FM records family links between people (son of, brother
-  of, nephew of and so on; FM24 and FM26 show them on the profile). Neither
-  profile reader reads them yet. Find where each game keeps them, and when a
-  relative has a face (a RegenerateFM portrait or a real photo), send it as
-  a reference with the prompt asking for a slight family resemblance, not
-  the same face. Without a face, share some appearance traits (hair, face
-  shape) between relatives instead of choosing them separately.
+- **Relatives.** FM26: done (2026-10-22). The plugin reads the person's
+  family from `Person.FavouredPeople.FavouredPeopleReasonList` (FM26's
+  Favoured Personnel groups: "Brothers", "Father" and so on, with each
+  person's ID); team-mates and former coaches are left out. Relatives share
+  face shape, nose and eyebrows, and hair colour (chosen from the family's
+  lowest person ID), and when a relative already has a RegenerateFM face, a
+  new face is made from it with the edits endpoint and a prompt asking for
+  only a slight family resemblance. Checked: Jobe Bellingham's brother Jude
+  read in game, and Jobe's request went to the edits endpoint with Jude's
+  face (image stand-in); a billed father-and-son pair in Python looked
+  related but clearly different. Still to do: FM24 (its person records'
+  relationships aren't read yet), group names in other languages (only
+  English is matched), and the game's own photos as references (only
+  RegenerateFM faces are used). Traits already saved for a person are kept,
+  so a face made before this keeps its own look.
 - **Women's football.** FM26: done (2026-10-22). The plugin reads
   `Person.IsPersonFemale` from the profile header's bindings for players
   and staff, and the prompt says who is a woman; only men get facial hair.

@@ -12,13 +12,21 @@ GENDERS = ("female", "male")
 NO_FACIAL_HAIR = "no facial hair"
 
 
-def appearance_traits(seed: str, age: int, gender: str | None = None) -> dict[str, str]:
+# Relatives share these, chosen from the family's seed: a slight family
+# resemblance, while jaw, cheeks, hairstyle and expression stay their own.
+FAMILY_TRAITS = ("faceShape", "features", "hairColour")
+
+
+def appearance_traits(seed: str, age: int, gender: str | None = None,
+                      family: str | None = None) -> dict[str, str]:
     """Choose independently per trait; never use Python's randomized hash().
 
     ``gender`` is "female", "male" or None (not known). Women get their own
-    hairstyles, and only men get facial hair."""
+    hairstyles, and only men get facial hair. ``family``, a seed shared by
+    relatives (family_seed in regeneratefm.py), chooses FAMILY_TRAITS."""
     def pick(category, choices):
-        digest = hashlib.sha256(f"regeneratefm-appearance-v1\0{seed}\0{category}".encode()).digest()
+        chosen_by = family if family is not None and category in FAMILY_TRAITS else seed
+        digest = hashlib.sha256(f"regeneratefm-appearance-v1\0{chosen_by}\0{category}".encode()).digest()
         return choices[int.from_bytes(digest[:8], "big") % len(choices)]
 
     shape = pick("faceShape", ("a relatively long face", "a broad face", "an oval face",

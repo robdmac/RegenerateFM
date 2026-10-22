@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import regeneratefm
+import appearance
 from appearance import appearance_traits
 
 
@@ -113,6 +114,38 @@ PLAYER = {"type": "player", "name": "Ana Silva", "age": 24, "nationality": "Braz
           "club": "Example FC", "height": "5'7\"", "physical": {"Pace": 15},
           "technical": {"Finishing": 14, "Dribbling": 13, "Passing": 11},
           "mental": {"Composure": 12, "Vision": 10, "Work Rate": 15}}
+
+
+
+class FamilyTests(unittest.TestCase):
+    def test_relatives_share_some_traits_and_keep_their_own(self):
+        father = appearance.appearance_traits("1001", 45, "male", "family:1001")
+        son = appearance.appearance_traits("1002", 18, "male", "family:1001")
+        alone = appearance.appearance_traits("1002", 18, "male")
+        self.assertEqual(father["face"].split(",")[0], son["face"].split(",")[0])
+        self.assertEqual(father["features"], son["features"])
+        self.assertNotEqual(son, alone)
+        # Jaw, cheeks, hairstyle and expression stay the person's own.
+        self.assertEqual(son["expression"], alone["expression"])
+        self.assertEqual(son["hair"].split(";")[0], alone["hair"].split(";")[0])
+
+    def test_only_family_groups_count_closest_first(self):
+        profile = {"relatives": [{"relation": "Team-mates", "personId": "5"}, {"relation": "Cousins", "personId": "40"},
+                                 {"relation": "Former Coaching Staff", "personId": "6"},
+                                 {"relation": " Twin  Brothers ", "personId": "30"}, {"relation": "Children", "personId": "41"}]}
+        self.assertEqual(regeneratefm.family_relatives(profile),
+                         [("twin brother", "30"), ("child", "41"), ("cousin", "40")])
+        self.assertEqual(regeneratefm.family_seed("100", regeneratefm.family_relatives(profile)), "family:30")
+        self.assertIsNone(regeneratefm.family_seed("100", []))
+        with self.assertRaisesRegex(ValueError, "digits"):
+            regeneratefm.family_relatives({"relatives": [{"relation": "Father", "personId": "1; rm"}]})
+
+    def test_a_relatives_prompt_asks_for_only_a_slight_resemblance(self):
+        prompt = regeneratefm.relative_prompt(dict(PLAYER, relatives=[{"relation": "Father", "personId": "7"}]), "father")
+        self.assertIn("The supplied image is a portrait of", prompt)
+        self.assertIn("only a slight family resemblance", prompt)
+        with self.assertRaisesRegex(ValueError, "family relations"):
+            regeneratefm.relative_prompt(PLAYER, "team-mate")
 
 
 if __name__ == "__main__":

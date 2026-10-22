@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.IO;
 using System.Net;
 using System.Security.Cryptography;
@@ -272,7 +273,8 @@ namespace RegenerateFMHotReload
                 Log.LogInfo((update ? "Updating face for " : "Generating face for ") + snapshot.Name + " (" + personId.Value + "): " +
                             snapshot.Physical.Count + " physical, " + snapshot.Technical.Count + " technical, " +
                             snapshot.Mental.Count + " mental, " + snapshot.Goalkeeping.Count + " goalkeeping attributes; bio=" +
-                            (snapshot.BiographyHeadline != null));
+                            (snapshot.BiographyHeadline != null) + "; family: " +
+                            (FamilyText(snapshot) ?? "none"));
                 _pending = new PendingGeneration
                 {
                     Task = RequestPortrait(personId.Value, snapshot, settings, update ? "update" : "generate", reference),
@@ -397,6 +399,7 @@ namespace RegenerateFMHotReload
             profile.Position = FirstText(FindNamed(banner, "Frame 1000003901"));
             profile.Club = FirstText(FindNamed(header, "PlayingTeam"));
             profile.Gender = HeaderGender(header, playerId);
+            profile.Relatives = HeaderRelatives(header, playerId);
             // "PlayingTeam" is the contract club; a loaned player's header also
             // shows the loan club, so the face wears the kit they play in now.
             var loanClub = FirstText(FindNamed(header, "TeamAwayFromOrTo"));
@@ -531,7 +534,8 @@ namespace RegenerateFMHotReload
             var texts = TextValues(header);
             if (!HeaderId(header, out long visibleId) || visibleId != personId)
                 throw new InvalidOperationException("Staff profile changed; reopen it and try again.");
-            var profile = new ProfileSnapshot { Type = "staff", Gender = HeaderGender(header, personId) };
+            var profile = new ProfileSnapshot { Type = "staff", Gender = HeaderGender(header, personId),
+                                                Relatives = HeaderRelatives(header, personId) };
             var banner = FindNamed(header, "report-player-banner-max") ?? header;
             var bannerTexts = TextValues(banner);
             for (int i = 0; i < bannerTexts.Count; i++)
@@ -660,7 +664,10 @@ namespace RegenerateFMHotReload
             var root = CurrentRoot();
             var header = root == null ? null : FindNamed(root, "ReportHeader");
             if (header != null && BoundObjectId(header, out long id))
+            {
                 WatchGender(header, id);
+                WatchFavoured(header, id);
+            }
         }
 
         private static string HeaderGender(VisualElement header, long id)
@@ -726,6 +733,127 @@ namespace RegenerateFMHotReload
                     return true;
                 }
             return false;
+        }
+
+        // FM26 lists a person's family under Person.FavouredPeople, with
+        // team-mates and former coaches: a list of groups, each a DisplayString
+        // ("Brothers", "Father") and a PersonList. Each group, and then each
+        // person, is copied into a node of RegenerateFM's own so that its
+        // properties can be bound, as FM26's own lists do. Only the person on
+        // screen keeps those nodes and bindings; a person whose list was still
+        // arriving when another opened is read again next time.
+        private static readonly Dictionary<long, List<(string Relation, string PersonId)>> FavouredById =
+            new Dictionary<long, List<(string Relation, string PersonId)>>();
+        private static readonly List<(Bindings.Key Root, Il2CppSystem.String Path, Bindings.ValueChangedCallback Callback)> FavouredBindings =
+            new List<(Bindings.Key, Il2CppSystem.String, Bindings.ValueChangedCallback)>();
+        private static readonly List<Bindings.Key> FavouredProbes = new List<Bindings.Key>();
+        private static long _favouredId;
+        private static int _favouredPending;
+        private static int _probeSerial;
+
+        private static string FamilyText(ProfileSnapshot profile)
+        {
+            try
+            {
+                var family = FaceGenerator.FamilyRelatives(profile);
+                return family.Count == 0 ? null : string.Join(", ", family.Select(item => item.Relation + " " + item.PersonId));
+            }
+            catch (ArgumentException error) { return error.Message; }
+        }
+
+        private static List<(string Relation, string PersonId)> HeaderRelatives(VisualElement header, long id)
+        {
+            WatchFavoured(header, id);
+            return FavouredById.TryGetValue(id, out var found) && !(id == _favouredId && _favouredPending > 0)
+                ? new List<(string Relation, string PersonId)>(found) : new List<(string Relation, string PersonId)>();
+        }
+
+        private static void WatchFavoured(VisualElement header, long id)
+        {
+            if (id == _favouredId || !PersonNodeKey(header, out var bindings, out var personKey))
+                return;
+            ReleaseFavoured(bindings);
+            if (FavouredById.ContainsKey(id))
+                return;
+            _favouredId = id;
+            var found = FavouredById[id] = new List<(string Relation, string PersonId)>();
+            BindValue(bindings, personKey, "FavouredPeople.FavouredPeopleReasonList", groups =>
+            {
+                var list = groups.Get()?.TryCast<Il2CppSystem.Collections.Generic.List<SI.Core.TypedValue>>();
+                for (int i = 0; list != null && i < list.Count; i++)
+                {
+                    var group = Probe(bindings, list[i]);
+                    BindValue(bindings, group, "DisplayString", display =>
+                    {
+                        string relation = display.AsString();
+                        BindValue(bindings, group, "PersonList", people =>
+                        {
+                            var members = people.Get()?.TryCast<Il2CppSystem.Collections.Generic.List<SI.Core.TypedValue>>();
+                            for (int j = 0; members != null && j < members.Count; j++)
+                                BindValue(bindings, Probe(bindings, members[j]), "UniqueId", unique =>
+                                {
+                                    if (long.TryParse(unique.AsString(), out long other) && other > 0 &&
+                                        !found.Contains((relation, other.ToString())))
+                                        found.Add((relation, other.ToString()));
+                                });
+                        });
+                    });
+                }
+            });
+        }
+
+        // Drops the nodes and bindings made for the last person; their list is
+        // forgotten if it hadn't all arrived.
+        private static void ReleaseFavoured(Bindings bindings)
+        {
+            if (_favouredPending > 0)
+                FavouredById.Remove(_favouredId);
+            foreach (var (root, path, callback) in FavouredBindings)
+            {
+                var key = root;
+                var span = Il2CppSystem.MemoryExtensions.AsSpan(path);
+                try { bindings.Unbind(ref key, ref span, callback); }
+                catch (Exception) { }
+            }
+            foreach (var probe in FavouredProbes)
+            {
+                var key = probe;
+                try { bindings.Remove(ref key); }
+                catch (Exception) { }
+            }
+            FavouredBindings.Clear();
+            FavouredProbes.Clear();
+            _favouredId = 0;
+            _favouredPending = 0;
+        }
+
+        // A node of RegenerateFM's own holding ``value``, so its properties can be bound.
+        private static Bindings.Key Probe(Bindings bindings, SI.Core.TypedValue value)
+        {
+            var path = Il2CppSystem.MemoryExtensions.AsSpan((Il2CppSystem.String)("RegenerateFMFavoured" + (++_probeSerial)));
+            var key = bindings.Set(ref path, value, default, default);
+            FavouredProbes.Add(key);
+            return key;
+        }
+
+        // Binds root's path; got runs once, with the first value FM26 sends.
+        private static void BindValue(Bindings bindings, Bindings.Key root, string path, Action<SI.Core.TypedValue> got)
+        {
+            Il2CppSystem.String text = path;
+            bool answered = false;
+            Bindings.ValueChangedCallback callback = new Action<Bindings.Key, SI.Core.TypedValue>((key, value) =>
+            {
+                if (answered || value == null || value.IsNull)
+                    return;
+                answered = true;
+                _favouredPending--;
+                try { got(value); }
+                catch (Exception error) { Instance?.Log.LogWarning("Reading " + path + " failed: " + error.Message); }
+            });
+            _favouredPending++;
+            FavouredBindings.Add((root, text, callback));
+            var span = Il2CppSystem.MemoryExtensions.AsSpan(text);
+            bindings.Bind(ref root, ref span, callback);
         }
 
         private static BindingRemapper ObjectIdRemapper(VisualElement element)

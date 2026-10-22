@@ -175,11 +175,11 @@ def _stat_strength(score: int | str) -> float:
 
 
 def _appearance_prompt(name: str, age: int, person_id: str | None,
-                       directory: Path | None, gender: str | None) -> str:
+                       directory: Path | None, gender: str | None, family: str | None = None) -> str:
     if person_id is None:
         if directory is not None:
             raise ValueError("A person ID is required to save an appearance profile.")
-        return _appearance_instruction(appearance_traits("name:" + name.casefold(), age, gender), gender)
+        return _appearance_instruction(appearance_traits("name:" + name.casefold(), age, gender, family), gender)
     person_id = validate_id(person_id)
     path = Path(directory) / ".regeneratefm-appearances" / f"{person_id}.json" if directory is not None else None
     if path is not None and path.exists():
@@ -191,7 +191,7 @@ def _appearance_prompt(name: str, age: int, person_id: str | None,
         # one) are chosen again for it.
         if gender is None or saved.get("gender") == gender:
             return _appearance_instruction(saved.get("traits"), gender)
-    traits = appearance_traits(person_id, age, gender)
+    traits = appearance_traits(person_id, age, gender, family)
     instruction = _appearance_instruction(traits, gender)
     if path is not None:
         saved = {"schemaVersion": 1, "personId": person_id, "traits": traits}
@@ -216,6 +216,39 @@ def _gender(profile: dict) -> str | None:
     if gender not in GENDERS:
         raise ValueError("Gender must be female or male.")
     return gender
+
+
+# The game's family groups, as FM26 names them on the Favoured Personnel
+# list ("Brothers", "Father", "Half-Sisters"): only these count as relatives.
+FAMILY_RELATIONS = ("twin brother", "twin sister", "twin", "father", "mother", "brother", "sister", "sibling",
+                    "son", "daughter", "parent", "child", "half-brother", "half-sister", "grandfather",
+                    "grandmother", "grandson", "granddaughter", "grandparent", "grandchild", "uncle", "aunt",
+                    "nephew", "niece", "cousin", "relative")
+_FAMILY_GROUP = re.compile(r"^(" + "|".join(re.escape(r) for r in FAMILY_RELATIONS) + r")(?:s|ren)?$")
+
+
+def family_relatives(profile: dict) -> list[tuple[str, str]]:
+    """The profile's relatives as (relation, person ID), closest first: a
+    "Brothers" group gives ("brother", id). Team-mates and coaches are left out."""
+    found = []
+    relatives = profile.get("relatives") or []
+    if not isinstance(relatives, list):
+        raise ValueError("Relatives must be a list.")
+    for relative in relatives:
+        if not isinstance(relative, dict):
+            raise ValueError("Each relative must have a relation and a person ID.")
+        match = _FAMILY_GROUP.match(" ".join(str(relative.get("relation") or "").split()).casefold())
+        if match:
+            found.append((match.group(1), validate_id(str(relative.get("personId") or ""))))
+    return sorted(found, key=lambda item: FAMILY_RELATIONS.index(item[0]))
+
+
+def family_seed(person_id: str | None, relatives: list[tuple[str, str]]) -> str | None:
+    """The seed relatives share (appearance.FAMILY_TRAITS): the family's lowest person ID."""
+    if not relatives:
+        return None
+    ids = [int(person) for _, person in relatives] + ([int(person_id)] if person_id is not None else [])
+    return f"family:{min(ids)}"
 
 
 def _gender_text(name: str, gender: str | None) -> str:
@@ -248,6 +281,22 @@ def _profile_kind_and_age(profile: dict) -> tuple[str, str, int]:
             not 14 <= age <= (100 if kind == "staff" else 60)):
         raise ValueError(f"{label} age is missing or invalid.")
     return kind, label, age
+
+
+def relative_prompt(profile: dict, relation: str, *, person_id: str | None = None,
+                    appearance_dir: Path | None = None) -> str:
+    """profile_prompt, for an image request whose input image is a relative's
+    RegenerateFM face: the new face takes only a slight family resemblance."""
+    if relation not in FAMILY_RELATIONS:
+        raise ValueError("Relation must be one of the family relations.")
+    prompt = profile_prompt(profile, person_id=person_id, appearance_dir=appearance_dir)
+    name = _profile_text(profile, "name", "Staff" if profile.get("type") == "staff" else "Player")
+    return (
+        f"{prompt} The supplied image is a portrait of {name}'s {relation}, not of {name}. "
+        f"Give {name} only a slight family resemblance to them, such as a similar face shape, eye shape or "
+        f"colouring, while keeping {name} clearly a different person, with their own age, build, hairstyle and "
+        "features as described above. Do not copy the supplied face, its expression or its pose."
+    )
 
 
 def update_prompt(profile: dict) -> str:
@@ -287,6 +336,7 @@ def profile_prompt(profile: dict, *, person_id: str | None = None,
     name = _profile_text(profile, "name", label)
     nationality = _profile_text(profile, "nationality", label)
     gender = _gender(profile)
+    family = family_seed(person_id, family_relatives(profile))
     biography = _biography_headline(profile)
     biography_text = f" Biography headline: {biography}{'' if biography.endswith(('.', '!', '?')) else '.'}" if biography else ""
     age = profile.get("age")
@@ -298,7 +348,7 @@ def profile_prompt(profile: dict, *, person_id: str | None = None,
         if club is not None and club != "":
             club = _profile_text(profile, "club", label)
         club_text = f" at {club}" if club else ""
-        appearance = _appearance_prompt(name, age, person_id, appearance_dir, gender)
+        appearance = _appearance_prompt(name, age, person_id, appearance_dir, gender, family)
         return (
             f"Football Manager profile picture for {name}, age {age}, nationality {nationality}, "
             f"job title {job_title}{club_text}.{_gender_text(name, gender)}{biography_text} "
@@ -331,7 +381,7 @@ def profile_prompt(profile: dict, *, person_id: str | None = None,
     first_name = name.split()[0]
     kit_text = _kit_text(club)
     plays = "who is a free agent" if _no_club(club) else f"who plays for {club}"
-    appearance = _appearance_prompt(name, age, person_id, appearance_dir, gender)
+    appearance = _appearance_prompt(name, age, person_id, appearance_dir, gender, family)
     return (
         f"Football Manager profile picture for {name}, a {age}-year-old {position} "
         f"{plays}. Nationality: {nationality}.{_gender_text(first_name, gender)} {first_name} is {height} tall.{biography_text} "

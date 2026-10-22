@@ -31,6 +31,9 @@ namespace RegenerateFMHotReload
         public string Height;
         public string BiographyHeadline;
         public string Gender;  // "female", "male", or null when the game didn't say
+        // The game's groups of people the person favours, with their IDs:
+        // ("Brothers", "29232937"); only family groups count (FamilyRelatives).
+        public List<(string Relation, string PersonId)> Relatives = new List<(string Relation, string PersonId)>();
         public Dictionary<string, object> Physical = new Dictionary<string, object>();
         public Dictionary<string, object> Technical = new Dictionary<string, object>();
         public Dictionary<string, object> Mental = new Dictionary<string, object>();
@@ -103,6 +106,43 @@ namespace RegenerateFMHotReload
             return profile.Gender;
         }
 
+        // The game's family groups, as FM26 names them on the Favoured Personnel
+        // list ("Brothers", "Father", "Half-Sisters"): only these count as relatives.
+        public static readonly string[] FamilyRelations =
+        {
+            "twin brother", "twin sister", "twin", "father", "mother", "brother", "sister", "sibling",
+            "son", "daughter", "parent", "child", "half-brother", "half-sister", "grandfather",
+            "grandmother", "grandson", "granddaughter", "grandparent", "grandchild", "uncle", "aunt",
+            "nephew", "niece", "cousin", "relative",
+        };
+        private static readonly Regex FamilyGroup = new Regex(
+            "^(" + string.Join("|", FamilyRelations.Select(Regex.Escape)) + ")(?:s|ren)?$", RegexOptions.Compiled);
+
+        // The profile's relatives as (relation, person ID), closest first: a
+        // "Brothers" group gives ("brother", id). Team-mates and coaches are left out.
+        public static List<(string Relation, string PersonId)> FamilyRelatives(ProfileSnapshot profile)
+        {
+            var found = new List<(string Relation, string PersonId)>();
+            foreach (var (relation, personId) in profile.Relatives ?? new List<(string Relation, string PersonId)>())
+            {
+                var match = FamilyGroup.Match(string.Join(" ", (relation ?? "").Split((char[])null, StringSplitOptions.RemoveEmptyEntries)).ToLowerInvariant());
+                if (match.Success)
+                    found.Add((match.Groups[1].Value, ValidateId(personId ?? "")));
+            }
+            return found.OrderBy(item => Array.IndexOf(FamilyRelations, item.Relation)).ToList();
+        }
+
+        // The seed relatives share (FamilyTraits): the family's lowest person ID.
+        public static string FamilySeed(string personId, List<(string Relation, string PersonId)> relatives)
+        {
+            if (relatives.Count == 0)
+                return null;
+            var ids = relatives.Select(item => System.Numerics.BigInteger.Parse(item.PersonId)).ToList();
+            if (personId != null)
+                ids.Add(System.Numerics.BigInteger.Parse(personId));
+            return "family:" + ids.Min();
+        }
+
         private static string GenderText(string name, string gender) =>
             gender == "female" ? " " + name + " is a woman." : gender == "male" ? " " + name + " is a man." : "";
 
@@ -119,6 +159,7 @@ namespace RegenerateFMHotReload
             string name = Text(profile.Name, "name", label);
             string nationality = Text(profile.Nationality, "nationality", label);
             string gender = Gender(profile);
+            string family = FamilySeed(personId, FamilyRelatives(profile));
             string biography = BiographyHeadline(profile.BiographyHeadline);
             string biographyText = biography.Length == 0 ? "" :
                 " Biography headline: " + biography + (biography.EndsWith(".") || biography.EndsWith("!") || biography.EndsWith("?") ? "" : ".");
@@ -130,7 +171,7 @@ namespace RegenerateFMHotReload
                 string jobTitle = Text(profile.JobTitle, "jobTitle", label);
                 string staffClub = string.IsNullOrEmpty(profile.Club) ? null : Text(profile.Club, "club", label);
                 string clubText = staffClub != null ? " at " + staffClub : "";
-                string staffAppearance = AppearancePrompt(name, age, personId, appearanceDir, gender);
+                string staffAppearance = AppearancePrompt(name, age, personId, appearanceDir, gender, family);
                 return "Football Manager profile picture for " + name + ", age " + age + ", nationality " + nationality + ", " +
                        "job title " + jobTitle + clubText + "." + GenderText(name, gender) + biographyText + " " +
                        "Create one plausible, original staff portrait for a sports management game. " +
@@ -162,7 +203,7 @@ namespace RegenerateFMHotReload
             Func<List<(string Section, string Stat, string Score, double Strength)>, string> format =
                 items => string.Join(", ", items.Select(item => item.Section + " " + item.Stat + " " + item.Score + "/20"));
             string firstName = Whitespace.Split(name)[0];
-            string appearance = AppearancePrompt(name, age, personId, appearanceDir, gender);
+            string appearance = AppearancePrompt(name, age, personId, appearanceDir, gender, family);
             return "Football Manager profile picture for " + name + ", a " + age + "-year-old " + position + " " +
                    (NoClub(club) ? "who is a free agent" : "who plays for " + club) + ". Nationality: " + nationality + "." +
                    GenderText(firstName, gender) + " " + firstName + " is " + height + " tall." + biographyText + " " +
@@ -173,6 +214,20 @@ namespace RegenerateFMHotReload
                    appearance + PortraitStyle(gender) +
                    KitText(club) + "Use age and physical details to guide appearance, but do not depict " +
                    "numbers or infer ethnicity from nationality. No text, logos, badges, borders, or other people.";
+        }
+
+        // ProfilePrompt, for an image request whose input image is a relative's
+        // RegenerateFM face: the new face takes only a slight family resemblance.
+        public static string RelativePrompt(ProfileSnapshot profile, string relation, string personId, string appearanceDir)
+        {
+            if (!FamilyRelations.Contains(relation))
+                throw new ArgumentException("Relation must be one of the family relations.");
+            string prompt = ProfilePrompt(profile, personId, appearanceDir);
+            string name = Text(profile.Name, "name", profile.Type == "staff" ? "Staff" : "Player");
+            return prompt + " The supplied image is a portrait of " + name + "'s " + relation + ", not of " + name + ". " +
+                   "Give " + name + " only a slight family resemblance to them, such as a similar face shape, eye shape or " +
+                   "colouring, while keeping " + name + " clearly a different person, with their own age, build, hairstyle and " +
+                   "features as described above. Do not copy the supplied face, its expression or its pose.";
         }
 
         // Refreshing an existing portrait supplied as the input image: only the
@@ -270,13 +325,14 @@ namespace RegenerateFMHotReload
 
         private static readonly string[] TraitKeys = { "face", "features", "hair", "facialHair", "expression" };
 
-        private static string AppearancePrompt(string name, int age, string personId, string directory, string gender)
+        private static string AppearancePrompt(string name, int age, string personId, string directory, string gender,
+                                               string family = null)
         {
             if (personId == null)
             {
                 if (directory != null)
                     throw new ArgumentException("A person ID is required to save an appearance profile.");
-                return AppearanceInstruction(AppearanceTraits("name:" + name.ToLowerInvariant(), age, gender), gender);
+                return AppearanceInstruction(AppearanceTraits("name:" + name.ToLowerInvariant(), age, gender, family), gender);
             }
             ValidateId(personId);
             string path = directory != null ? Path.Combine(directory, ".regeneratefm-appearances", personId + ".json") : null;
@@ -300,7 +356,7 @@ namespace RegenerateFMHotReload
                         return AppearanceInstruction(traits, gender);
                 }
             }
-            var chosen = AppearanceTraits(personId, age, gender);
+            var chosen = AppearanceTraits(personId, age, gender, family);
             string instruction = AppearanceInstruction(chosen, gender);
             if (path != null)
             {
@@ -313,15 +369,21 @@ namespace RegenerateFMHotReload
             return instruction;
         }
 
+        // Relatives share these, chosen from the family's seed: a slight family
+        // resemblance, while jaw, cheeks, hairstyle and expression stay their own.
+        private static readonly string[] FamilyTraits = { "faceShape", "features", "hairColour" };
+
         // gender is "female", "male" or null (not known). Women get their own
-        // hairstyles, and only men get facial hair.
-        public static Dictionary<string, string> AppearanceTraits(string seed, int age, string gender = null)
+        // hairstyles, and only men get facial hair. family, a seed shared by
+        // relatives (FamilySeed), chooses FamilyTraits.
+        public static Dictionary<string, string> AppearanceTraits(string seed, int age, string gender = null, string family = null)
         {
             Func<string, string[], string> pick = (category, choices) =>
             {
+                string chosenBy = family != null && FamilyTraits.Contains(category) ? family : seed;
                 byte[] digest;
                 using (var sha = SHA256.Create())
-                    digest = sha.ComputeHash(Encoding.UTF8.GetBytes("regeneratefm-appearance-v1\0" + seed + "\0" + category));
+                    digest = sha.ComputeHash(Encoding.UTF8.GetBytes("regeneratefm-appearance-v1\0" + chosenBy + "\0" + category));
                 ulong value = 0;
                 for (int i = 0; i < 8; i++)
                     value = (value << 8) | digest[i];
@@ -570,8 +632,19 @@ namespace RegenerateFMHotReload
             }
             else
             {
-                string prompt = ProfilePrompt(profile, personId, folder);
-                png = await GeneratePng(settings, prompt, cancel).ConfigureAwait(false);
+                // A relative's RegenerateFM face, if one has one, lends a slight
+                // family resemblance (closest relative first).
+                byte[] relativeFace = null;
+                string relation = null;
+                foreach (var relative in FamilyRelatives(profile))
+                    if ((relativeFace = CurrentPortrait(folder, relative.PersonId)) != null)
+                    {
+                        relation = relative.Relation;
+                        break;
+                    }
+                png = relativeFace != null
+                    ? await EditPng(settings, RelativePrompt(profile, relation, personId, folder), relativeFace, cancel).ConfigureAwait(false)
+                    : await GeneratePng(settings, ProfilePrompt(profile, personId, folder), cancel).ConfigureAwait(false);
             }
             return SavePortrait(folder, personId, png);
         }

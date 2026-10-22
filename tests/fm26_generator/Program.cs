@@ -23,6 +23,8 @@ namespace RegenerateFMHotReload
                     string id = Optional(item, "personId");
                     if (action == "profile")
                         result["prompt"] = FaceGenerator.ProfilePrompt(Profile(item.GetProperty("profile")), id, dir);
+                    else if (action == "relative")
+                        result["prompt"] = FaceGenerator.RelativePrompt(Profile(item.GetProperty("profile")), Optional(item, "relation"), id, dir);
                     else if (action == "update")
                         result["prompt"] = FaceGenerator.UpdatePrompt(Profile(item.GetProperty("profile")));
                     else if (action == "fit")
@@ -87,6 +89,9 @@ namespace RegenerateFMHotReload
                 BiographyHeadline = Optional(value, "biographyHeadline"), Gender = Optional(value, "gender"),
                 Age = value.TryGetProperty("age", out var age) && age.ValueKind == JsonValueKind.Number ? age.GetInt32() : 0,
             };
+            if (value.TryGetProperty("relatives", out var relatives))
+                foreach (var relative in relatives.EnumerateArray())
+                    profile.Relatives.Add((Optional(relative, "relation"), Optional(relative, "personId")));
             Stats(value, "physical", profile.Physical);
             Stats(value, "technical", profile.Technical);
             Stats(value, "mental", profile.Mental);

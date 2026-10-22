@@ -154,12 +154,22 @@ class GeneratorParityTests(unittest.TestCase):
             dict(staff, gender="female"),
             dict(staff, gender="male"),
             dict(PLAYER, gender="other"),
+            dict(PLAYER, relatives=[{"relation": "Team-mates", "personId": "5"}, {"relation": "Brothers", "personId": "29232937"}]),
+            dict(staff, relatives=[{"relation": "Half-Sisters", "personId": "12"}]),
+            dict(PLAYER, relatives=[{"relation": "Sons", "personId": "x"}]),
         ]
         cases, expected = [], []
         for profile in profiles:
             for action in ("profile", "update"):
                 cases.append({"action": action, "profile": profile})
                 expected.append(self.python_prompt(action, profile))
+        for profile, relation, person in ((dict(PLAYER, relatives=[{"relation": "Father", "personId": "7"}]), "father", "1002"),
+                                          (staff, "cousin", None), (PLAYER, "team-mate", None)):
+            cases.append({"action": "relative", "profile": profile, "relation": relation, "personId": person})
+            try:
+                expected.append({"prompt": regeneratefm.relative_prompt(profile, relation, person_id=person)})
+            except ValueError as exc:
+                expected.append({"error": str(exc)})
         self.assertEqual(self.run_cases(cases), expected)
 
     def test_saved_appearance_traits_are_shared(self):
@@ -354,6 +364,25 @@ class GeneratorParityTests(unittest.TestCase):
         self.assertIn(saved, self.requests[1][3])
         self.assertIn("at age 38", self.requests[0][3].decode("latin-1"))
         self.assertIn("Morgan started coaching in 2021.", json.loads(self.requests[2][3])["prompt"])
+
+    def test_a_relatives_face_is_the_reference_for_a_new_face(self):
+        father = {"name": "Marco Ricci", "age": 36, "nationality": "Italy", "position": "Centre-back",
+                  "club": "Genoa", "height": "6'2\"", "technical": {"Heading": 16, "Tackling": 15, "Marking": 16},
+                  "mental": {"Leadership": 18, "Positioning": 17, "Aggression": 14}}
+        son = dict(father, name="Luca Ricci", age=18, relatives=[{"relation": "Team-mates", "personId": "9"},
+                                                                 {"relation": "Father", "personId": "1001"}])
+        with tempfile.TemporaryDirectory() as tmp:
+            ok = {"apiKey": "sk-test", "baseUrl": self.base, "directory": str(Path(tmp) / "graphics")}
+            results = self.run_cases([
+                dict(ok, action="portrait", personId="1002", profile=son),   # no relative's face yet
+                dict(ok, action="portrait", personId="1001", profile=father),
+                dict(ok, action="portrait", personId="1003", profile=dict(son, name="Gio Ricci")),
+            ])
+            father_face = Path(results[1]["path"]).read_bytes()
+        self.assertEqual([request[0] for request in self.requests],
+                         ["/v1/images/generations", "/v1/images/generations", "/v1/images/edits"])
+        self.assertIn(father_face, self.requests[2][3])
+        self.assertIn("a portrait of Gio Ricci's father, not of Gio Ricci", self.requests[2][3].decode("latin-1"))
 
 
 if __name__ == "__main__":
