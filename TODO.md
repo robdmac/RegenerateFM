@@ -305,3 +305,17 @@
   private repo; make this repo public; switch Stripe from the sandbox to the
   live account (restricted key, webhook and its secret); check every link,
   including the front page's `DOWNLOAD_URL` once there is a release.
+
+## After launch (2026-10-22)
+
+- **FM24 companion in C#.** The companion is about 6,200 lines of Python,
+  so every packaged build carries a Python (the Mac build bundles Apple's
+  3.9, which is out of support; build the release with python.org's 3.12
+  until then). Port it to C# and reuse the FM26 plugin's
+  `hotreload/FaceGenerator.cs`, which already does the prompts, appearance,
+  relatives, OpenAI and credits requests and saving, with prompt parity
+  tested against `regeneratefm.py`. Still to port: the FM24 memory reading,
+  profiles, squads, dialogs and setup. Compiled with .NET NativeAOT for
+  win-x64 (also run under Proton) and osx-arm64, it needs no runtime and
+  leaves one copy of the prompt code instead of two. Several days of work,
+  then the FM24 in-game checks again on macOS, Windows and Linux.
