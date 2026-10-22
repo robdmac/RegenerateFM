@@ -9,6 +9,7 @@
 //   --cli launch-option <localconfig.vdf> <app ID> <prefix> [--remove]
 //   --cli install <payload folder> <game folder>
 //   --cli uninstall <game folder>
+//   --cli needs-change <game folder> [--remove]
 // REGENERATEFM_STEAM_ROOT points it at another Steam folder (and then it
 // doesn't check whether Steam is running).
 
@@ -217,10 +218,15 @@ enum Steam {
     /// True if some account's launch option isn't as RegenerateFM wants it yet.
     static func needsChange(_ game: Game, remove: Bool) -> Bool {
         configs().contains { config in
-            guard let text = try? [UInt8](Data(contentsOf: config)) else { return true }
-            guard let updated = try? SteamConfig.setLaunchOption(text, appID: game.appID, prefix: prefix(game),
-                                                                  remove: remove) else { return true }
-            return updated != text
+            do {
+                let text = try [UInt8](Data(contentsOf: config))
+                // nil: this account doesn't have the game.
+                guard let updated = try SteamConfig.setLaunchOption(text, appID: game.appID, prefix: prefix(game),
+                                                                    remove: remove) else { return false }
+                return updated != text
+            } catch {
+                return true
+            }
         }
     }
 
@@ -533,6 +539,9 @@ func runCommandLine(_ arguments: [String]) -> Int32 {
             let game = Game(name: Steam.games[0].0, appID: Steam.games[0].1, folder: folder)
             if Steam.testRoot != nil { print("launch options changed \(try Steam.update(game, remove: true))") }
             print(try Installer.removeFiles(from: folder))
+        case "needs-change" where arguments.count >= 2:
+            let game = Game(name: Steam.games[0].0, appID: Steam.games[0].1, folder: URL(fileURLWithPath: arguments[1]))
+            print(Steam.needsChange(game, remove: arguments.contains("--remove")))
         case "games":
             for game in Steam.installedGames() { print("\(game.appID) \(game.folder.path)") }
         default:

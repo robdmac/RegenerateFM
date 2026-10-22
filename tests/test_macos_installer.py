@@ -80,6 +80,10 @@ class MacInstallerTests(unittest.TestCase):
         config = steam / "userdata" / "1234" / "config" / "localconfig.vdf"
         config.parent.mkdir(parents=True)
         config.write_text(CONFIG)
+        # An account on this Mac that doesn't have FM26 is left alone.
+        other = steam / "userdata" / "5678" / "config" / "localconfig.vdf"
+        other.parent.mkdir(parents=True)
+        other.write_text(CONFIG.replace('"3551340"', '"2252570"'))
         return steam, game.resolve(), config
 
     def make_payload(self):
@@ -103,6 +107,7 @@ class MacInstallerTests(unittest.TestCase):
 
         (game / "BepInEx" / "plugins" / "RegenerateFMHotReload").mkdir(parents=True)
         (game / "BepInEx" / "plugins" / "RegenerateFMHotReload" / "RegenerateFMHotReload.dll").write_text("old")
+        self.assertEqual(self.cli("needs-change", game, steam=steam), b"true\n")
         output = self.cli("install", payload, game, steam=steam).decode()
         self.assertIn("copied 6", output)
         self.assertIn("launch options changed 1", output)
@@ -114,6 +119,8 @@ class MacInstallerTests(unittest.TestCase):
         prefix = f'"{game}/run_regeneratefm.sh"'
         self.assertEqual(config.read_text(), steam_launch.set_launch_option(CONFIG, "3551340", prefix))
         self.assertEqual(Path(str(config) + ".regeneratefm-backup").read_text(), CONFIG)
+        self.assertEqual(self.cli("needs-change", game, steam=steam), b"false\n")
+        self.assertEqual(self.cli("needs-change", game, "--remove", steam=steam), b"true\n")
         # Again: nothing more to change.
         self.assertIn("launch options changed 0", self.cli("install", payload, game, steam=steam).decode())
 
@@ -129,6 +136,9 @@ class MacInstallerTests(unittest.TestCase):
         self.assertEqual(sorted(path.name for path in game.iterdir()), ["fm.app"])
         installed = steam_launch.set_launch_option(CONFIG, "3551340", prefix)
         self.assertEqual(config.read_text(), steam_launch.set_launch_option(installed, "3551340", prefix, remove=True))
+        other = steam / "userdata" / "5678" / "config" / "localconfig.vdf"
+        self.assertEqual(other.read_text(), CONFIG.replace('"3551340"', '"2252570"'))
+        self.assertFalse(Path(str(other) + ".regeneratefm-backup").exists())
         self.assertIn('"LaunchOptions"\t\t""', config.read_text())
 
 
