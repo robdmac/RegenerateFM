@@ -186,7 +186,7 @@ class CompanionInGameKeyTests(unittest.TestCase):
                     mock.patch("builtins.print"):
                 self.assertTrue(self.companion.ensure_key(self.handler))
                 # FM24 says where to look; a saved key needs no second dialog.
-                self.assertIn("OpenAI key window", told.call_args.args[4])
+                self.assertIn("credits or OpenAI key window", told.call_args.args[4])
                 self.assertTrue(self.companion.ensure_key(self.handler))
             self.assertEqual(asked.call_count, 2)
             self.assertIn("starts with sk-", asked.call_args_list[1].args[0])
