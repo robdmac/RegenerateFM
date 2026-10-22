@@ -3,8 +3,8 @@
 
     python3 hotreload/macos/make_installer.py [--identity NAME] [--notarize PROFILE]
 
-The app (installer/RegenerateFMInstaller.swift) carries the release ZIP's
-FM26-macOS folder (make_release.macos_files and the plugin), so it needs the
+The app (installer/RegenerateFMInstaller.swift) carries an FM26-macOS folder
+(make_release.macos_files and the plugin), so it needs the
 plugin built (dotnet build -c Release hotreload) and hotreload/macos/build.py
 run first. For FM24 it carries the packaged companion
 (fm24/build_companion_macos.py, which needs fm24/native_menu/build_macos.py). It writes dist/RegenerateFM-macOS.dmg; the name stays the same in

@@ -5,12 +5,12 @@ Layout of dist/RegenerateFM-Windows-Linux.zip, in regeneratefm-<version>/:
   FM26/        copy its contents into the "Football Manager 26" folder: BepInEx
                (downloaded once and checked against its pinned SHA-256) and the
                RegenerateFM plugin, so FM26 needs no installer, Python or .NET SDK
-  FM26-macOS/  the same for FM26 on macOS: BepInEx for macOS with the pieces
-               hotreload/macos/build.py makes, and run_regeneratefm.sh; only when
-               they have been built
   FM24/        regeneratefm-fm24.exe (fm24/build_exe.py), which sets FM24 up itself
   install-linux.sh  sets up FM26, the FM26 Demo and FM24 on Linux (install_linux.py)
   source/      the public source, docs and tests
+
+FM26 on macOS is in RegenerateFM-macOS.dmg instead (hotreload/macos/make_installer.py,
+which uses macos_files below).
 """
 
 from __future__ import annotations
@@ -257,7 +257,6 @@ def plugin_version() -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--bepinex-zip", type=Path, help="a local copy of the pinned BepInEx be.760 ZIP")
-    parser.add_argument("--bepinex-macos-zip", type=Path, help="a local copy of the pinned macOS BepInEx be.789 ZIP")
     args = parser.parse_args()
     version = plugin_version()
     # The same name in every release, so GitHub's releases/latest/download link
@@ -282,9 +281,6 @@ def main() -> None:
                          "git rm -r -q --cached . && git reset -q --hard), then rebuild the FM24 companion.")
     modes = git_modes()
     loader = bepinex_files(bepinex_zip(BEPINEX, args.bepinex_zip), "winhttp.dll")
-    # The macOS hooking pieces (hotreload/macos/build.py), when they have been built.
-    macos = (macos_files(bepinex_zip(BEPINEX_MACOS, args.bepinex_macos_zip))
-             if all((MACOS_BUILD / built).is_file() for built in MACOS_NATIVE.values()) else {})
     top = f"regeneratefm-{version}"
     target.parent.mkdir(exist_ok=True)
     with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_DEFLATED) as archive:
@@ -295,13 +291,8 @@ def main() -> None:
         write(archive, f"{top}/install-linux.sh", (ROOT / "install-linux.sh").read_bytes(), 0o755)
         for name, (data, mode) in loader.items():
             write(archive, f"{top}/FM26/{name}", data, mode)
-        plugin = (ROOT / PLUGIN_DLL).read_bytes()
-        write(archive, f"{top}/FM26/BepInEx/plugins/RegenerateFMHotReload/RegenerateFMHotReload.dll", plugin, 0o644)
-        for name, (data, mode) in macos.items():
-            write(archive, f"{top}/FM26-macOS/{name}", data, mode)
-        if macos:
-            write(archive, f"{top}/FM26-macOS/BepInEx/plugins/RegenerateFMHotReload/RegenerateFMHotReload.dll",
-                  plugin, 0o644)
+        write(archive, f"{top}/FM26/BepInEx/plugins/RegenerateFMHotReload/RegenerateFMHotReload.dll",
+              (ROOT / PLUGIN_DLL).read_bytes(), 0o644)
         for path in packaged:
             write(archive, f"{top}/FM24/{path.relative_to(companion).as_posix()}", path.read_bytes(), file_mode(path))
         if packaged:
@@ -309,9 +300,7 @@ def main() -> None:
         for name in PUBLIC_FILES:
             write(archive, f"{top}/source/{name}", (ROOT / name).read_bytes(), file_mode(ROOT / name, modes))
     note = f"the {len(packaged)}-file FM24 companion" if packaged else "no FM24 companion (not built)"
-    mac = (f"FM26-macOS folder ({len(macos)} files and the plugin)" if macos
-           else "no FM26-macOS folder (hotreload/macos/build.py not run)")
-    print(f"Created {target}: FM26 folder ({len(loader)} BepInEx files and the plugin), {mac}, {note}, "
+    print(f"Created {target}: FM26 folder ({len(loader)} BepInEx files and the plugin), {note}, "
           f"and {len(PUBLIC_FILES)} source files")
 
 

@@ -1,6 +1,6 @@
 # FM26 on macOS
 
-The FM26 plugin is the same DLL on macOS. What differs is how BepInEx gets into the game, and four problems BepInEx 6 has with FM26 for Mac. This folder holds the fixes, and `make_release.py` packs them into the release's `FM26-macOS` folder.
+The FM26 plugin is the same DLL on macOS. What differs is how BepInEx gets into the game, and four problems BepInEx 6 has with FM26 for Mac. This folder holds the fixes, and `make_installer.py` packs them into the installer's `FM26-macOS` folder, in `RegenerateFM-macOS.dmg`.
 
 Checked on FM26 26.3.2 (Steam, universal `fm.app`) on an Apple M2 with macOS 26: the plugin loads and its build check passes, in 12 cold starts in a row; a career loads and stays up; on a player Overview, **Actions** ends with **Generate face** and a greyed-out **Update face**, and clicking the portrait opens the same two items. The plugin reads the player's ID from the header's data binding (2000091776 for the player tested). **Generate face**, and **Squad > Generate faces…**, open the key dialog; Cancel closes it and saves nothing. No key has been saved and no billed face made on macOS yet.
 
@@ -53,7 +53,7 @@ On a Mac with git, CMake, Xcode's command-line tools and the .NET 8 SDK (Il2CppI
 python3 hotreload/macos/build.py
 ```
 
-It clones funchook and Il2CppInterop at their pinned commits, applies the patches and writes `libfunchook.dylib`, `Il2CppInterop.Runtime.dll` and `Il2CppInterop.Common.dll` to `hotreload/macos/build/`. `make_release.py` then adds the `FM26-macOS` folder; without that folder it leaves macOS out. The plugin itself builds as in [../README.md](../README.md), with the .NET 6 SDK that the repository's `global.json` pins.
+It clones funchook and Il2CppInterop at their pinned commits, applies the patches and writes `libfunchook.dylib`, `Il2CppInterop.Runtime.dll` and `Il2CppInterop.Common.dll` to `hotreload/macos/build/`. `make_installer.py` then builds the `FM26-macOS` folder into the installer. The plugin itself builds as in [../README.md](../README.md), with the .NET 6 SDK that the repository's `global.json` pins.
 
 The patched libraries stay under their own licences: funchook is GPL-2.0-or-later with a linking exception, Il2CppInterop is LGPL-3.0. The patches and this build script are their modified source, and the release's `source` folder includes them.
 
@@ -83,4 +83,4 @@ Checked on 2026-10-18 through Steam's launch option, with a local stand-in for t
 - The plugin DLL in a release is built once for both systems. The one tested here was built against be.789's macOS interop assemblies; the Windows release has been built against be.760's.
 - Intel Macs (the launcher should work, since x86_64 is native there), other macOS versions and other FM26 builds.
 
-The **FM26 Demo** for Mac (Steam app 3551360, 26.3.2 with its own binaries) works the same way: copy the `FM26-macOS` folder into `Football Manager 26 Demo` and set its launch option (`python3 steam_launch.py fm26demo`). The launcher starts whichever executable `fm.app` names, and the plugin pins the Demo's hashes and saves faces in its user-data folder, `Football Manager 26 Demo`. Checked on 2026-10-21 with the image stand-in: BepInEx's first start, a 21-face First Team batch, and Generate and Update for a staff member. On another build the plugin turns its buttons off, but BepInEx and the hooks still load.
+The **FM26 Demo** for Mac (Steam app 3551360, 26.3.2 with its own binaries) works the same way: the installer sets it up, or copy the installer's `FM26-macOS` folder (in **RegenerateFM Installer.app > Show Package Contents > Contents/Resources**) into `Football Manager 26 Demo` and set its launch option (`python3 steam_launch.py fm26demo`). The launcher starts whichever executable `fm.app` names, and the plugin pins the Demo's hashes and saves faces in its user-data folder, `Football Manager 26 Demo`. Checked on 2026-10-21 with the image stand-in: BepInEx's first start, a 21-face First Team batch, and Generate and Update for a staff member. On another build the plugin turns its buttons off, but BepInEx and the hooks still load.
