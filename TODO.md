@@ -310,8 +310,8 @@
 
 - **FM24 companion in C#.** The companion is about 6,200 lines of Python,
   so every packaged build carries a Python (the Mac build bundles Apple's
-  3.9, which is out of support; build the release with python.org's 3.12
-  until then). Port it to C# and reuse the FM26 plugin's
+  3.9, which is out of support; kept for now, by choice, rather than
+  switching to python.org's 3.12). Port it to C# and reuse the FM26 plugin's
   `hotreload/FaceGenerator.cs`, which already does the prompts, appearance,
   relatives, OpenAI and credits requests and saving, with prompt parity
   tested against `regeneratefm.py`. Still to port: the FM24 memory reading,
