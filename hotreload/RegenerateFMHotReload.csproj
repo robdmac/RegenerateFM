@@ -4,6 +4,8 @@
     <AssemblyName>RegenerateFMHotReload</AssemblyName>
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
+    <!-- RegenerateFMHotReload.cs, BindingPaths: passing spans to FM26 by pointer. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <Target Name="RequireGameDir" BeforeTargets="ResolveReferences">
     <Error Condition="'$(GameDir)' == ''" Text="Pass -p:GameDir=/path/to/Football Manager 26 when building the FM26 plugin." />

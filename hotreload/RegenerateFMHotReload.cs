@@ -657,7 +657,7 @@ namespace RegenerateFMHotReload
         private static readonly Dictionary<long, bool> FemaleById = new Dictionary<long, bool>();
         private static readonly Dictionary<long, Bindings.ValueChangedCallback> GenderCallbacks =
             new Dictionary<long, Bindings.ValueChangedCallback>();
-        private static readonly Il2CppSystem.String GenderProperty = "IsPersonFemale";
+        private const string GenderProperty = "IsPersonFemale";
 
         private void CheckGender()
         {
@@ -680,10 +680,9 @@ namespace RegenerateFMHotReload
         {
             if (FemaleById.ContainsKey(id) || !PersonNodeKey(header, out var bindings, out var personKey))
                 return;
-            var span = Il2CppSystem.MemoryExtensions.AsSpan(GenderProperty);
-            if (bindings.Exists(ref personKey, ref span))
+            if (BindingPaths.Exists(bindings, personKey, GenderProperty))
             {
-                var value = bindings.Get(ref personKey, ref span);
+                var value = BindingPaths.Get(bindings, personKey, GenderProperty);
                 if (value != null && !value.IsNull && bool.TryParse(value.AsString(), out bool known))
                 {
                     FemaleById[id] = known;
@@ -709,8 +708,7 @@ namespace RegenerateFMHotReload
                 }
             });
             GenderCallbacks[id] = callback;
-            var bindSpan = Il2CppSystem.MemoryExtensions.AsSpan(GenderProperty);
-            bindings.Bind(ref personKey, ref bindSpan, callback);
+            BindingPaths.Bind(bindings, personKey, GenderProperty, callback);
         }
 
         private static bool PersonNodeKey(VisualElement header, out Bindings bindings, out Bindings.Key personKey)
@@ -744,8 +742,8 @@ namespace RegenerateFMHotReload
         // arriving when another opened is read again next time.
         private static readonly Dictionary<long, List<(string Relation, string PersonId)>> FavouredById =
             new Dictionary<long, List<(string Relation, string PersonId)>>();
-        private static readonly List<(Bindings.Key Root, Il2CppSystem.String Path, Bindings.ValueChangedCallback Callback)> FavouredBindings =
-            new List<(Bindings.Key, Il2CppSystem.String, Bindings.ValueChangedCallback)>();
+        private static readonly List<(Bindings.Key Root, string Path, Bindings.ValueChangedCallback Callback)> FavouredBindings =
+            new List<(Bindings.Key, string, Bindings.ValueChangedCallback)>();
         private static readonly List<Bindings.Key> FavouredProbes = new List<Bindings.Key>();
         private static long _favouredId;
         private static int _favouredPending;
@@ -810,9 +808,7 @@ namespace RegenerateFMHotReload
                 FavouredById.Remove(_favouredId);
             foreach (var (root, path, callback) in FavouredBindings)
             {
-                var key = root;
-                var span = Il2CppSystem.MemoryExtensions.AsSpan(path);
-                try { bindings.Unbind(ref key, ref span, callback); }
+                try { BindingPaths.Unbind(bindings, root, path, callback); }
                 catch (Exception) { }
             }
             foreach (var probe in FavouredProbes)
@@ -830,8 +826,7 @@ namespace RegenerateFMHotReload
         // A node of RegenerateFM's own holding ``value``, so its properties can be bound.
         private static Bindings.Key Probe(Bindings bindings, SI.Core.TypedValue value)
         {
-            var path = Il2CppSystem.MemoryExtensions.AsSpan((Il2CppSystem.String)("RegenerateFMFavoured" + (++_probeSerial)));
-            var key = bindings.Set(ref path, value, default, default);
+            var key = BindingPaths.Set(bindings, "RegenerateFMFavoured" + (++_probeSerial), value);
             FavouredProbes.Add(key);
             return key;
         }
@@ -839,7 +834,6 @@ namespace RegenerateFMHotReload
         // Binds root's path; got runs once, with the first value FM26 sends.
         private static void BindValue(Bindings bindings, Bindings.Key root, string path, Action<SI.Core.TypedValue> got)
         {
-            Il2CppSystem.String text = path;
             bool answered = false;
             Bindings.ValueChangedCallback callback = new Action<Bindings.Key, SI.Core.TypedValue>((key, value) =>
             {
@@ -851,9 +845,84 @@ namespace RegenerateFMHotReload
                 catch (Exception error) { Instance?.Log.LogWarning("Reading " + path + " failed: " + error.Message); }
             });
             _favouredPending++;
-            FavouredBindings.Add((root, text, callback));
-            var span = Il2CppSystem.MemoryExtensions.AsSpan(text);
-            bindings.Bind(ref root, ref span, callback);
+            FavouredBindings.Add((root, path, callback));
+            BindingPaths.Bind(bindings, root, path, callback);
+        }
+
+        // Bindings' methods that take a path. Il2CppInterop's wrappers pass a
+        // ref ReadOnlySpan<char> as the boxed span rather than its contents. Under
+        // Proton with BepInEx be.760, FM26 then hashed an empty path (HashPath gave
+        // the empty string's hash) and answered for the Person node itself, so
+        // IsPersonFemale and FavouredPeople never arrived. These pass the span's
+        // contents, which is what FM26's code expects.
+        private static class BindingPaths
+        {
+            private static IntPtr Method(string name) => (IntPtr)typeof(Bindings)
+                .GetField("NativeMethodInfoPtr_" + name, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)
+                .GetValue(null);
+
+            private static readonly IntPtr ExistsMethod = Method("Exists_Public_Boolean_byref_Key_byref_ReadOnlySpan_1_Char_0");
+            private static readonly IntPtr GetMethod = Method("Get_Public_TypedValue_byref_Key_byref_ReadOnlySpan_1_Char_0");
+            private static readonly IntPtr BindMethod = Method("Bind_Public_Key_byref_Key_byref_ReadOnlySpan_1_Char_ValueChangedCallback_0");
+            private static readonly IntPtr UnbindMethod = Method("Unbind_Public_Void_byref_Key_byref_ReadOnlySpan_1_Char_ValueChangedCallback_0");
+            private static readonly IntPtr SetMethod = Method("Set_Public_Key_byref_ReadOnlySpan_1_Char_TypedValue_NodeFlags_SetFlags_0");
+
+            // Calls method with the span's contents (and the root key, if any)
+            // before the other arguments.
+            private static unsafe IntPtr Invoke(IntPtr method, Bindings bindings, Bindings.Key* root, string path,
+                                                params IntPtr[] rest)
+            {
+                Il2CppSystem.String text = path;
+                var span = Il2CppSystem.MemoryExtensions.AsSpan(text);
+                int count = (root != null ? 1 : 0) + 1 + rest.Length;
+                IntPtr* args = stackalloc IntPtr[count];
+                int next = 0;
+                if (root != null)
+                    args[next++] = (IntPtr)root;
+                args[next++] = IL2CPP.il2cpp_object_unbox(IL2CPP.Il2CppObjectBaseToPtrNotNull(span));
+                foreach (var arg in rest)
+                    args[next++] = arg;
+                IntPtr error = IntPtr.Zero;
+                IntPtr result = IL2CPP.il2cpp_runtime_invoke(method, IL2CPP.Il2CppObjectBaseToPtrNotNull(bindings), (void**)args, ref error);
+                GC.KeepAlive(text);
+                GC.KeepAlive(span);
+                Il2CppInterop.Runtime.Il2CppException.RaiseExceptionIfNecessary(error);
+                return result;
+            }
+
+            public static unsafe bool Exists(Bindings bindings, Bindings.Key root, string path) =>
+                *(bool*)IL2CPP.il2cpp_object_unbox(Invoke(ExistsMethod, bindings, &root, path));
+
+            public static unsafe SI.Core.TypedValue Get(Bindings bindings, Bindings.Key root, string path)
+            {
+                IntPtr value = Invoke(GetMethod, bindings, &root, path);
+                return value == IntPtr.Zero ? null : Il2CppInterop.Runtime.Runtime.Il2CppObjectPool.Get<SI.Core.TypedValue>(value);
+            }
+
+            public static unsafe Bindings.Key Bind(Bindings bindings, Bindings.Key root, string path, Bindings.ValueChangedCallback callback)
+            {
+                var key = *(Bindings.Key*)IL2CPP.il2cpp_object_unbox(
+                    Invoke(BindMethod, bindings, &root, path, IL2CPP.Il2CppObjectBaseToPtr(callback)));
+                GC.KeepAlive(callback);
+                return key;
+            }
+
+            public static unsafe void Unbind(Bindings bindings, Bindings.Key root, string path, Bindings.ValueChangedCallback callback)
+            {
+                Invoke(UnbindMethod, bindings, &root, path, IL2CPP.Il2CppObjectBaseToPtr(callback));
+                GC.KeepAlive(callback);
+            }
+
+            // A node at path from the root, holding value.
+            public static unsafe Bindings.Key Set(Bindings bindings, string path, SI.Core.TypedValue value)
+            {
+                byte flags = 0;
+                int setFlags = 0;
+                var key = *(Bindings.Key*)IL2CPP.il2cpp_object_unbox(
+                    Invoke(SetMethod, bindings, null, path, IL2CPP.Il2CppObjectBaseToPtr(value), (IntPtr)(&flags), (IntPtr)(&setFlags)));
+                GC.KeepAlive(value);
+                return key;
+            }
         }
 
         private static BindingRemapper ObjectIdRemapper(VisualElement element)
@@ -998,8 +1067,9 @@ namespace RegenerateFMHotReload
             // the Overview, so the batch goes on to this team's tab from there.
             // Null when the batch started on Squad > Overview's own table.
             public string ReturnTab;
-            // A team page outside Squad (another club's, or the club's women's team
-            // from its club page): return to it with FM26's Back button.
+            // A team page rather than Squad > Overview's own table (a youth tab,
+            // another club's team, or the club's women's team from its club page):
+            // return to it with FM26's Back button.
             public bool ReturnByBack;
             public bool TabClicked;
             public int NeedsScouting;
@@ -1130,6 +1200,16 @@ namespace RegenerateFMHotReload
             if (FindNamed(root, "SquadScreen") != null && FindNamed(root, "PlayerTableContainer") is VisualElement table)
                 return table;
             return null;
+        }
+
+        // Squad > Overview's own table is inside its SquadScreen; a team page's
+        // isn't, even when Squad > Overview, once opened, stays laid out beside it.
+        private static bool InSquadScreen(VisualElement element)
+        {
+            for (var e = element; e != null; e = e.parent)
+                if (e.name == "SquadScreen")
+                    return true;
+            return false;
         }
 
         // The batch's player list: on the team page it started from (ReturnTab), else Squad > Overview's.
@@ -1352,7 +1432,7 @@ namespace RegenerateFMHotReload
             var status = ShowDialog("Opening the first missing player…", "Stop after current face",
                 () => RequestStopSquadBatch());
             var batch = new SquadBatch { List = list, Status = status, Settings = settings,
-                ReturnTab = SquadPageTeam(CurrentRoot()), ReturnByBack = FindNamed(CurrentRoot(), "SquadScreen") == null };
+                ReturnTab = SquadPageTeam(CurrentRoot()), ReturnByBack = !InSquadScreen(list) };
             batch.Queue.AddRange(missing);
             _squadBatch = batch;
             list.scrollOffset = new Vector2(list.scrollOffset.x, 0);
