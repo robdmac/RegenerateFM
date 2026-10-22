@@ -102,6 +102,7 @@ PUBLIC_FILES = (
     "tests/test_macos_installer.py",
     "tests/test_steam_launch.py",
     "tests/test_linux_installer.py",
+    "tests/test_make_release.py",
     "tests/test_fm24.py",
     "tests/test_fm24_setup.py",
     "tests/test_fm24_existing_portrait.py",
