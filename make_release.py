@@ -187,7 +187,7 @@ def write(archive: zipfile.ZipFile, name: str, data: bytes, mode: int) -> None:
 
 
 def plugin_version() -> str:
-    source = (ROOT / "hotreload/RegenerateFMHotReload.cs").read_text()
+    source = (ROOT / "hotreload/RegenerateFMHotReload.cs").read_text(encoding="utf-8")
     match = re.search(r'BepInPlugin\("regeneratefm\.hotreload", "RegenerateFM", "([^"]+)"\)', source)
     if not match:
         raise SystemExit("Could not read the plugin version.")
