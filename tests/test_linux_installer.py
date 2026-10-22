@@ -1,6 +1,6 @@
 """install_linux.py, against a stand-in Steam folder, release and game folders:
-it installs and removes FM26's files and launch option, replaces FM Face's
-plugin, keeps other mods' plugins, and checks Steam and the games first."""
+it installs and removes FM26's files and launch option, keeps other mods'
+plugins, and checks Steam and the games first."""
 
 import os
 import shutil
@@ -76,15 +76,11 @@ class LinuxInstallerTests(unittest.TestCase):
         return steam_launch._app_block(self.config.read_text(), app)[2]
 
     def test_fm26_install_and_remove(self):
-        old = self.fm26 / "BepInEx" / "plugins" / "FMFaceHotReload" / "FMFaceHotReload.dll"
-        old.parent.mkdir(parents=True)
-        old.write_bytes(b"MZ fmface")
         (self.fm26 / "winhttp.dll").write_bytes(b"MZ older")
         self.assertEqual(self.run_installer("fm26"), 0)
         installed = self.files(self.fm26)
         for name, data in FM26_FILES.items():
             self.assertEqual(installed[name], data)
-        self.assertFalse(old.parent.exists())
         self.assertEqual(self.launch_option("3551340")[2], 'WINEDLLOVERRIDES="winhttp=n,b" %command%')
         self.assertIsNone(self.launch_option("2252570"))
         self.assertEqual(self.setup_calls, [])

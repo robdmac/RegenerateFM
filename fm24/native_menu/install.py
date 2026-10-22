@@ -44,10 +44,6 @@ PANEL_FILES = {"player": "panels/player/player overview panel.xml",
 # now lives in FM24's own Squad menu, so an upgrade removes that panel change.
 LEGACY_SQUAD_PANEL = "panels/team/team squad.xml"
 BACKUP_SUFFIX = ".regeneratefm-native-backup"
-# FM Face, RegenerateFM's earlier name, installed the same DLL under these
-# names, with its own skin. Installing RegenerateFM takes it out.
-FMFACE = {"config": "fmface24.ini", "manifest": "fmface24-install.json",
-          "skin": "fmface", "backup": ".fmface-native-backup"}
 
 
 def digest(path: Path) -> str:
@@ -188,45 +184,6 @@ def _is_library(data: bytes) -> bool:
     return magic and b"REGENERATEFM24_NATIVE_MENU_HOOK_INSTALLED" in data
 
 
-def _is_fmface_library(data: bytes) -> bool:
-    return data[:2] == b"MZ" and b"FMFACE24_" in data
-
-
-def fmface_install(game: Path) -> dict | None:
-    """An FM Face install of the DLL in this game folder (Windows and Proton):
-    its manifest, or an empty one if only its DLL is left."""
-    if MACOS or not (game / LIBRARY).is_file():
-        return None
-    manifest = game / FMFACE["manifest"]
-    try:
-        metadata = load_manifest(manifest) if manifest.is_file() else None
-    except (ValueError, KeyError, json.JSONDecodeError):
-        metadata = None
-    if metadata and digest(game / LIBRARY) == metadata["dllSha256"]:
-        return metadata
-    return {"panels": {}} if _is_fmface_library((game / LIBRARY).read_bytes()) else None
-
-
-def _remove_fmface(game: Path, skin: Path, metadata: dict, transaction: Transaction) -> list[Path]:
-    """Restore FM Face's skin panels and remove its DLL and settings; the panels
-    edited since, which are left as they are."""
-    fmface_skin, kept = skin.parent / FMFACE["skin"], []
-    for name, entry in metadata["panels"].items():
-        panel, backup = fmface_skin / name, fmface_skin / (name + FMFACE["backup"])
-        if not panel.is_file() or digest(panel) != entry["sha256"] or \
-                not (entry["created"] or backup.is_file()):
-            kept.append(panel)
-        elif entry["created"]:
-            transaction.remove(panel)
-            transaction.remove_empty_dirs(panel.parent, fmface_skin)
-        else:
-            transaction.write(panel, backup.read_bytes())
-            transaction.remove(backup)
-    for name in (LIBRARY, FMFACE["config"], FMFACE["manifest"]):
-        transaction.remove(game / name)
-    return kept
-
-
 def _restore_panel(skin: Path, name: str, entry: dict, transaction: Transaction) -> None:
     panel = skin / name
     if entry["created"]:
@@ -273,8 +230,7 @@ def main(argv: list[str] | None = None) -> None:
         metadata = load_manifest(manifest)
     except (ValueError, KeyError, json.JSONDecodeError) as exc:
         parser.error(f"Could not read {manifest}: {exc}")
-    fmface = None if args.remove or metadata else fmface_install(game)
-    if target.exists() and not fmface and (not metadata or digest(target) != metadata["dllSha256"]):
+    if target.exists() and (not metadata or digest(target) != metadata["dllSha256"]):
         parser.error(f"There is an unrecognized {LIBRARY} in this game folder; it will not be overwritten.")
     if metadata:
         for name, entry in metadata["panels"].items():
@@ -332,7 +288,6 @@ def main(argv: list[str] | None = None) -> None:
                 parser.error(f"{name}: {exc}")
 
         # All build, token, source-panel, and existing-install checks precede writes.
-        fmface_kept = _remove_fmface(game, skin, fmface, transaction) if fmface else []
         if LEGACY_SQUAD_PANEL in installed:
             _restore_panel(skin, LEGACY_SQUAD_PANEL, installed[LEGACY_SQUAD_PANEL], transaction)
         panels = dict(adopted)
@@ -360,10 +315,6 @@ def main(argv: list[str] | None = None) -> None:
         raise
     print("Installed the FM24 native portrait menus and the Squad menu's "
           "\"Generate missing squad faces...\" item with an authenticated loopback bridge.")
-    if fmface:
-        print("Removed the earlier FM Face install (its faces are kept).")
-        for panel in fmface_kept:
-            print(f"Left FM Face's edited panel as it is: {panel}")
     if LEGACY_SQUAD_PANEL in installed:
         print("Removed the earlier Squad screen Faces button; the command is now in the Squad menu.")
     if MACOS:
