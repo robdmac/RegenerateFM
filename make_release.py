@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Create the RegenerateFM release ZIP.
 
-Layout of regeneratefm-<version>.zip, in regeneratefm-<version>/:
+Layout of dist/RegenerateFM-Windows-Linux.zip, in regeneratefm-<version>/:
   FM26/        copy its contents into the "Football Manager 26" folder: BepInEx
                (downloaded once and checked against its pinned SHA-256) and the
                RegenerateFM plugin, so FM26 needs no installer, Python or .NET SDK
@@ -218,7 +218,9 @@ def main() -> None:
     parser.add_argument("--bepinex-macos-zip", type=Path, help="a local copy of the pinned macOS BepInEx be.789 ZIP")
     args = parser.parse_args()
     version = plugin_version()
-    target = ROOT / "dist" / f"regeneratefm-{version}.zip"
+    # The same name in every release, so GitHub's releases/latest/download link
+    # (the front page's Download for Windows & Linux) always finds it.
+    target = ROOT / "dist" / "RegenerateFM-Windows-Linux.zip"
     missing = [name for name in PUBLIC_FILES + (PLUGIN_DLL,) if not (ROOT / name).is_file()]
     if missing:
         raise SystemExit("Release files are missing: " + ", ".join(missing))
