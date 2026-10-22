@@ -11,8 +11,8 @@ all it needs. With Steam quit and the games closed, it:
                    so the downloaded release can be deleted, and runs
                    fm24/setup_fm24.py for it
 
-Each also replaces an FM Face install (RegenerateFM's earlier name). Faces are
-kept: they are in the games' user-data folders, inside their Proton prefixes.
+Faces are kept: they are in the games' user-data folders, inside their Proton
+prefixes.
 
     ./install-linux.sh [fm26] [fm26demo] [fm24] [--game-dir DIR] [--remove]
 
@@ -36,7 +36,6 @@ from process_memory import running_executables  # noqa: E402
 
 GAMES = ("fm26", "fm26demo", "fm24")
 PLUGIN = "BepInEx/plugins/RegenerateFMHotReload"
-FMFACE_PLUGIN = "BepInEx/plugins/FMFaceHotReload"
 # What the FM26 folder adds beside fm.exe. Faces and settings are in FM26's
 # user-data folder, so removing these keeps them.
 FM26_ADDED = ("BepInEx", "dotnet", "winhttp.dll", "doorstop_config.ini", ".doorstop_version")
@@ -100,26 +99,11 @@ def installed(game: str, folder: Path) -> bool:
     return (folder / "regeneratefm24-install.json").is_file() if game == "fm24" else (folder / PLUGIN).is_dir()
 
 
-def old_key_note(game: str, folder: Path) -> str | None:
-    """FM Face's saved key, which RegenerateFM can't read: it was encrypted for FM Face."""
-    roaming = (folder.parent.parent / "compatdata" / steam_launch.GAMES[game]["app"] / "pfx" / "drive_c" /
-               "users" / "steamuser" / "AppData" / "Roaming")
-    if (roaming / "FM Face" / "openai-key").is_file() and not (roaming / "RegenerateFM" / "openai-key").is_file():
-        return "The OpenAI key FM Face saved can't be carried over: RegenerateFM asks for it once."
-    return None
-
-
 def install_fm26(game: str, folder: Path, release: Path) -> list[str]:
     payload = release / "FM26"
     if not (payload / PLUGIN / "RegenerateFMHotReload.dll").is_file():
         raise InstallError(f"The release's FM26 folder is missing: {payload}")
-    lines = [f"Copied {copy_tree(payload, folder)} files into {folder}."]
-    if (folder / FMFACE_PLUGIN).is_dir():
-        remove(folder / FMFACE_PLUGIN)
-        lines.append("Removed the earlier FM Face plugin (your faces are kept).")
-        if note := old_key_note(game, folder):
-            lines.append(note)
-    return lines
+    return [f"Copied {copy_tree(payload, folder)} files into {folder}."]
 
 
 def remove_fm26(folder: Path) -> list[str]:
