@@ -57,6 +57,20 @@ It clones funchook and Il2CppInterop at their pinned commits, applies the patche
 
 The patched libraries stay under their own licences: funchook is GPL-2.0-or-later with a linking exception, Il2CppInterop is LGPL-3.0. The patches and this build script are their modified source, and the release's `source` folder includes them.
 
+## The installer
+
+`installer/RegenerateFMInstaller.swift` is RegenerateFM Installer.app, which the release ships as `RegenerateFM-macOS.dmg`. It carries the FM26-macOS folder in `Contents/Resources`, copies it beside `fm.app` (clearing quarantine from what it copies) and sets the Steam launch option the way `steam_launch.py` does, while Steam is closed. Uninstall takes the launch option out and removes the files; if other BepInEx plugins are installed it removes only RegenerateFM's. `tests/test_macos_installer.py` runs it with `--cli` against a stand-in Steam folder and checks its launch options against `steam_launch.py`.
+
+Build it, after the plugin and `build.py`:
+
+```sh
+python3 hotreload/macos/make_installer.py                          # signed with the Developer ID certificate
+python3 hotreload/macos/make_installer.py --notarize regeneratefm  # and notarised
+python3 hotreload/macos/make_installer.py --identity -             # ad hoc, for a local test
+```
+
+It signs every Mach-O file in the payload and the app with the hardened runtime and a timestamp, makes `dist/RegenerateFM-macOS.dmg` and signs it. `--notarize` needs a notarytool keychain profile, made once with `xcrun notarytool store-credentials regeneratefm --apple-id <email> --team-id <team>` and an app-specific password; it then submits the DMG, waits and staples the ticket. FM26's entitlements disable library validation, so the libraries load with RegenerateFM's signature in place of BepInEx's ad hoc ones.
+
 ## Graphics reload on macOS
 
 FM26's `ResourcesSubsystem.EnumerateLocalAssetsComplete` takes an `AsyncOperationHandle` struct. Il2CppInterop's Harmony hook passes it with the Windows x64 calling convention, so on macOS (x64 System V, under Rosetta 2) a hook on it hands the game a broken handle: FM26 logs "Attempting to use an invalid operation handle" and never finishes the reload, and the new face appeared only after a restart. On macOS the plugin therefore doesn't hook it. FM26 calls `RegisterResourceLocator`, whose arguments are objects, for each file in the folder as the enumeration completes; when those calls have stopped for 250 ms, the plugin refreshes the panels. Windows and Proton keep the original hook.
