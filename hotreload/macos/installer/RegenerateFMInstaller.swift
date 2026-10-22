@@ -1,7 +1,11 @@
-// MIT. RegenerateFM Installer for FM26 on macOS.
+// SPDX-License-Identifier: GPL-3.0-or-later (see NOTICE.md).
+// RegenerateFM Installer for FM26 and FM24 on macOS.
 //
-// The app carries the release's FM26-macOS folder in Contents/Resources and
-// copies it beside fm.app, then sets FM26's Steam launch option the way
+// The app carries the release's FM26-macOS folder and the packaged FM24
+// companion (FM24-macOS) in Contents/Resources. For FM26 it copies FM26-macOS
+// beside fm.app; for FM24 it copies the companion into the game folder's
+// RegenerateFM folder and runs its setup, which installs the Mac library and
+// run_regeneratefm24.sh. It then sets the game's Steam launch option the way
 // steam_launch.py does, so Play in Steam starts RegenerateFM. fm.app itself is
 // never changed. hotreload/macos/make_installer.py builds, signs and packs it.
 //
@@ -10,6 +14,8 @@
 //   --cli install <payload folder> <game folder>
 //   --cli uninstall <game folder>
 //   --cli needs-change <game folder> [--remove]
+//   --cli install-fm24 <packaged companion folder> <FM24 folder>
+//   --cli uninstall-fm24 <FM24 folder>
 // REGENERATEFM_STEAM_ROOT points it at another Steam folder (and then it
 // doesn't check whether Steam is running).
 
@@ -134,6 +140,9 @@ struct Game: Hashable {
     let name: String
     let appID: String
     let folder: URL
+
+    var isFM24: Bool { appID == Steam.fm24 }
+    var launcher: String { isFM24 ? "run_regeneratefm24.sh" : Installer.launcher }
 }
 
 /// The path with symbolic links resolved, as realpath(3) gives it
@@ -145,7 +154,9 @@ func realPath(_ url: URL) -> URL {
 }
 
 enum Steam {
-    static let games = [("Football Manager 26", "3551340"), ("Football Manager 26 Demo", "3551360")]
+    static let fm24 = "2252570"
+    static let games = [("Football Manager 26", "3551340"), ("Football Manager 26 Demo", "3551360"),
+                        ("Football Manager 2024", fm24)]
     static let testRoot = ProcessInfo.processInfo.environment["REGENERATEFM_STEAM_ROOT"]
 
     static var root: URL {
@@ -202,7 +213,7 @@ enum Steam {
     }
 
     static func prefix(_ game: Game) -> String {
-        "\"\(realPath(game.folder).path)/\(Installer.launcher)\""
+        "\"\(realPath(game.folder).path)/\(game.launcher)\""
     }
 
     static func manualText(_ game: Game) -> String { "\(prefix(game)) \(SteamConfig.command)" }
@@ -263,12 +274,30 @@ enum Installer {
         Bundle.main.resourceURL?.appendingPathComponent("FM26-macOS")
     }
 
+    /// FM24: the packaged companion (fm24/build_companion_macos.py), and where it goes.
+    static let companionName = "regeneratefm-fm24"
+    static var fm24Payload: URL? {
+        Bundle.main.resourceURL?.appendingPathComponent("FM24-macOS/\(companionName)")
+    }
+    static func companionFolder(_ game: URL) -> URL { game.appendingPathComponent("RegenerateFM/\(companionName)") }
+    static func companion(_ game: URL) -> URL { companionFolder(game).appendingPathComponent(companionName) }
+
+    static var appleSilicon: Bool {
+        var value: Int32 = 0
+        var size = MemoryLayout<Int32>.size
+        return sysctlbyname("hw.optional.arm64", &value, &size, nil, 0) == 0 && value == 1
+    }
+
     static var version: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
     }
 
-    static func isInstalled(_ folder: URL) -> Bool {
-        FileManager.default.fileExists(atPath: folder.appendingPathComponent("\(plugin)/RegenerateFMHotReload.dll").path)
+    static func isInstalled(_ game: Game) -> Bool {
+        if game.isFM24 {
+            return FileManager.default.fileExists(atPath: companion(game.folder).path)
+                && FileManager.default.fileExists(atPath: game.folder.appendingPathComponent("libregeneratefm24.dylib").path)
+        }
+        return FileManager.default.fileExists(atPath: game.folder.appendingPathComponent("\(plugin)/RegenerateFMHotReload.dll").path)
     }
 
     static func gameRunning(_ folder: URL) -> Bool {
@@ -321,6 +350,57 @@ enum Installer {
         return copied
     }
 
+    /// FM24: copies the companion into the game folder (replacing an earlier
+    /// one; setup keeps FM24's token) and runs its setup, which installs the
+    /// Mac library, run_regeneratefm24.sh and the RegenerateFM skin. The setup's output.
+    static func installFM24(from payload: URL, to folder: URL) throws -> String {
+        let manager = FileManager.default
+        guard manager.fileExists(atPath: folder.appendingPathComponent("fm.app").path) else {
+            throw SteamConfig.ConfigError(errorDescription: "\(folder.path) has no fm.app. Choose the folder that holds FM24's fm.app.")
+        }
+        let target = companionFolder(folder)
+        if manager.fileExists(atPath: target.path) { try manager.removeItem(at: target) }
+        try manager.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try manager.copyItem(at: payload, to: target)
+        if let walker = manager.enumerator(atPath: target.path) {
+            for case let name as String in walker {
+                removexattr(target.appendingPathComponent(name).path, "com.apple.quarantine", XATTR_NOFOLLOW)
+            }
+        }
+        return try runCompanion(folder, ["setup", "--game-dir", folder.path, "--no-launch-option"])
+    }
+
+    /// FM24: the companion's setup --remove (the library, launcher and
+    /// skin panels), then the companion itself.
+    static func removeFM24(from folder: URL) throws -> String {
+        if FileManager.default.fileExists(atPath: companion(folder).path) {
+            _ = try runCompanion(folder, ["setup", "--game-dir", folder.path, "--remove", "--no-launch-option"])
+        }
+        let ours = folder.appendingPathComponent("RegenerateFM")
+        if FileManager.default.fileExists(atPath: ours.path) { try FileManager.default.removeItem(at: ours) }
+        return "Removed RegenerateFM from \(folder.lastPathComponent). Your faces are kept in FM24's user-data folder."
+    }
+
+    static func runCompanion(_ folder: URL, _ arguments: [String]) throws -> String {
+        let process = Process()
+        process.executableURL = companion(folder)
+        process.arguments = arguments
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = output
+        process.standardInput = FileHandle.nullDevice
+        try process.run()
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        let text = String(decoding: data, as: UTF8.self)
+            .replacingOccurrences(of: "Press Enter to close.", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if process.terminationStatus != 0 {
+            let reason = text.components(separatedBy: "\n").last(where: { !$0.isEmpty }) ?? "it stopped with code \(process.terminationStatus)"
+            throw SteamConfig.ConfigError(errorDescription: reason)
+        }
+        return text
+    }
+
     /// Removes what copyFiles added. Another mod's BepInEx plugins are kept,
     /// with BepInEx, and then only RegenerateFM's plugin goes.
     static func removeFiles(from folder: URL) throws -> String {
@@ -364,7 +444,7 @@ final class Model: ObservableObject {
             chosen = games.first
         }
         if chosen == nil {
-            message = "Football Manager 26 wasn't found in your Steam libraries. Choose its folder (in Steam: Manage > Browse local files)."
+            message = "Neither Football Manager 26 nor Football Manager 2024 was found in your Steam libraries. Choose the game's folder (in Steam: Manage > Browse local files)."
         }
     }
 
@@ -372,14 +452,16 @@ final class Model: ObservableObject {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
-        panel.message = "Choose the folder that holds FM26's fm.app"
+        panel.message = "Choose the folder that holds the game's fm.app"
         guard panel.runModal() == .OK, let folder = panel.url else { return }
         guard FileManager.default.fileExists(atPath: folder.appendingPathComponent("fm.app").path) else {
-            message = "That folder has no fm.app. In Steam, use Manage > Browse local files on Football Manager 26."
+            message = "That folder has no fm.app. In Steam, use Manage > Browse local files on the game."
             return
         }
+        // FM24's folder holds its data beside fm.app; FM26's is inside the app.
+        let fm24 = FileManager.default.fileExists(atPath: folder.appendingPathComponent("data/game/panels.fmf").path)
         let demo = folder.lastPathComponent.localizedCaseInsensitiveContains("demo")
-        let (name, appID) = Steam.games[demo ? 1 : 0]
+        let (name, appID) = Steam.games[fm24 ? 2 : demo ? 1 : 0]
         chosen = Game(name: name, appID: appID, folder: folder)
         if !games.contains(chosen!) { games.append(chosen!) }
         message = ""
@@ -388,14 +470,36 @@ final class Model: ObservableObject {
     func install() {
         guard let game = chosen else { return }
         if Installer.gameRunning(game.folder) { message = "Quit \(game.name) first."; return }
-        guard let payload = Installer.payload else { message = "The installer's files are missing."; return }
         manual = nil
+        if game.isFM24 {
+            guard Installer.appleSilicon else { message = "RegenerateFM for FM24 needs an Apple Silicon Mac."; return }
+            guard let payload = Installer.fm24Payload else { message = "The installer's files are missing."; return }
+            working = true
+            message = "Setting RegenerateFM up for \(game.name)…"
+            DispatchQueue.global().async {
+                let result = Result { try Installer.installFM24(from: payload, to: game.folder) }
+                DispatchQueue.main.async {
+                    self.working = false
+                    switch result {
+                    case .success: self.finishInstall(game)
+                    case .failure(let error): self.message = "Couldn't set RegenerateFM up for \(game.name): \(error.localizedDescription)"
+                    }
+                }
+            }
+            return
+        }
+        guard let payload = Installer.payload else { message = "The installer's files are missing."; return }
         do {
             _ = try Installer.copyFiles(from: payload, to: game.folder)
         } catch {
             message = "Couldn't copy RegenerateFM into \(game.name): \(error.localizedDescription)"
             return
         }
+        finishInstall(game)
+    }
+
+    /// With the files in place: the launch option, and what to do next.
+    private func finishInstall(_ game: Game) {
         var text = "RegenerateFM \(Installer.version) is installed in \(game.name)."
         if !Steam.needsChange(game, remove: false) {
             text += " Its Steam launch option is already set: press Play in Steam."
@@ -413,7 +517,11 @@ final class Model: ObservableObject {
                 manual = Steam.manualText(game)
             }
         }
-        if !rosetta { text += " FM26 runs under Rosetta 2 with RegenerateFM: click Install Rosetta first." }
+        if game.isFM24 {
+            text += " In FM24, Generate new face and Update face are in a profile's Overview tab menu; for them on the portrait too, choose the RegenerateFM skin in Preferences > Interface."
+        } else if !rosetta {
+            text += " FM26 runs under Rosetta 2 with RegenerateFM: click Install Rosetta first."
+        }
         message = text
     }
 
@@ -432,7 +540,9 @@ final class Model: ObservableObject {
                 return
             }
         }
-        do { message = try Installer.removeFiles(from: game.folder) } catch {
+        do {
+            message = game.isFM24 ? try Installer.removeFM24(from: game.folder) : try Installer.removeFiles(from: game.folder)
+        } catch {
             message = "Couldn't remove RegenerateFM: \(error.localizedDescription)"
         }
     }
@@ -458,12 +568,12 @@ struct InstallerView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("RegenerateFM \(Installer.version)").font(.title2).bold()
-            Text("Adds RegenerateFM to Football Manager 26: Generate face and Update face in the game's menus. fm.app itself isn't changed.")
+            Text("Adds RegenerateFM to Football Manager 26 and Football Manager 2024: Generate face and Update face in the game's menus. fm.app itself isn't changed.")
                 .fixedSize(horizontal: false, vertical: true)
             HStack {
                 Picker("Game:", selection: $model.chosen) {
                     ForEach(model.games, id: \.self) { game in
-                        Text(game.name + (Installer.isInstalled(game.folder) ? " (installed)" : "")).tag(Optional(game))
+                        Text(game.name + (Installer.isInstalled(game) ? " (installed)" : "")).tag(Optional(game))
                     }
                 }
                 .disabled(model.games.isEmpty)
@@ -473,12 +583,12 @@ struct InstallerView: View {
                 Text(game.folder.path).font(.caption).foregroundColor(.secondary).textSelection(.enabled)
             }
             HStack {
-                Button(model.chosen.map { Installer.isInstalled($0.folder) } == true ? "Update" : "Install") { model.install() }
+                Button(model.chosen.map { Installer.isInstalled($0) } == true ? "Update" : "Install") { model.install() }
                     .keyboardShortcut(.defaultAction)
                     .disabled(model.chosen == nil || model.working)
                 Button("Uninstall") { model.uninstall() }
-                    .disabled(model.chosen.map { !Installer.isInstalled($0.folder) } ?? true || model.working)
-                if !model.rosetta {
+                    .disabled(model.chosen.map { !Installer.isInstalled($0) } ?? true || model.working)
+                if !model.rosetta && model.chosen?.isFM24 != true {
                     Button("Install Rosetta") { model.installRosetta() }.disabled(model.working)
                 }
             }
@@ -539,6 +649,10 @@ func runCommandLine(_ arguments: [String]) -> Int32 {
             let game = Game(name: Steam.games[0].0, appID: Steam.games[0].1, folder: folder)
             if Steam.testRoot != nil { print("launch options changed \(try Steam.update(game, remove: true))") }
             print(try Installer.removeFiles(from: folder))
+        case "install-fm24" where arguments.count == 3:
+            print(try Installer.installFM24(from: URL(fileURLWithPath: arguments[1]), to: URL(fileURLWithPath: arguments[2])))
+        case "uninstall-fm24" where arguments.count == 2:
+            print(try Installer.removeFM24(from: URL(fileURLWithPath: arguments[1])))
         case "needs-change" where arguments.count >= 2:
             let game = Game(name: Steam.games[0].0, appID: Steam.games[0].1, folder: URL(fileURLWithPath: arguments[1]))
             print(Steam.needsChange(game, remove: arguments.contains("--remove")))

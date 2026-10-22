@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Create the RegenerateFM release ZIP.
 
-Layout of regeneratefm-<version>.zip, in regeneratefm-<version>/:
+Layout of dist/RegenerateFM-Windows-Linux.zip, in regeneratefm-<version>/:
   FM26/        copy its contents into the "Football Manager 26" folder: BepInEx
                (downloaded once and checked against its pinned SHA-256) and the
                RegenerateFM plugin, so FM26 needs no installer, Python or .NET SDK
@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import re
+import shutil
 import urllib.request
 import zipfile
 from pathlib import Path, PurePosixPath
@@ -26,6 +27,7 @@ ROOT = Path(__file__).resolve().parent
 PUBLIC_FILES = (
     ".env.example",
     "LICENSE",
+    "NOTICE.md",
     "README.md",
     "RELEASE_CHECKLIST.md",
     "regeneratefm.py",
@@ -57,6 +59,7 @@ PUBLIC_FILES = (
     "fm24/setup_fm24.py",
     "fm24/install-linux.sh",
     "fm24/build_exe.py",
+    "fm24/build_companion_macos.py",
     "fm24/requirements-exe.txt",
     "fm24/companion.py",
     "fm24/companion_client.py",
@@ -108,9 +111,8 @@ PUBLIC_FILES = (
     "tests/test_fm26_generator.py",
     "tests/fm26_generator/GeneratorCheck.csproj",
     "tests/fm26_generator/Program.cs",
-    "licenses/THIRD_PARTY_NOTICES.md",
-    "licenses/BepInEx-LICENSE.txt",
-    "licenses/Il2CppInterop-LICENSE.txt",
+    "licenses/fetch_licenses.py",
+    "make_source_archive.py",
 )
 PLUGIN_DLL = "hotreload/bin/Release/net6.0/RegenerateFMHotReload.dll"
 BEPINEX = ("https://builds.bepinex.dev/projects/bepinex_be/760/"
@@ -124,9 +126,25 @@ MACOS_BUILD = ROOT / "hotreload" / "macos" / "build"
 MACOS_NATIVE = {"BepInEx/core/libfunchook.dylib": "libfunchook.dylib",
                 "BepInEx/core/Il2CppInterop.Runtime.dll": "Il2CppInterop.Runtime.dll",
                 "BepInEx/core/Il2CppInterop.Common.dll": "Il2CppInterop.Common.dll"}
+
+
+def licence_files() -> tuple[str, ...]:
+    """RegenerateFM's licence and the bundled software's (licenses/), which
+    the release, the macOS installer and the packaged companions all carry."""
+    texts = sorted(path.relative_to(ROOT).as_posix() for path in (ROOT / "licenses").rglob("*")
+                   if path.is_file() and path.suffix in (".txt", ".md"))
+    return ("LICENSE", "NOTICE.md", *texts)
+
+
+def copy_licences(target: Path) -> None:
+    for name in licence_files():
+        (target / name).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / name, target / name)
+
+
+PUBLIC_FILES += tuple(name for name in licence_files() if name not in PUBLIC_FILES)
 # Copied to the release's top level, beside the FM26 and FM24 folders.
-TOP_LEVEL = ("README.md", "LICENSE", "licenses/THIRD_PARTY_NOTICES.md",
-             "licenses/BepInEx-LICENSE.txt", "licenses/Il2CppInterop-LICENSE.txt")
+TOP_LEVEL = ("README.md", *licence_files())
 
 
 def bepinex_zip(pinned: tuple[str, str], path: Path | None) -> Path:
@@ -200,7 +218,9 @@ def main() -> None:
     parser.add_argument("--bepinex-macos-zip", type=Path, help="a local copy of the pinned macOS BepInEx be.789 ZIP")
     args = parser.parse_args()
     version = plugin_version()
-    target = ROOT / "dist" / f"regeneratefm-{version}.zip"
+    # The same name in every release, so GitHub's releases/latest/download link
+    # (the front page's Download for Windows & Linux) always finds it.
+    target = ROOT / "dist" / "RegenerateFM-Windows-Linux.zip"
     missing = [name for name in PUBLIC_FILES + (PLUGIN_DLL,) if not (ROOT / name).is_file()]
     if missing:
         raise SystemExit("Release files are missing: " + ", ".join(missing))
@@ -221,7 +241,7 @@ def main() -> None:
     target.parent.mkdir(exist_ok=True)
     with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for name in TOP_LEVEL:
-            archive.write(ROOT / name, f"{top}/{Path(name).name}")
+            archive.write(ROOT / name, f"{top}/{name}")
         write(archive, f"{top}/install-linux.sh", (ROOT / "install-linux.sh").read_bytes(), 0o755)
         for name, (data, mode) in loader.items():
             write(archive, f"{top}/FM26/{name}", data, mode)

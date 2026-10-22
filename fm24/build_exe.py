@@ -22,6 +22,9 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+import make_release  # noqa: E402
+
 NAME = "regeneratefm-fm24"
 
 
@@ -51,6 +54,8 @@ def main() -> None:
     ])
     output = dist / NAME
     shutil.copy2(ROOT / ".env.example", output / ".env.example")
+    # PyInstaller leaves the bundled packages' licences out; these cover them.
+    make_release.copy_licences(output)
     shutil.rmtree(work, ignore_errors=True)
     print(f"Built {output / (NAME + '.exe')}")
 

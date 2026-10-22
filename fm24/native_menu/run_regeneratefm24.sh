@@ -36,25 +36,31 @@ if [ "$(/usr/sbin/sysctl -n hw.optional.arm64 2>/dev/null)" != "1" ] || [ ! -f "
 fi
 
 # Start RegenerateFM's companion, as the Windows DLL does: setup_fm24.py records it
-# (companion=), the Python to run it with (python=) and that Python's
-# architecture (python_arch=; Steam may run this under Rosetta, and the
-# packages are built for the architecture setup ran as) in regeneratefm24.ini. It is
-# given this shell's process ID, which exec below hands to FM24, and stops
-# when FM24 does, or at once if a companion is already running. It logs to
-# regeneratefm24-companion.log here.
+# (companion=) in regeneratefm24.ini. The packaged companion (the macOS
+# installer's) runs itself; companion.py from source runs with the Python
+# recorded as python=, as that Python's architecture (python_arch=; Steam may
+# run this under Rosetta, and the packages are built for the architecture
+# setup ran as). It is given this shell's process ID, which exec below hands
+# to FM24, and stops when FM24 does, or at once if a companion is already
+# running. It logs to regeneratefm24-companion.log here.
 CONFIG="${BASEDIR}/regeneratefm24.ini"
 COMPANION=$(/usr/bin/sed -n 's/^companion=//p' "$CONFIG" 2>/dev/null)
 PYTHON=$(/usr/bin/sed -n 's/^python=//p' "$CONFIG" 2>/dev/null)
 PYTHON_ARCH=$(/usr/bin/sed -n 's/^python_arch=//p' "$CONFIG" 2>/dev/null)
 case "$PYTHON_ARCH" in arm64|x86_64) ;; *) PYTHON_ARCH=arm64 ;; esac
-if [ -n "$COMPANION" ] && [ -f "$COMPANION" ] && [ -x "$PYTHON" ]; then
+if [ -n "$COMPANION" ] && [ -f "$COMPANION" ] && { [ -x "$PYTHON" ] || [ -z "$PYTHON" -a -x "$COMPANION" ]; }; then
     LOG="${BASEDIR}/regeneratefm24-companion.log"
     if [ -f "$LOG" ] && [ "$(/usr/bin/stat -f %z "$LOG")" -gt 1000000 ]; then
         /bin/mv -f "$LOG" "$LOG.old"
     fi
     # Without Steam's overlay library, which is for the game.
-    /usr/bin/nohup /usr/bin/arch -"$PYTHON_ARCH" /usr/bin/env -u DYLD_INSERT_LIBRARIES "$PYTHON" -u "$COMPANION" \
-        --started-by-fm24 $$ --game-dir "$BASEDIR" < /dev/null >> "$LOG" 2>&1 &
+    if [ -n "$PYTHON" ]; then
+        /usr/bin/nohup /usr/bin/arch -"$PYTHON_ARCH" /usr/bin/env -u DYLD_INSERT_LIBRARIES "$PYTHON" -u "$COMPANION" \
+            --started-by-fm24 $$ --game-dir "$BASEDIR" < /dev/null >> "$LOG" 2>&1 &
+    else
+        /usr/bin/nohup /usr/bin/arch -arm64 /usr/bin/env -u DYLD_INSERT_LIBRARIES "$COMPANION" \
+            --started-by-fm24 $$ --game-dir "$BASEDIR" < /dev/null >> "$LOG" 2>&1 &
+    fi
 fi
 
 # A library from a downloaded ZIP is quarantined, and macOS won't load a

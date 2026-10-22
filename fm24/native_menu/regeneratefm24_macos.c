@@ -1,4 +1,4 @@
-/* MIT. Experimental FM24 24.4.2 native UI event bridge for macOS (Apple Silicon).
+/* SPDX-License-Identifier: GPL-3.0-or-later (see NOTICE.md). Experimental FM24 24.4.2 native UI event bridge for macOS (Apple Silicon).
    The macOS counterpart of regeneratefm24.c: the same events, bridge protocol and
    dialogs, at the addresses of the Mac build (supported_build_macos.json).
    FM24's run_regeneratefm24.sh loads it with DYLD_INSERT_LIBRARIES. */

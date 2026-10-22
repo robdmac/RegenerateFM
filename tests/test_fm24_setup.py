@@ -115,6 +115,36 @@ class SetupTests(unittest.TestCase):
         self.assertEqual(command[command.index("--companion") + 1], "Z:" + str(companion).replace("/", "\\"))
         self.assertTrue((companion.parent / ".fm24-auth").is_file())
 
+    def test_the_packaged_mac_companion_runs_itself(self):
+        companion = self.root / "RegenerateFM" / "regeneratefm-fm24" / "regeneratefm-fm24"
+        companion.parent.mkdir(parents=True)
+        companion.write_bytes(b"\xcf\xfa\xed\xfe")
+        game, user_data = self.root / "game", self.root / "user"
+        game.mkdir()
+        user_data.mkdir()
+        dll = self.root / "libregeneratefm24.dylib"
+        dll.write_bytes(b"\xcf\xfa\xed\xfe")
+        with mock.patch.object(setup_fm24.sys, "platform", "darwin"), \
+                mock.patch.object(setup_fm24.sys, "frozen", True, create=True), \
+                mock.patch.object(setup_fm24.sys, "executable", str(companion)), \
+                mock.patch.object(setup_fm24.native_install, "MACOS", True):
+            self.assertEqual(setup_fm24.packaged_companion(), companion.resolve())
+            self.assertEqual(setup_fm24.companion_python(), (None, None))
+            # The installer sets the launch option itself, so Steam may be running.
+            with mock.patch.object(setup_fm24.steam_launch, "steam_running", return_value=True), \
+                    mock.patch.object(setup_fm24.steam_launch, "needs_change", return_value=True), \
+                    mock.patch.object(setup_fm24.steam_launch, "apply") as launch_option, \
+                    mock.patch.object(setup_fm24, "bundled_dll", return_value=dll), \
+                    mock.patch.object(setup_fm24.native_install, "game_running", return_value=False), \
+                    mock.patch.object(setup_fm24, "build_skin_from_game"), \
+                    mock.patch.object(setup_fm24.native_install, "main") as install, \
+                    mock.patch("builtins.print"):
+                setup_fm24.setup(game, user_data, companion.parent / ".fm24-auth", companion, launch_option=False)
+            launch_option.assert_not_called()
+        command = install.call_args.args[0]
+        self.assertEqual(command[command.index("--companion") + 1], str(companion))
+        self.assertNotIn("--python", command)
+
     def test_refuses_while_fm24_runs(self):
         with mock.patch.object(setup_fm24, "is_set_up", return_value=False), \
                 mock.patch.object(setup_fm24.native_install, "game_running", return_value=True):

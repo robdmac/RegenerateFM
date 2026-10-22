@@ -89,9 +89,13 @@
   and it stops with FM24; Linux installs with `FM24/install-linux.sh` and
   plain `python3`, refusing while Steam runs. Checked under Proton through
   Steam's Play; real Windows is untested.
-- **macOS companion start:** the Mac library and `run_regeneratefm24.sh` don't
-  start the companion, and it isn't packaged for macOS (it needs building on
-  a Mac). `run_regeneratefm24.sh` could start it before FM24.
+- **macOS companion start:** done. `run_regeneratefm24.sh` starts the
+  companion (2026-10-21), and since 2026-10-22 it is packaged for macOS
+  (`fm24/build_companion_macos.py`) and installed by the macOS installer,
+  so FM24 on the Mac needs no Python. Checked: the installer's setup over a
+  source install, and the launcher starting the packaged companion, which
+  stopped with the game. A face in FM24 itself from the packaged companion
+  is still to check (Steam was in use elsewhere).
 - **FM24 people found by class:** done (2026-10-20). Person records,
   teams, club details and nations are recognised by their object's class
   (MSVC RTTI), not by marker bytes or ID copies, which varied from person to
@@ -301,3 +305,21 @@
   private repo; make this repo public; switch Stripe from the sandbox to the
   live account (restricted key, webhook and its secret); check every link,
   including the front page's `DOWNLOAD_URL` once there is a release.
+
+## After launch (2026-10-22)
+
+- **FM24 companion in C#.** The companion is about 6,200 lines of Python,
+  so every packaged build carries a Python (the Mac build bundles Apple's
+  3.9, which is out of support; kept for now, by choice, rather than
+  switching to python.org's 3.12). Its ssl module uses macOS's own
+  LibreSSL 2.8.3 (`/usr/lib/libssl.46.dylib`): TLS 1.2 only, no TLS 1.3.
+  Checked 2026-10-22: credits.regenerate.fm and api.openai.com both connect
+  over TLS 1.2 with verified certificates; it would break only if either
+  dropped TLS 1.2. Port it to C# and reuse the FM26 plugin's
+  `hotreload/FaceGenerator.cs`, which already does the prompts, appearance,
+  relatives, OpenAI and credits requests and saving, with prompt parity
+  tested against `regeneratefm.py`. Still to port: the FM24 memory reading,
+  profiles, squads, dialogs and setup. Compiled with .NET NativeAOT for
+  win-x64 (also run under Proton) and osx-arm64, it needs no runtime and
+  leaves one copy of the prompt code instead of two. Several days of work,
+  then the FM24 in-game checks again on macOS, Windows and Linux.
