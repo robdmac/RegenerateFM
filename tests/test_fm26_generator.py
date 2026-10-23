@@ -121,6 +121,8 @@ class GeneratorParityTests(unittest.TestCase):
         try:
             if action == "update":
                 return {"prompt": regeneratefm.update_prompt(profile)}
+            if action == "newgen":
+                return {"prompt": regeneratefm.newgen_prompt(profile, **kwargs)}
             return {"prompt": regeneratefm.profile_prompt(profile, **kwargs)}
         except ValueError as exc:
             return {"error": str(exc)}
@@ -160,7 +162,7 @@ class GeneratorParityTests(unittest.TestCase):
         ]
         cases, expected = [], []
         for profile in profiles:
-            for action in ("profile", "update"):
+            for action in ("profile", "update", "newgen"):
                 cases.append({"action": action, "profile": profile})
                 expected.append(self.python_prompt(action, profile))
         for profile, relation, person in ((dict(PLAYER, relatives=[{"relation": "Father", "personId": "7"}]), "father", "1002"),
@@ -364,6 +366,27 @@ class GeneratorParityTests(unittest.TestCase):
         self.assertIn(saved, self.requests[1][3])
         self.assertIn("at age 38", self.requests[0][3].decode("latin-1"))
         self.assertIn("Morgan started coaching in 2021.", json.loads(self.requests[2][3])["prompt"])
+
+    def test_an_fm26_newgen_face_becomes_a_photograph_with_its_own_features(self):
+        player = {"name": "Craig Griffiths", "age": 16, "club": "Arsenal", "gender": "male"}
+        with tempfile.TemporaryDirectory() as tmp:
+            graphics = Path(tmp) / "graphics"
+            shown = Path(tmp) / "shown.png"
+            shown.write_bytes(regeneratefm.fit_portrait(_png(512)))
+            ok = {"apiKey": "sk-test", "baseUrl": self.base, "directory": str(graphics), "personId": "2002068539",
+                  "profile": player, "input": str(shown)}
+            results = self.run_cases([dict(ok, action="portrait", mode="update", newgen=True),
+                                      dict(ok, action="portrait", mode="update", newgen=True)])
+            self.assertNotIn("error", results[0])
+            # The traits are saved like a generated face's, and Python builds the same prompt from them.
+            self.assertTrue((graphics / ".regeneratefm-appearances" / "2002068539.json").is_file())
+            expected = regeneratefm.newgen_prompt(player, person_id="2002068539", appearance_dir=graphics)
+        first, second = (request[3].decode("utf-8", "replace") for request in self.requests)
+        self.assertIn(expected, first)
+        self.assertIn("computer-generated 3D face for Craig Griffiths", first)
+        # Once RegenerateFM has a face for them, Update face refreshes that photograph instead.
+        self.assertIn(regeneratefm.update_prompt(player), second)
+        self.assertNotIn("computer-generated", second)
 
     def test_a_relatives_face_is_the_reference_for_a_new_face(self):
         father = {"name": "Marco Ricci", "age": 36, "nationality": "Italy", "position": "Centre-back",

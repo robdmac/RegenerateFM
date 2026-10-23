@@ -176,10 +176,16 @@ def _stat_strength(score: int | str) -> float:
 
 def _appearance_prompt(name: str, age: int, person_id: str | None,
                        directory: Path | None, gender: str | None, family: str | None = None) -> str:
+    return _appearance_instruction(_person_traits(name, age, person_id, directory, gender, family), gender)
+
+
+def _person_traits(name: str, age: int, person_id: str | None,
+                   directory: Path | None, gender: str | None, family: str | None = None):
+    """The person's appearance traits: saved ones, or new ones chosen and saved."""
     if person_id is None:
         if directory is not None:
             raise ValueError("A person ID is required to save an appearance profile.")
-        return _appearance_instruction(appearance_traits("name:" + name.casefold(), age, gender, family), gender)
+        return appearance_traits("name:" + name.casefold(), age, gender, family)
     person_id = validate_id(person_id)
     path = Path(directory) / ".regeneratefm-appearances" / f"{person_id}.json" if directory is not None else None
     if path is not None and path.exists():
@@ -190,15 +196,14 @@ def _appearance_prompt(name: str, age: int, person_id: str | None,
         # Traits chosen before the person's gender was known (or for another
         # one) are chosen again for it.
         if gender is None or saved.get("gender") == gender:
-            return _appearance_instruction(saved.get("traits"), gender)
+            return saved.get("traits")
     traits = appearance_traits(person_id, age, gender, family)
-    instruction = _appearance_instruction(traits, gender)
     if path is not None:
         saved = {"schemaVersion": 1, "personId": person_id, "traits": traits}
         if gender is not None:
             saved["gender"] = gender
         _atomic_write(path, (json.dumps(saved, ensure_ascii=False, indent=2) + "\n").encode())
-    return instruction
+    return traits
 
 
 def _appearance_instruction(traits, gender: str | None) -> str:
@@ -317,10 +322,42 @@ def update_prompt(profile: dict) -> str:
         f"{name}'s current portrait.{_gender_text(name, gender)} Keep them clearly the same person, with the same face shape, "
         "features, skin tone, eye colour, hairstyle, facial hair and distinguishing marks. "
         + ("" if gender == "male" else "Do not add any facial hair. ") +
+        f"Make it a realistic photograph of {name} as a real person: if the supplied picture is a "
+        "3D render, game graphic or illustration, keep the likeness but replace its rendered look with "
+        "real photographic skin, hair and lighting. "
         f"Show {name} as they look now, at age {age}: if the supplied picture looks younger or "
         "older, change only the natural signs of age, such as hairline, hair colour, skin "
         "texture and facial lines. " + attire + PORTRAIT_FRAMING + PORTRAIT_PHOTOGRAPHY +
-        PORTRAIT_BACKGROUND + f"Otherwise make it an updated version of the supplied picture of {name}. "
+        PORTRAIT_BACKGROUND + f"Otherwise make it an updated photograph of the supplied picture of {name}. "
+        "Do not depict numbers. No text, logos, badges, borders, or other people."
+    )
+
+
+def newgen_prompt(profile: dict, *, person_id: str | None = None,
+                  appearance_dir: Path | None = None) -> str:
+    """update_prompt, for a supplied image that is FM26's own 3D face for a
+    newgen: the render becomes a photograph of a real person, keeping its
+    colouring and hair, with the person's appearance traits for the face."""
+    kind, label, age = _profile_kind_and_age(profile)
+    name = _profile_text(profile, "name", label)
+    gender = _gender(profile)
+    if kind == "staff":
+        attire = "Dress them in a simple unbranded dark jacket or training top. "
+    else:
+        attire = _kit_text(_profile_text(profile, "club"))
+    family = family_seed(person_id, family_relatives(profile))
+    traits = _person_traits(name, age, person_id, appearance_dir, gender, family)
+    _appearance_instruction(traits, gender)  # refuses invalid saved traits
+    facial_hair = traits["facialHair"] if gender == "male" else NO_FACIAL_HAIR
+    return (
+        f"Turn this Football Manager picture of {name} into a realistic photograph of a real person. "
+        f"The supplied image is the game's computer-generated 3D face for {name}, not a photograph."
+        f"{_gender_text(name, gender)} Keep {name}'s skin tone, eye colour, hair colour and hairstyle from it, "
+        "but not its smooth, rendered, game-like face: show a real human face with real photographic skin, "
+        f"hair and lighting. Show {name} at age {age}, with their own individual features: {traits['face']}; "
+        f"{traits['features']}; {facial_hair}; {traits['expression']}. "
+        "Keep these features understated, anatomically natural and consistent with the person's age. "
+        + attire + PORTRAIT_FRAMING + PORTRAIT_PHOTOGRAPHY + PORTRAIT_BACKGROUND +
         "Do not depict numbers. No text, logos, badges, borders, or other people."
     )
 

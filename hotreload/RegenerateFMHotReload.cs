@@ -263,21 +263,24 @@ namespace RegenerateFMHotReload
                     snapshot.BiographyHeadline = cachedBiography;
                 var settings = CurrentSettings();
                 byte[] reference = null;
+                bool newgenFace = false;
                 if (update)
                 {
                     if (!HasFace(picture))
                         throw new InvalidOperationException("This person has no face to update yet. Use Generate face instead.");
                     reference = CaptureReferencePng(picture);
+                    newgenFace = IsNewgenPortrait(picture);
                 }
                 overlay = BuildOverlay(picture, out message);
-                Log.LogInfo((update ? "Updating face for " : "Generating face for ") + snapshot.Name + " (" + personId.Value + "): " +
+                Log.LogInfo((update ? "Updating " + (newgenFace ? "FM newgen face for " : "face for ") : "Generating face for ") +
+                            snapshot.Name + " (" + personId.Value + "): " +
                             snapshot.Physical.Count + " physical, " + snapshot.Technical.Count + " technical, " +
                             snapshot.Mental.Count + " mental, " + snapshot.Goalkeeping.Count + " goalkeeping attributes; bio=" +
                             (snapshot.BiographyHeadline != null) + "; family: " +
                             (FamilyText(snapshot) ?? "none"));
                 _pending = new PendingGeneration
                 {
-                    Task = RequestPortrait(personId.Value, snapshot, settings, update ? "update" : "generate", reference),
+                    Task = RequestPortrait(personId.Value, snapshot, settings, update ? "update" : "generate", reference, newgenFace),
                     Overlay = overlay,
                     Message = message,
                     StartedUtc = System.DateTime.UtcNow
@@ -2674,6 +2677,14 @@ namespace RegenerateFMHotReload
         private static bool IsDefaultPortrait(string address) =>
             address != null && address.StartsWith("person_default", StringComparison.Ordinal);
 
+        // FM26's own 3D face for a newgen ("newgen_<id>"), rather than a photo
+        // ("person_<id>") or a RegenerateFM face.
+        private static bool IsNewgenPortrait(VisualElement picture)
+        {
+            var address = FindNamed(picture, "PersonImage")?.TryCast<SI.UI.Image>()?.m_imageAddressableID?.ToString();
+            return address != null && address.StartsWith("newgen_", StringComparison.Ordinal);
+        }
+
         // FM26 shows "person_default" (a silhouette) when a person has no face:
         // neither a generated one nor a game photo.
         private static bool HasFace(VisualElement picture) => FaceState(picture) == true;
@@ -2823,14 +2834,14 @@ namespace RegenerateFMHotReload
         }
 
         private static async Task<GenerationResult> RequestPortrait(long playerId, ProfileSnapshot profile,
-            ImageSettings settings, string mode = "generate", byte[] shownPng = null)
+            ImageSettings settings, string mode = "generate", byte[] shownPng = null, bool shownNewgen = false)
         {
             try
             {
                 string folder = GraphicsFolder();
                 var timer = System.Diagnostics.Stopwatch.StartNew();
                 await FaceGenerator.MakePortrait(settings, folder, playerId.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                                                 profile, mode == "update", shownPng).ConfigureAwait(false);
+                                                 profile, mode == "update", shownPng, shownNewgen: shownNewgen).ConfigureAwait(false);
                 Instance?.Log.LogInfo("Image request and save took " + timer.Elapsed.TotalSeconds.ToString("0.0") + " s");
                 return new GenerationResult { Success = true, GraphicsDir = folder };
             }

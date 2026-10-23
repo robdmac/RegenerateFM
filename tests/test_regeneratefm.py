@@ -251,7 +251,9 @@ class PortraitTests(unittest.TestCase):
         self.assertIn("Lionel Messi's current portrait", prompt)
         self.assertIn("at age 38", prompt)
         self.assertIn("home kit and colours of Inter Miami", prompt)
-        self.assertIn("updated version of the supplied picture of Lionel Messi", prompt)
+        self.assertIn("updated photograph of the supplied picture of Lionel Messi", prompt)
+        # FM26's newgen faces are 3D renders; the update must still be a photo.
+        self.assertIn("realistic photograph of Lionel Messi as a real person", prompt)
         self.assertIn("transparent background", prompt)
         # New-face variety instructions would fight the supplied likeness.
         self.assertNotIn("distinctive facial proportions", prompt)
@@ -261,6 +263,27 @@ class PortraitTests(unittest.TestCase):
             regeneratefm.update_prompt({"name": "Lionel Messi", "age": 38})
         with self.assertRaisesRegex(ValueError, "age"):
             regeneratefm.update_prompt({"name": "Lionel Messi", "age": 3, "club": "Inter Miami"})
+
+    def test_newgen_prompt_turns_the_3d_face_into_a_photo_with_saved_features(self):
+        profile = {"name": "Craig Griffiths", "age": 16, "club": "Arsenal", "gender": "male"}
+        with tempfile.TemporaryDirectory() as tmp:
+            prompt = regeneratefm.newgen_prompt(profile, person_id="2002068539", appearance_dir=Path(tmp))
+            saved = json.loads((Path(tmp) / ".regeneratefm-appearances" / "2002068539.json").read_text())
+            # A later Generate face uses the same features.
+            self.assertEqual(prompt, regeneratefm.newgen_prompt(profile, person_id="2002068539", appearance_dir=Path(tmp)))
+        traits = saved["traits"]
+        self.assertIn("realistic photograph of a real person", prompt)
+        self.assertIn("computer-generated 3D face for Craig Griffiths, not a photograph", prompt)
+        self.assertIn("skin tone, eye colour, hair colour and hairstyle", prompt)
+        for key in ("face", "features", "facialHair", "expression"):
+            self.assertIn(traits[key], prompt)
+        # The hair stays the render's own.
+        self.assertNotIn(traits["hair"], prompt)
+        self.assertIn("home kit and colours of Arsenal", prompt)
+        woman = regeneratefm.newgen_prompt(dict(profile, gender="female"), person_id="7")
+        self.assertIn("; no facial hair; ", woman)
+        with self.assertRaisesRegex(ValueError, "age"):
+            regeneratefm.newgen_prompt(dict(profile, age=3))
 
     def test_edit_request_sends_existing_portrait_and_settings(self):
         reference = PNG_SIGNATURE + b"current face"

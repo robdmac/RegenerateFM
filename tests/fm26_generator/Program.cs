@@ -27,6 +27,8 @@ namespace RegenerateFMHotReload
                         result["prompt"] = FaceGenerator.RelativePrompt(Profile(item.GetProperty("profile")), Optional(item, "relation"), id, dir);
                     else if (action == "update")
                         result["prompt"] = FaceGenerator.UpdatePrompt(Profile(item.GetProperty("profile")));
+                    else if (action == "newgen")
+                        result["prompt"] = FaceGenerator.NewgenPrompt(Profile(item.GetProperty("profile")), id, dir);
                     else if (action == "fit")
                         File.WriteAllBytes(Optional(item, "output"), FaceGenerator.FitPortrait(File.ReadAllBytes(Optional(item, "input"))));
                     else if (action == "save")
@@ -46,7 +48,9 @@ namespace RegenerateFMHotReload
                         string shown = Optional(item, "input");
                         result["path"] = await FaceGenerator.MakePortrait(settings, dir, id, Profile(item.GetProperty("profile")),
                                                                           Optional(item, "mode") == "update",
-                                                                          shown != null ? File.ReadAllBytes(shown) : null);
+                                                                          shown != null ? File.ReadAllBytes(shown) : null,
+                                                                          shownNewgen: item.TryGetProperty("newgen", out var newgen) &&
+                                                                                       newgen.ValueKind == JsonValueKind.True);
                     }
                     else if (action == "generate" || action == "edit")
                     {
