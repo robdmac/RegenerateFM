@@ -3016,17 +3016,71 @@ namespace RegenerateFMHotReload
                     FindNamed(CurrentRoot(), "ReportHeader")))
                     return;
                 var menu = __instance.m_cascadingMenuPopup?.Menu;
-                if (menu != null)
-                    menu.schedule.Execute((Il2CppSystem.Action)(System.Action)(() =>
+                if (menu == null)
+                    return;
+                // The contributor's rows are drawn at once, while FM adds its own over
+                // the next frames. Keep them hidden until FM has stopped adding rows
+                // (or 2 s have passed), then show them at the bottom.
+                var opened = System.DateTime.UtcNow;
+                var lastChange = opened;
+                int rows = -1;
+                bool shown = false;
+                // Found once: a hidden row has no size, so FindText can't find it again.
+                VisualElement generate = null, update = null;
+                IVisualElementScheduledItem check = null;
+                check = menu.schedule.Execute((Il2CppSystem.Action)(System.Action)(() =>
+                {
+                    var now = System.DateTime.UtcNow;
+                    generate = generate ?? MenuRow(menu, "Generate face");
+                    update = update ?? MenuRow(menu, "Update face");
+                    if (generate == null || update == null || generate.parent != update.parent)
                     {
-                        foreach (var text in new[] { "Generate face", "Update face" })
-                        {
-                            var row = FindText(menu, text)?.parent?.parent;
-                            if (row?.parent?.name == "View")
-                                row.BringToFront();
-                        }
-                        Instance.Log.LogInfo("RegenerateFM actions moved to bottom of Actions menu");
-                    })).ExecuteLater(1500);
+                        if (now - opened > MenuSettle + MenuSettle)
+                            check?.Pause();
+                        return;
+                    }
+                    var view = update.parent;
+                    if (view.childCount != rows)
+                    {
+                        rows = view.childCount;
+                        lastChange = now;
+                    }
+                    bool settled = now - lastChange >= MenuSettle || now - opened >= MenuGiveUp;
+                    if (!settled && !shown)
+                    {
+                        generate.style.display = DisplayStyle.None;
+                        update.style.display = DisplayStyle.None;
+                        return;
+                    }
+                    if (view.IndexOf(update) != view.childCount - 1 || view.IndexOf(generate) != view.childCount - 2)
+                    {
+                        generate.BringToFront();
+                        update.BringToFront();
+                    }
+                    if (!shown)
+                    {
+                        generate.style.display = DisplayStyle.Flex;
+                        update.style.display = DisplayStyle.Flex;
+                        shown = true;
+                        Instance.Log.LogInfo("RegenerateFM actions shown at the bottom of the Actions menu after " +
+                                             (now - opened).TotalSeconds.ToString("0.00") + " s");
+                    }
+                    // FM can still add rows after ours appear; keep ours last a little longer.
+                    if (now - opened >= MenuGiveUp)
+                        check?.Pause();
+                }));
+                check.Every(0);
+            }
+
+            // How long FM's own rows must stop arriving before ours are shown, and
+            // the longest the menu waits for that.
+            private static readonly TimeSpan MenuSettle = TimeSpan.FromMilliseconds(250);
+            private static readonly TimeSpan MenuGiveUp = TimeSpan.FromSeconds(2);
+
+            private static VisualElement MenuRow(VisualElement menu, string text)
+            {
+                var row = FindText(menu, text)?.parent?.parent;
+                return row?.parent?.name == "View" ? row : null;
             }
 
         }
