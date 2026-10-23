@@ -18,12 +18,13 @@ dotnet build hotreload/RegenerateFMHotReload.csproj -c Release -p:GameDir="/path
 
 Copy `hotreload/bin/Release/net6.0/RegenerateFMHotReload.dll` into `Football Manager 26/BepInEx/plugins/RegenerateFMHotReload/` and restart FM26.
 
-## OpenAI key
+## Credits or OpenAI key
 
-The first command without a saved key opens RegenerateFM's key dialog.
+The first command without a saved key opens RegenerateFM's key dialog. It offers both ways to pay (see [Choose how to pay](../README.md#1-choose-how-to-pay)).
+- **Credits:** **Buy credits / Sign in** starts a sign-in with the credits service (`[Credits] ServiceUrl`) and opens its page in the browser. The player signs in with their email and connects the game, and the plugin polls until then and saves the credits token (`rfm_…`) where a key goes. Requests with a token go to the credits service, which takes one credit a face. Running out of credits, or a sign-in that's no longer valid, opens the dialog again.
 - **Getting a key:** a button opens OpenAI's API keys page, and a masked field takes the key, pasted or typed. While the dialog is open the plugin switches on FM26's "exclusive input", as the game's own text boxes do, so letters go to the field and not to FM26's keyboard shortcuts.
 - **Checking it:** **Save key** checks the key with a free `GET /v1/models` request. Only then is it saved, and the chosen command continues.
-- **Where it's kept:** `%APPDATA%\RegenerateFM\openai-key`, outside the game folder so it isn't zipped up with a BepInEx folder shared for support. It's encrypted with DPAPI (`CryptProtectData`) for the current Windows user; under Proton that's Wine's DPAPI inside the game's prefix.
+- **Where it's kept:** the key or token, in `%APPDATA%\RegenerateFM\openai-key`, outside the game folder so it isn't zipped up with a BepInEx folder shared for support. It's encrypted with DPAPI (`CryptProtectData`) for the current Windows user; under Proton that's Wine's DPAPI inside the game's prefix.
 - **Rejected keys:** an HTTP 401 from the image API opens the dialog again.
 - **Forgetting the key:** delete the file.
 
