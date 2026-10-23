@@ -30,12 +30,6 @@ Each supported combination has been checked in game; see [Platform support](#pla
 
 Each generated or updated face is one image request to OpenAI, so each one costs a little. The first time you choose a face command, the game's key dialog offers both ways to pay, in FM26 and FM24. You can change your mind later.
 
-| | RegenerateFM credits | Your own OpenAI API key |
-|---|---|---|
-| **You need** | An email address and a card | An OpenAI API account with billing set up |
-| **In the game** | **Buy credits / Sign in** | Paste the key and choose **Save key** |
-| **Best for** | Getting started quickly | Making lots of faces |
-
 Previews (`--preview-only` for FM24) and imports of existing PNGs make no request and cost nothing, whichever you use.
 
 ### RegenerateFM credits
