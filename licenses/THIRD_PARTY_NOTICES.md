@@ -41,7 +41,7 @@ which loads the RegenerateFM plugin into FM26:
 | SemanticVersioning | MIT | `SemanticVersioning.txt` | https://github.com/adamreeve/semver.net |
 | .NET runtime (`dotnet` folder) | MIT, with its own third-party notices | `dotnet-runtime.txt`, `dotnet-runtime-THIRD-PARTY-NOTICES.txt` | https://github.com/dotnet/runtime |
 
-## FM26 on macOS (the `FM26-macOS` folder and the macOS installer)
+## FM26 on macOS (the macOS installer's `FM26-macOS` folder)
 
 The same components from the
 [BepInEx 6.0.0-be.789 Unity IL2CPP macOS x64](https://builds.bepinex.dev/projects/bepinex_be/)

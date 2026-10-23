@@ -263,21 +263,24 @@ namespace RegenerateFMHotReload
                     snapshot.BiographyHeadline = cachedBiography;
                 var settings = CurrentSettings();
                 byte[] reference = null;
+                bool newgenFace = false;
                 if (update)
                 {
                     if (!HasFace(picture))
                         throw new InvalidOperationException("This person has no face to update yet. Use Generate face instead.");
                     reference = CaptureReferencePng(picture);
+                    newgenFace = IsNewgenPortrait(picture);
                 }
                 overlay = BuildOverlay(picture, out message);
-                Log.LogInfo((update ? "Updating face for " : "Generating face for ") + snapshot.Name + " (" + personId.Value + "): " +
+                Log.LogInfo((update ? "Updating " + (newgenFace ? "FM newgen face for " : "face for ") : "Generating face for ") +
+                            snapshot.Name + " (" + personId.Value + "): " +
                             snapshot.Physical.Count + " physical, " + snapshot.Technical.Count + " technical, " +
                             snapshot.Mental.Count + " mental, " + snapshot.Goalkeeping.Count + " goalkeeping attributes; bio=" +
                             (snapshot.BiographyHeadline != null) + "; family: " +
                             (FamilyText(snapshot) ?? "none"));
                 _pending = new PendingGeneration
                 {
-                    Task = RequestPortrait(personId.Value, snapshot, settings, update ? "update" : "generate", reference),
+                    Task = RequestPortrait(personId.Value, snapshot, settings, update ? "update" : "generate", reference, newgenFace),
                     Overlay = overlay,
                     Message = message,
                     StartedUtc = System.DateTime.UtcNow
@@ -2674,6 +2677,14 @@ namespace RegenerateFMHotReload
         private static bool IsDefaultPortrait(string address) =>
             address != null && address.StartsWith("person_default", StringComparison.Ordinal);
 
+        // FM26's own 3D face for a newgen ("newgen_<id>"), rather than a photo
+        // ("person_<id>") or a RegenerateFM face.
+        private static bool IsNewgenPortrait(VisualElement picture)
+        {
+            var address = FindNamed(picture, "PersonImage")?.TryCast<SI.UI.Image>()?.m_imageAddressableID?.ToString();
+            return address != null && address.StartsWith("newgen_", StringComparison.Ordinal);
+        }
+
         // FM26 shows "person_default" (a silhouette) when a person has no face:
         // neither a generated one nor a game photo.
         private static bool HasFace(VisualElement picture) => FaceState(picture) == true;
@@ -2823,14 +2834,14 @@ namespace RegenerateFMHotReload
         }
 
         private static async Task<GenerationResult> RequestPortrait(long playerId, ProfileSnapshot profile,
-            ImageSettings settings, string mode = "generate", byte[] shownPng = null)
+            ImageSettings settings, string mode = "generate", byte[] shownPng = null, bool shownNewgen = false)
         {
             try
             {
                 string folder = GraphicsFolder();
                 var timer = System.Diagnostics.Stopwatch.StartNew();
                 await FaceGenerator.MakePortrait(settings, folder, playerId.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                                                 profile, mode == "update", shownPng).ConfigureAwait(false);
+                                                 profile, mode == "update", shownPng, shownNewgen: shownNewgen).ConfigureAwait(false);
                 Instance?.Log.LogInfo("Image request and save took " + timer.Elapsed.TotalSeconds.ToString("0.0") + " s");
                 return new GenerationResult { Success = true, GraphicsDir = folder };
             }
@@ -3005,17 +3016,71 @@ namespace RegenerateFMHotReload
                     FindNamed(CurrentRoot(), "ReportHeader")))
                     return;
                 var menu = __instance.m_cascadingMenuPopup?.Menu;
-                if (menu != null)
-                    menu.schedule.Execute((Il2CppSystem.Action)(System.Action)(() =>
+                if (menu == null)
+                    return;
+                // The contributor's rows are drawn at once, while FM adds its own over
+                // the next frames. Keep them hidden until FM has stopped adding rows
+                // (or 2 s have passed), then show them at the bottom.
+                var opened = System.DateTime.UtcNow;
+                var lastChange = opened;
+                int rows = -1;
+                bool shown = false;
+                // Found once: a hidden row has no size, so FindText can't find it again.
+                VisualElement generate = null, update = null;
+                IVisualElementScheduledItem check = null;
+                check = menu.schedule.Execute((Il2CppSystem.Action)(System.Action)(() =>
+                {
+                    var now = System.DateTime.UtcNow;
+                    generate = generate ?? MenuRow(menu, "Generate face");
+                    update = update ?? MenuRow(menu, "Update face");
+                    if (generate == null || update == null || generate.parent != update.parent)
                     {
-                        foreach (var text in new[] { "Generate face", "Update face" })
-                        {
-                            var row = FindText(menu, text)?.parent?.parent;
-                            if (row?.parent?.name == "View")
-                                row.BringToFront();
-                        }
-                        Instance.Log.LogInfo("RegenerateFM actions moved to bottom of Actions menu");
-                    })).ExecuteLater(1500);
+                        if (now - opened > MenuSettle + MenuSettle)
+                            check?.Pause();
+                        return;
+                    }
+                    var view = update.parent;
+                    if (view.childCount != rows)
+                    {
+                        rows = view.childCount;
+                        lastChange = now;
+                    }
+                    bool settled = now - lastChange >= MenuSettle || now - opened >= MenuGiveUp;
+                    if (!settled && !shown)
+                    {
+                        generate.style.display = DisplayStyle.None;
+                        update.style.display = DisplayStyle.None;
+                        return;
+                    }
+                    if (view.IndexOf(update) != view.childCount - 1 || view.IndexOf(generate) != view.childCount - 2)
+                    {
+                        generate.BringToFront();
+                        update.BringToFront();
+                    }
+                    if (!shown)
+                    {
+                        generate.style.display = DisplayStyle.Flex;
+                        update.style.display = DisplayStyle.Flex;
+                        shown = true;
+                        Instance.Log.LogInfo("RegenerateFM actions shown at the bottom of the Actions menu after " +
+                                             (now - opened).TotalSeconds.ToString("0.00") + " s");
+                    }
+                    // FM can still add rows after ours appear; keep ours last a little longer.
+                    if (now - opened >= MenuGiveUp)
+                        check?.Pause();
+                }));
+                check.Every(0);
+            }
+
+            // How long FM's own rows must stop arriving before ours are shown, and
+            // the longest the menu waits for that.
+            private static readonly TimeSpan MenuSettle = TimeSpan.FromMilliseconds(250);
+            private static readonly TimeSpan MenuGiveUp = TimeSpan.FromSeconds(2);
+
+            private static VisualElement MenuRow(VisualElement menu, string text)
+            {
+                var row = FindText(menu, text)?.parent?.parent;
+                return row?.parent?.name == "View" ? row : null;
             }
 
         }

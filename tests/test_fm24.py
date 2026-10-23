@@ -373,7 +373,7 @@ class CompanionHttpTests(unittest.TestCase):
         result, edit = self._update(found=(PNG_SIGNATURE + b"photo", "FM24 bundled messi.jpg"), preview=True)
         self.assertTrue(result["preview"])
         self.assertEqual(result["reference"], "FM24 bundled messi.jpg")
-        self.assertIn("updated version of the supplied picture of Lionel Messi", result["prompt"])
+        self.assertIn("updated photograph of the supplied picture of Lionel Messi", result["prompt"])
         edit.assert_not_called()
 
     def test_update_sends_existing_portrait_and_saves_result(self):

@@ -251,10 +251,46 @@ namespace RegenerateFMHotReload
                    name + "'s current portrait." + GenderText(name, gender) + " Keep them clearly the same person, with the same face shape, " +
                    "features, skin tone, eye colour, hairstyle, facial hair and distinguishing marks. " +
                    (gender == "male" ? "" : "Do not add any facial hair. ") +
+                   "Make it a realistic photograph of " + name + " as a real person: if the supplied picture is a " +
+                   "3D render, game graphic or illustration, keep the likeness but replace its rendered look with " +
+                   "real photographic skin, hair and lighting. " +
                    "Show " + name + " as they look now, at age " + age + ": if the supplied picture looks younger or " +
                    "older, change only the natural signs of age, such as hairline, hair colour, skin " +
                    "texture and facial lines. " + attire + PortraitFraming + PortraitPhotography +
-                   PortraitBackground + "Otherwise make it an updated version of the supplied picture of " + name + ". " +
+                   PortraitBackground + "Otherwise make it an updated photograph of the supplied picture of " + name + ". " +
+                   "Do not depict numbers. No text, logos, badges, borders, or other people.";
+        }
+
+        // UpdatePrompt, for a supplied image that is FM26's own 3D face for a
+        // newgen: the render becomes a photograph of a real person, keeping its
+        // colouring and hair, with the person's appearance traits for the face.
+        public static string NewgenPrompt(ProfileSnapshot profile, string personId = null, string appearanceDir = null)
+        {
+            if (profile == null)
+                throw new ArgumentException("Profile is missing.");
+            string kind = profile.Type ?? "player";
+            if (kind != "player" && kind != "staff")
+                throw new ArgumentException("Profile type must be player or staff.");
+            string label = kind == "staff" ? "Staff" : "Player";
+            int age = profile.Age;
+            if (age < 14 || age > (kind == "staff" ? 100 : 60))
+                throw new ArgumentException(label + " age is missing or invalid.");
+            string name = Text(profile.Name, "name", label);
+            string gender = Gender(profile);
+            string attire = kind == "staff" ? "Dress them in a simple unbranded dark jacket or training top. "
+                                            : KitText(Text(profile.Club, "club", label));
+            string family = FamilySeed(personId, FamilyRelatives(profile));
+            var traits = PersonTraits(name, age, personId, appearanceDir, gender, family);
+            AppearanceInstruction(traits, gender); // refuses invalid saved traits
+            string facialHair = gender == "male" ? traits["facialHair"] : NoFacialHair;
+            return "Turn this Football Manager picture of " + name + " into a realistic photograph of a real person. " +
+                   "The supplied image is the game's computer-generated 3D face for " + name + ", not a photograph." +
+                   GenderText(name, gender) + " Keep " + name + "'s skin tone, eye colour, hair colour and hairstyle from it, " +
+                   "but not its smooth, rendered, game-like face: show a real human face with real photographic skin, " +
+                   "hair and lighting. Show " + name + " at age " + age + ", with their own individual features: " + traits["face"] + "; " +
+                   traits["features"] + "; " + facialHair + "; " + traits["expression"] + ". " +
+                   "Keep these features understated, anatomically natural and consistent with the person's age. " +
+                   attire + PortraitFraming + PortraitPhotography + PortraitBackground +
                    "Do not depict numbers. No text, logos, badges, borders, or other people.";
         }
 
@@ -326,13 +362,18 @@ namespace RegenerateFMHotReload
         private static readonly string[] TraitKeys = { "face", "features", "hair", "facialHair", "expression" };
 
         private static string AppearancePrompt(string name, int age, string personId, string directory, string gender,
-                                               string family = null)
+                                               string family = null) =>
+            AppearanceInstruction(PersonTraits(name, age, personId, directory, gender, family), gender);
+
+        // The person's appearance traits: saved ones, or new ones chosen and saved.
+        private static Dictionary<string, string> PersonTraits(string name, int age, string personId, string directory,
+                                                               string gender, string family = null)
         {
             if (personId == null)
             {
                 if (directory != null)
                     throw new ArgumentException("A person ID is required to save an appearance profile.");
-                return AppearanceInstruction(AppearanceTraits("name:" + name.ToLowerInvariant(), age, gender, family), gender);
+                return AppearanceTraits("name:" + name.ToLowerInvariant(), age, gender, family);
             }
             ValidateId(personId);
             string path = directory != null ? Path.Combine(directory, ".regeneratefm-appearances", personId + ".json") : null;
@@ -353,11 +394,10 @@ namespace RegenerateFMHotReload
                     // one) are chosen again for it.
                     string savedGender = root.TryGetProperty("gender", out var g) && g.ValueKind == JsonValueKind.String ? g.GetString() : null;
                     if (gender == null || savedGender == gender)
-                        return AppearanceInstruction(traits, gender);
+                        return traits;
                 }
             }
             var chosen = AppearanceTraits(personId, age, gender, family);
-            string instruction = AppearanceInstruction(chosen, gender);
             if (path != null)
             {
                 var saved = new Dictionary<string, object> { ["schemaVersion"] = 1, ["personId"] = personId, ["traits"] = chosen };
@@ -366,7 +406,7 @@ namespace RegenerateFMHotReload
                 var options = new JsonSerializerOptions { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
                 AtomicWrite(path, Encoding.UTF8.GetBytes(JsonSerializer.Serialize(saved, options) + "\n"));
             }
-            return instruction;
+            return chosen;
         }
 
         // Relatives share these, chosen from the family's seed: a slight family
@@ -614,20 +654,22 @@ namespace RegenerateFMHotReload
 
         // One in-game request: build the prompt, ask the image API and save the
         // face. Update face prefers RegenerateFM's own saved file to the game's
-        // on-screen copy. Nothing is saved when the request fails.
+        // on-screen copy; ``shownNewgen`` says that copy is FM26's 3D newgen
+        // face, which becomes a photograph. Nothing is saved when the request fails.
         public static async Task<string> MakePortrait(ImageSettings settings, string folder, string personId,
                                                       ProfileSnapshot profile, bool update, byte[] shownPng,
-                                                      CancellationToken cancel = default)
+                                                      CancellationToken cancel = default, bool shownNewgen = false)
         {
             ValidateId(personId);
             CheckGraphicsConfig(folder);
             byte[] png;
             if (update)
             {
-                string prompt = UpdatePrompt(profile);
-                var reference = CurrentPortrait(folder, personId) ?? shownPng;
+                var saved = CurrentPortrait(folder, personId);
+                var reference = saved ?? shownPng;
                 if (reference == null)
                     throw new InvalidOperationException("This person has no face to update yet. Use Generate face instead.");
+                string prompt = saved == null && shownNewgen ? NewgenPrompt(profile, personId, folder) : UpdatePrompt(profile);
                 png = await EditPng(settings, prompt, reference, cancel).ConfigureAwait(false);
             }
             else
