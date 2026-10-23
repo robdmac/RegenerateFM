@@ -2,6 +2,10 @@
 
 RegenerateFM makes new portraits for Football Manager players and staff who don't have one, and updates the faces they already have. You choose **Generate new face** or **Update face** from the person's portrait menu in the game. The face is created from their profile and appears in the game a few seconds later. A whole squad can be done in one go.
 
+![RegenerateFM in FM26: Generate face or Update face from a profile's Actions menu, then the new portrait, for silhouetted players and staff and for newgens' 3D game faces](docs/regeneratefm-demo.gif)
+
+*Recorded in FM26 on a Mac. Each request takes about 20 seconds; the wait is shortened here.*
+
 Regen face packs give a player a stock photo picked from thousands by nationality or ethnicity. RegenerateFM paints a portrait of that particular person from what the game knows about them:
 
 - **Faces that match the attributes.** The prompt includes the player's age, position, height, known physical attributes (Strength, Pace, Stamina and so on) and their best and weakest technical and mental attributes, plus the headline of their biography when there is one. So a 6'4" centre-back with 18 Strength is drawn as one, and a slight, quick 17-year-old winger looks nothing like the centre-back. Attributes hidden by scouting are left out rather than guessed. Ethnicity is never inferred from nationality.
