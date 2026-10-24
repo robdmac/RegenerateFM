@@ -26,11 +26,13 @@ class AppearanceTests(unittest.TestCase):
     def test_saved_choices_survive_age_and_generator_changes(self):
         with tempfile.TemporaryDirectory() as folder:
             directory = Path(folder)
-            original = regeneratefm.profile_prompt(self.profile(), person_id="123", appearance_dir=directory)
+            # A white Northern European keeps the saved hair colour as well.
+            white = {"ethnicity": "NorthernEuropean"}
+            original = regeneratefm.profile_prompt(self.profile(**white), person_id="123", appearance_dir=directory)
             path = directory / ".regeneratefm-appearances/123.json"
             saved = path.read_bytes()
             with patch("regeneratefm.appearance_traits", side_effect=AssertionError("Must reuse saved choices")):
-                older = regeneratefm.profile_prompt(self.profile(age=46), person_id="123", appearance_dir=directory)
+                older = regeneratefm.profile_prompt(self.profile(age=46, **white), person_id="123", appearance_dir=directory)
             self.assertEqual(path.read_bytes(), saved)
             self.assertIn(json.loads(saved)["traits"]["hair"], original)
             self.assertIn(json.loads(saved)["traits"]["hair"], older)

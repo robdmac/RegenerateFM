@@ -167,6 +167,21 @@ class GeneratorParityTests(unittest.TestCase):
             dict(PLAYER, ethnicity="Martian"),
             dict(PLAYER, ethnicity="Asian", skinTone="Blue1"),
             dict(PLAYER, ethnicity="Asian", hairColour="purple"),
+            dict(PLAYER, ethnicity="NorthernEuropean"),
+            dict(PLAYER, ethnicity="NorthernEuropean", hairColour="ginger"),
+            dict(staff, hairColour="grey", ethnicity="MediterraneanHispanic"),
+            # A real person: their own likeness, without appearance traits.
+            dict(PLAYER, likeness=True),
+            dict(PLAYER, likeness=True, ethnicity="AfricanCaribbean", skinTone="African3"),
+            dict(PLAYER, likeness=True, club="Free Agent", gender="female"),
+            dict(PLAYER, likeness=True, physical={}, technical={}, mental={}, goalkeeping={}),
+            dict(PLAYER, likeness=True, age=61),
+            dict(PLAYER, likeness=True, position=""),
+            dict(PLAYER, likeness=True, ethnicity="Martian"),
+            dict(PLAYER, likeness="yes"),
+            dict(staff, likeness=True),
+            dict(staff, likeness=True, club="", gender="male", ethnicity="EastAsian"),
+            dict(staff, likeness=True, jobTitle=None),
         ]
         cases, expected = [], []
         for profile in profiles:
@@ -182,6 +197,22 @@ class GeneratorParityTests(unittest.TestCase):
                 expected.append({"error": str(exc)})
         self.assertEqual(self.run_cases(cases), expected)
 
+    def test_a_real_person_gets_their_likeness_and_a_guess_no_random_hair_colour(self):
+        likeness = regeneratefm.profile_prompt(dict(PLAYER, likeness=True, ethnicity="AfricanCaribbean"))
+        self.assertTrue(likeness.startswith(
+            "Football Manager profile picture of Jak Stewart, the 21-year-old Goalkeeper who plays for Example FC. "
+            "Nationality: English. Make it look like Jak Stewart as they look now. Ethnicity: Black African or Caribbean;"))
+        self.assertNotIn("Individual appearance", likeness)
+        self.assertNotIn("Ethnicity is not known", regeneratefm.profile_prompt(dict(PLAYER, likeness=True)))
+        # PLAYER's traits have a hair colour; only a white Northern European keeps it.
+        traits = regeneratefm.appearance_traits("name:jak stewart", 21)
+        self.assertIn("; hair colour: ", traits["hair"])
+        style = traits["hair"].rsplit("; hair colour: ", 1)[0]
+        self.assertIn(traits["hair"], regeneratefm.profile_prompt(dict(PLAYER, ethnicity="NorthernEuropean")))
+        self.assertIn(style + "; hair colour: natural for their ethnicity", regeneratefm.profile_prompt(PLAYER))
+        self.assertIn(style + "; hair colour: ginger",
+                      regeneratefm.profile_prompt(dict(PLAYER, ethnicity="NorthernEuropean", hairColour="ginger")))
+
     def test_known_ethnicities_are_saved_and_the_users_choice_kept(self):
         with tempfile.TemporaryDirectory() as tmp:
             results = self.run_cases([
@@ -193,19 +224,30 @@ class GeneratorParityTests(unittest.TestCase):
                     "2000047230": {"ethnicity": "NorthernEuropean", "skinTone": "White1", "source": "match"},
                     "28122642": {"ethnicity": "AfricanCaribbean", "skinTone": "African8", "hairColour": "dark brown", "source": "match"}}},
                 {"action": "saveethnicities", "directory": tmp, "people": {"1": {"ethnicity": "Martian", "source": "match"}}},
+                # A newgen's look replaces a match, and marks them as a newgen; a match never replaces it.
+                {"action": "saveethnicities", "directory": tmp, "people": {
+                    "36099373": {"ethnicity": "NorthernEuropean", "source": "match"}}},
+                {"action": "saveethnicities", "directory": tmp, "people": {
+                    "36099373": {"ethnicity": "AfricanCaribbean", "skinTone": "African5", "source": "newgen"},
+                    "2000047230": {"ethnicity": "EastAsian", "source": "newgen"}}},
+                {"action": "saveethnicities", "directory": tmp, "people": {
+                    "36099373": {"ethnicity": "NorthernEuropean", "source": "match"}}},
                 {"action": "profile", "profile": PLAYER, "personId": "28122642", "directory": tmp, "known": True},
                 {"action": "profile", "profile": PLAYER, "personId": "2000047230", "directory": tmp, "known": True},
                 {"action": "profile", "profile": PLAYER, "personId": "29030379", "directory": tmp, "known": True},
             ])
             self.assertEqual([result.get("changed") for result in results[:2]], [2, 0])
             self.assertEqual(results[2], {"error": "Ethnicity is invalid."})
-            saka, sagoe, ings = (result["prompt"] for result in results[3:])
+            self.assertEqual([result.get("changed") for result in results[3:6]], [1, 1, 0])
+            saka, sagoe, ings = (result["prompt"] for result in results[6:])
             self.assertIn("Ethnicity: Black African or Caribbean, with dark brown skin and naturally dark brown hair; "
                           "follow this over any other appearance detail.", saka)
             self.assertIn("Ethnicity: Black African or Caribbean; follow this", sagoe)
             self.assertIn("Ethnicity is not known: give Jak Stewart the most likely ethnicity", ings)
             saved = json.loads((Path(tmp) / ".regeneratefm-ethnicities.json").read_text())
             self.assertEqual(saved["people"]["2000047230"], {"ethnicity": "AfricanCaribbean", "source": "chosen"})
+            self.assertEqual(saved["people"]["36099373"],
+                             {"ethnicity": "AfricanCaribbean", "skinTone": "African5", "source": "newgen"})
             # An unreadable file counts as no saved ethnicities.
             (Path(tmp) / ".regeneratefm-ethnicities.json").write_text("{not json")
             result = self.run_cases([{"action": "profile", "profile": PLAYER, "personId": "28122642",
