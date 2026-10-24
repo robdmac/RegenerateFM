@@ -305,7 +305,7 @@ namespace RegenerateFMHotReload
                             snapshot.Physical.Count + " physical, " + snapshot.Technical.Count + " technical, " +
                             snapshot.Mental.Count + " mental, " + snapshot.Goalkeeping.Count + " goalkeeping attributes; bio=" +
                             (snapshot.BiographyHeadline != null) + "; family: " +
-                            (FamilyText(snapshot) ?? "none") + (update ? "" : "; ethnicity: " + (snapshot.Ethnicity ?? "guessed") +
+                            (FamilyText(snapshot) ?? "none") + (update ? "" : "; ethnicity: " + (snapshot.Ethnicity ?? (snapshot.Likeness ? "not known" : "guessed")) +
                                                                 (snapshot.Likeness ? "; likeness" : "")));
                 _pending = new PendingGeneration
                 {
