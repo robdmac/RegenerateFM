@@ -159,6 +159,14 @@ class GeneratorParityTests(unittest.TestCase):
             dict(PLAYER, relatives=[{"relation": "Team-mates", "personId": "5"}, {"relation": "Brothers", "personId": "29232937"}]),
             dict(staff, relatives=[{"relation": "Half-Sisters", "personId": "12"}]),
             dict(PLAYER, relatives=[{"relation": "Sons", "personId": "x"}]),
+            # FM's own ethnicity, from a match or the user's choice; otherwise a guess.
+            dict(PLAYER, ethnicity="AfricanCaribbean", skinTone="African8", hairColour="dark brown"),
+            dict(PLAYER, ethnicity="EastAsian", skinTone="Latin3"),
+            dict(PLAYER, ethnicity="MixedRaceWhiteBlack", hairColour="black"),
+            dict(staff, ethnicity="NorthernEuropean"),
+            dict(PLAYER, ethnicity="Martian"),
+            dict(PLAYER, ethnicity="Asian", skinTone="Blue1"),
+            dict(PLAYER, ethnicity="Asian", hairColour="purple"),
         ]
         cases, expected = [], []
         for profile in profiles:
@@ -173,6 +181,36 @@ class GeneratorParityTests(unittest.TestCase):
             except ValueError as exc:
                 expected.append({"error": str(exc)})
         self.assertEqual(self.run_cases(cases), expected)
+
+    def test_known_ethnicities_are_saved_and_the_users_choice_kept(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            results = self.run_cases([
+                {"action": "saveethnicities", "directory": tmp, "people": {
+                    "28122642": {"ethnicity": "AfricanCaribbean", "skinTone": "African8", "hairColour": "dark brown", "source": "match"},
+                    "2000047230": {"ethnicity": "AfricanCaribbean", "source": "chosen"}}},
+                # A match never replaces the user's choice, and the same value counts as no change.
+                {"action": "saveethnicities", "directory": tmp, "people": {
+                    "2000047230": {"ethnicity": "NorthernEuropean", "skinTone": "White1", "source": "match"},
+                    "28122642": {"ethnicity": "AfricanCaribbean", "skinTone": "African8", "hairColour": "dark brown", "source": "match"}}},
+                {"action": "saveethnicities", "directory": tmp, "people": {"1": {"ethnicity": "Martian", "source": "match"}}},
+                {"action": "profile", "profile": PLAYER, "personId": "28122642", "directory": tmp, "known": True},
+                {"action": "profile", "profile": PLAYER, "personId": "2000047230", "directory": tmp, "known": True},
+                {"action": "profile", "profile": PLAYER, "personId": "29030379", "directory": tmp, "known": True},
+            ])
+            self.assertEqual([result.get("changed") for result in results[:2]], [2, 0])
+            self.assertEqual(results[2], {"error": "Ethnicity is invalid."})
+            saka, sagoe, ings = (result["prompt"] for result in results[3:])
+            self.assertIn("Ethnicity: Black African or Caribbean, with dark brown skin and naturally dark brown hair; "
+                          "follow this over any other appearance detail.", saka)
+            self.assertIn("Ethnicity: Black African or Caribbean; follow this", sagoe)
+            self.assertIn("Ethnicity is not known: give Jak Stewart the most likely ethnicity", ings)
+            saved = json.loads((Path(tmp) / ".regeneratefm-ethnicities.json").read_text())
+            self.assertEqual(saved["people"]["2000047230"], {"ethnicity": "AfricanCaribbean", "source": "chosen"})
+            # An unreadable file counts as no saved ethnicities.
+            (Path(tmp) / ".regeneratefm-ethnicities.json").write_text("{not json")
+            result = self.run_cases([{"action": "profile", "profile": PLAYER, "personId": "28122642",
+                                      "directory": tmp, "known": True}])[0]
+            self.assertIn("Ethnicity is not known", result["prompt"])
 
     def test_saved_appearance_traits_are_shared(self):
         with tempfile.TemporaryDirectory() as tmp:

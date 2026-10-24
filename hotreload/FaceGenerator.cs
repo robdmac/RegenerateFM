@@ -31,6 +31,13 @@ namespace RegenerateFMHotReload
         public string Height;
         public string BiographyHeadline;
         public string Gender;  // "female", "male", or null when the game didn't say
+        // FM's ethnicity for the person (one of FaceGenerator.Ethnicities), from a
+        // match the game drew in 3D, a newgen's appearance or the user's choice;
+        // null when not known, and the prompt asks for a best guess. SkinTone (one
+        // of SkinTones) and HairColour (one of HairColours) come only from FM.
+        public string Ethnicity;
+        public string SkinTone;
+        public string HairColour;
         // The game's groups of people the person favours, with their IDs:
         // ("Brothers", "29232937"); only family groups count (FamilyRelatives).
         public List<(string Relation, string PersonId)> Relatives = new List<(string Relation, string PersonId)>();
@@ -146,6 +153,68 @@ namespace RegenerateFMHotReload
         private static string GenderText(string name, string gender) =>
             gender == "female" ? " " + name + " is a woman." : gender == "male" ? " " + name + " is a man." : "";
 
+        // FM's ethnicities (its SI.Match.Ethnicity, in the game's order) and how
+        // the prompt describes each.
+        public static readonly string[] Ethnicities =
+        {
+            "NorthernEuropean", "MediterraneanHispanic", "NorthAfricanMiddleEastern", "AfricanCaribbean",
+            "Asian", "SouthEastAsian", "PacificIslander", "NativeAmerican", "NativeAustralian",
+            "MixedRaceWhiteBlack", "EastAsian",
+        };
+        public static readonly string[] EthnicityLabels =
+        {
+            "white Northern European", "Mediterranean or Hispanic", "North African or Middle Eastern",
+            "Black African or Caribbean", "South Asian", "South-East Asian", "Pacific Islander",
+            "Indigenous American", "Indigenous Australian", "mixed race (Black and white)", "East Asian",
+        };
+        // FM's skin tones (SI.Match.SkinTone, in order; a newgen's 1-20 counts
+        // through them) and the words for each.
+        public static readonly string[] SkinTones =
+        {
+            "White1", "White2", "White3", "White4", "White5",
+            "Latin1", "Latin2", "Latin3", "Latin4", "Latin5", "Latin6", "Latin7",
+            "African1", "African2", "African3", "African4", "African5", "African6", "African7", "African8",
+        };
+        private static readonly string[] SkinToneWords =
+        {
+            "fair", "fair", "light", "light", "light",
+            "light olive", "light olive", "olive", "olive", "olive", "tan", "tan",
+            "light brown", "light brown", "medium brown", "medium brown", "brown", "brown", "dark brown", "dark brown",
+        };
+        public static readonly string[] HairColours = { "black", "dark brown", "light brown", "blond", "ginger", "grey", "white" };
+
+        public static string EthnicityLabel(string ethnicity)
+        {
+            int index = Array.IndexOf(Ethnicities, ethnicity);
+            if (index < 0)
+                throw new ArgumentException("Ethnicity is invalid.");
+            return EthnicityLabels[index];
+        }
+
+        // The prompt's ethnicity: FM's own when known, otherwise a best guess
+        // from the person's name and nationality.
+        private static string EthnicityText(ProfileSnapshot profile, string name)
+        {
+            if (profile.Ethnicity == null)
+                return "Ethnicity is not known: give " + name + " the most likely ethnicity and skin tone for their full " +
+                       "name and nationality, remembering that many people's heritage differs from the country they represent. ";
+            string text = "Ethnicity: " + EthnicityLabel(profile.Ethnicity);
+            string skin = null;
+            if (profile.SkinTone != null)
+            {
+                int tone = Array.IndexOf(SkinTones, profile.SkinTone);
+                if (tone < 0)
+                    throw new ArgumentException("Skin tone is invalid.");
+                skin = SkinToneWords[tone] + " skin";
+            }
+            if (profile.HairColour != null && !HairColours.Contains(profile.HairColour))
+                throw new ArgumentException("Hair colour is invalid.");
+            string hair = profile.HairColour != null ? "naturally " + profile.HairColour + " hair" : null;
+            if (skin != null || hair != null)
+                text += ", with " + string.Join(" and ", new[] { skin, hair }.Where(part => part != null));
+            return text + "; follow this over any other appearance detail. ";
+        }
+
         // ---- Prompts -------------------------------------------------------
 
         public static string ProfilePrompt(ProfileSnapshot profile, string personId, string appearanceDir)
@@ -175,10 +244,9 @@ namespace RegenerateFMHotReload
                 return "Football Manager profile picture for " + name + ", age " + age + ", nationality " + nationality + ", " +
                        "job title " + jobTitle + clubText + "." + GenderText(name, gender) + biographyText + " " +
                        "Create one plausible, original staff portrait for a sports management game. " +
-                       staffAppearance + PortraitStyle(gender) +
+                       EthnicityText(profile, name) + staffAppearance + PortraitStyle(gender) +
                        "Wear a simple unbranded dark jacket or training top. " +
-                       "Use age and biography to guide appearance, but do not infer " +
-                       "ethnicity from nationality. No text, logos, badges, borders, or other people.";
+                       "Use age and biography to guide appearance. No text, logos, badges, borders, or other people.";
             }
             string position = Text(profile.Position, "position", "Player");
             string club = Text(profile.Club, "club", "Player");
@@ -211,9 +279,9 @@ namespace RegenerateFMHotReload
                     string.Join(", ", knownPhysical.Select(stat => stat + " " + physical[stat].Text + "/20")) + ". ") +
                    "Best non-physical stats: " + format(best) + ". Weakest non-physical stats: " + format(worst) + ". " +
                    "Create one plausible, original footballer portrait for a sports management game. " +
-                   appearance + PortraitStyle(gender) +
+                   EthnicityText(profile, name) + appearance + PortraitStyle(gender) +
                    KitText(club) + "Use age and physical details to guide appearance, but do not depict " +
-                   "numbers or infer ethnicity from nationality. No text, logos, badges, borders, or other people.";
+                   "numbers. No text, logos, badges, borders, or other people.";
         }
 
         // ProfilePrompt, for an image request whose input image is a relative's
@@ -506,6 +574,122 @@ namespace RegenerateFMHotReload
             return "Individual appearance: " + string.Join("; ", TraitKeys.Select(key => traits[key])) + ". " +
                    "Keep these features understated, anatomically natural and consistent with the person's age. " +
                    "Preserve subtle facial asymmetry and ordinary skin texture. ";
+        }
+
+        // ---- Known ethnicities -------------------------------------------------
+
+        // A person's ethnicity as FM drew them in a match ("match"), or as the
+        // user picked it when the face was generated ("chosen").
+        internal sealed class KnownEthnicity
+        {
+            public string Ethnicity;
+            public string SkinTone;
+            public string HairColour;
+            public string Source;
+        }
+
+        // Kept on this computer only, in the faces folder, by person ID.
+        public const string EthnicityFile = ".regeneratefm-ethnicities.json";
+
+        public static KnownEthnicity LoadEthnicity(string folder, string personId)
+        {
+            ValidateId(personId);
+            lock (SaveLock)
+                return ReadEthnicities(folder).TryGetValue(personId, out var known) ? known : null;
+        }
+
+        // Fills in the profile's ethnicity from the saved ones; false when none is saved.
+        public static bool ApplyKnownEthnicity(ProfileSnapshot profile, string folder, string personId)
+        {
+            var known = LoadEthnicity(folder, personId);
+            if (known == null)
+                return false;
+            profile.Ethnicity = known.Ethnicity;
+            profile.SkinTone = known.SkinTone;
+            profile.HairColour = known.HairColour;
+            return true;
+        }
+
+        // Adds or replaces people's ethnicities; FM's own never replaces the
+        // user's choice. Returns how many changed.
+        public static int SaveEthnicities(string folder, IDictionary<string, KnownEthnicity> people)
+        {
+            lock (SaveLock)
+            {
+                var all = ReadEthnicities(folder);
+                int changed = 0;
+                foreach (var entry in people)
+                {
+                    ValidateId(entry.Key);
+                    var known = entry.Value;
+                    if (!ValidEthnicity(known))
+                        throw new ArgumentException("Ethnicity is invalid.");
+                    if (all.TryGetValue(entry.Key, out var old) &&
+                        (old.Source == "chosen" && known.Source != "chosen" ||
+                         old.Ethnicity == known.Ethnicity && old.SkinTone == known.SkinTone &&
+                         old.HairColour == known.HairColour && old.Source == known.Source))
+                        continue;
+                    all[entry.Key] = known;
+                    changed++;
+                }
+                if (changed > 0)
+                {
+                    var entries = all.OrderBy(item => item.Key, StringComparer.Ordinal).ToDictionary(
+                        item => item.Key, item => (object)new Dictionary<string, string>
+                        {
+                            ["ethnicity"] = item.Value.Ethnicity, ["skinTone"] = item.Value.SkinTone,
+                            ["hairColour"] = item.Value.HairColour, ["source"] = item.Value.Source,
+                        }.Where(field => field.Value != null).ToDictionary(field => field.Key, field => field.Value));
+                    var saved = new Dictionary<string, object> { ["schemaVersion"] = 1, ["people"] = entries };
+                    AtomicWrite(Path.Combine(folder, EthnicityFile),
+                                Encoding.UTF8.GetBytes(JsonSerializer.Serialize(saved, new JsonSerializerOptions { WriteIndented = true }) + "\n"));
+                }
+                return changed;
+            }
+        }
+
+        private static bool ValidEthnicity(KnownEthnicity known) =>
+            known != null && Ethnicities.Contains(known.Ethnicity) &&
+            (known.SkinTone == null || SkinTones.Contains(known.SkinTone)) &&
+            (known.HairColour == null || HairColours.Contains(known.HairColour)) &&
+            (known.Source == "match" || known.Source == "chosen");
+
+        // The saved ethnicities; an unreadable file, or entry, counts as none.
+        private static Dictionary<string, KnownEthnicity> ReadEthnicities(string folder)
+        {
+            var all = new Dictionary<string, KnownEthnicity>();
+            string path = Path.Combine(folder, EthnicityFile);
+            if (!File.Exists(path))
+                return all;
+            try
+            {
+                using (var json = JsonDocument.Parse(File.ReadAllBytes(path)))
+                {
+                    var root = json.RootElement;
+                    if (root.ValueKind != JsonValueKind.Object ||
+                        !root.TryGetProperty("schemaVersion", out var version) || version.ValueKind != JsonValueKind.Number || version.GetInt32() != 1 ||
+                        !root.TryGetProperty("people", out var people) || people.ValueKind != JsonValueKind.Object)
+                        return all;
+                    foreach (var person in people.EnumerateObject())
+                    {
+                        if (person.Value.ValueKind != JsonValueKind.Object || !IdPattern.IsMatch(person.Name))
+                            continue;
+                        string field(string name) => person.Value.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+                            ? value.GetString() : null;
+                        var known = new KnownEthnicity
+                        {
+                            Ethnicity = field("ethnicity"), SkinTone = field("skinTone"),
+                            HairColour = field("hairColour"), Source = field("source"),
+                        };
+                        if (ValidEthnicity(known))
+                            all[person.Name] = known;
+                    }
+                }
+            }
+            catch (JsonException)
+            {
+            }
+            return all;
         }
 
         // ---- Image API -------------------------------------------------------
