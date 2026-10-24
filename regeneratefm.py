@@ -175,8 +175,26 @@ def _stat_strength(score: int | str) -> float:
 
 
 def _appearance_prompt(name: str, age: int, person_id: str | None,
-                       directory: Path | None, gender: str | None, family: str | None = None) -> str:
-    return _appearance_instruction(_person_traits(name, age, person_id, directory, gender, family), gender)
+                       directory: Path | None, gender: str | None, family: str | None, profile: dict) -> str:
+    traits = _person_traits(name, age, person_id, directory, gender, family)
+    return _appearance_instruction(_with_hair_colour(traits, profile), gender)
+
+
+HAIR_COLOUR_LABEL = "; hair colour: "
+
+
+def _with_hair_colour(traits, profile: dict):
+    """The traits' random hair colour suits only a white Northern European:
+    anyone else gets FM's own hair colour, or one natural for their ethnicity,
+    so that a guessed ethnicity isn't swayed by it."""
+    hair = traits.get("hair") if isinstance(traits, dict) else None
+    hair_colour = profile.get("hairColour")
+    if not isinstance(hair, str) or hair_colour is None and profile.get("ethnicity") == "NorthernEuropean":
+        return traits
+    at = hair.rfind(HAIR_COLOUR_LABEL)
+    if at < 0:
+        return traits
+    return dict(traits, hair=hair[:at] + HAIR_COLOUR_LABEL + (hair_colour if hair_colour is not None else "natural for their ethnicity"))
 
 
 def _person_traits(name: str, age: int, person_id: str | None,
@@ -424,13 +442,15 @@ def profile_prompt(profile: dict, *, person_id: str | None = None,
     age = profile.get("age")
     if isinstance(age, bool) or not isinstance(age, int) or not 14 <= age <= 100:
         raise ValueError(f"{label} age is missing or invalid.")
+    if profile.get("likeness") is True:
+        return _likeness_prompt(profile, kind, label, name, nationality, gender, age)
     if kind == "staff":
         job_title = _profile_text(profile, "jobTitle", label)
         club = profile.get("club")
         if club is not None and club != "":
             club = _profile_text(profile, "club", label)
         club_text = f" at {club}" if club else ""
-        appearance = _appearance_prompt(name, age, person_id, appearance_dir, gender, family)
+        appearance = _appearance_prompt(name, age, person_id, appearance_dir, gender, family, profile)
         return (
             f"Football Manager profile picture for {name}, age {age}, nationality {nationality}, "
             f"job title {job_title}{club_text}.{_gender_text(name, gender)}{biography_text} "
@@ -462,7 +482,7 @@ def profile_prompt(profile: dict, *, person_id: str | None = None,
     first_name = name.split()[0]
     kit_text = _kit_text(club)
     plays = "who is a free agent" if _no_club(club) else f"who plays for {club}"
-    appearance = _appearance_prompt(name, age, person_id, appearance_dir, gender, family)
+    appearance = _appearance_prompt(name, age, person_id, appearance_dir, gender, family, profile)
     return (
         f"Football Manager profile picture for {name}, a {age}-year-old {position} "
         f"{plays}. Nationality: {nationality}.{_gender_text(first_name, gender)} {first_name} is {height} tall.{biography_text} "
@@ -473,6 +493,38 @@ def profile_prompt(profile: dict, *, person_id: str | None = None,
         + _ethnicity_text(profile, name) + appearance + portrait_style(_facial_hair_text(gender)) +
         f"{kit_text}Use age and physical details to guide appearance, but do not depict "
         "numbers. No text, logos, badges, borders, or other people."
+    )
+
+
+def _likeness_prompt(profile: dict, kind: str, label: str, name: str, nationality: str,
+                     gender: str | None, age: int) -> str:
+    """profile_prompt for a real person (FM26's "likeness"): their own likeness,
+    from who and where they are, with FM's ethnicity when it is known."""
+    first_name = name.split()[0]
+    ethnicity = _ethnicity_text(profile, name) if profile.get("ethnicity") is not None else ""
+    if kind == "staff":
+        job_title = _profile_text(profile, "jobTitle", label)
+        club = profile.get("club")
+        if club is not None and club != "":
+            club = _profile_text(profile, "club", label)
+        return (
+            f"Football Manager profile picture of {name}, the {age}-year-old {job_title}"
+            f"{f' at {club}' if club else ''}. Nationality: {nationality}.{_gender_text(first_name, gender)} "
+            f"Make it look like {name} as they look now. {ethnicity}"
+            "Wear a simple unbranded dark jacket or training top. "
+            + PORTRAIT_FRAMING + PORTRAIT_PHOTOGRAPHY + PORTRAIT_BACKGROUND +
+            "No text, logos, badges, borders, or other people."
+        )
+    position = _profile_text(profile, "position")
+    club = _profile_text(profile, "club")
+    if age > 60:
+        raise ValueError("Player age is missing or invalid.")
+    plays = "who is a free agent" if _no_club(club) else f"who plays for {club}"
+    return (
+        f"Football Manager profile picture of {name}, the {age}-year-old {position} {plays}. "
+        f"Nationality: {nationality}.{_gender_text(first_name, gender)} Make it look like {name} as they look now. "
+        + ethnicity + _kit_text(club) + PORTRAIT_FRAMING + PORTRAIT_PHOTOGRAPHY + PORTRAIT_BACKGROUND +
+        "Do not depict numbers. No text, logos, badges, borders, or other people."
     )
 
 

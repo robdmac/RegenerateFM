@@ -38,6 +38,9 @@ namespace RegenerateFMHotReload
         public string Ethnicity;
         public string SkinTone;
         public string HairColour;
+        // A real person rather than one of FM's newgens: the prompt asks for
+        // their own likeness, without RegenerateFM's appearance traits.
+        public bool Likeness;
         // The game's groups of people the person favours, with their IDs:
         // ("Brothers", "29232937"); only family groups count (FamilyRelatives).
         public List<(string Relation, string PersonId)> Relatives = new List<(string Relation, string PersonId)>();
@@ -235,12 +238,14 @@ namespace RegenerateFMHotReload
             int age = profile.Age;
             if (age < 14 || age > 100)
                 throw new ArgumentException(label + " age is missing or invalid.");
+            if (profile.Likeness)
+                return LikenessPrompt(profile, kind, label, name, nationality, gender, age);
             if (kind == "staff")
             {
                 string jobTitle = Text(profile.JobTitle, "jobTitle", label);
                 string staffClub = string.IsNullOrEmpty(profile.Club) ? null : Text(profile.Club, "club", label);
                 string clubText = staffClub != null ? " at " + staffClub : "";
-                string staffAppearance = AppearancePrompt(name, age, personId, appearanceDir, gender, family);
+                string staffAppearance = AppearancePrompt(name, age, personId, appearanceDir, gender, family, profile);
                 return "Football Manager profile picture for " + name + ", age " + age + ", nationality " + nationality + ", " +
                        "job title " + jobTitle + clubText + "." + GenderText(name, gender) + biographyText + " " +
                        "Create one plausible, original staff portrait for a sports management game. " +
@@ -271,7 +276,7 @@ namespace RegenerateFMHotReload
             Func<List<(string Section, string Stat, string Score, double Strength)>, string> format =
                 items => string.Join(", ", items.Select(item => item.Section + " " + item.Stat + " " + item.Score + "/20"));
             string firstName = Whitespace.Split(name)[0];
-            string appearance = AppearancePrompt(name, age, personId, appearanceDir, gender, family);
+            string appearance = AppearancePrompt(name, age, personId, appearanceDir, gender, family, profile);
             return "Football Manager profile picture for " + name + ", a " + age + "-year-old " + position + " " +
                    (NoClub(club) ? "who is a free agent" : "who plays for " + club) + ". Nationality: " + nationality + "." +
                    GenderText(firstName, gender) + " " + firstName + " is " + height + " tall." + biographyText + " " +
@@ -282,6 +287,35 @@ namespace RegenerateFMHotReload
                    EthnicityText(profile, name) + appearance + PortraitStyle(gender) +
                    KitText(club) + "Use age and physical details to guide appearance, but do not depict " +
                    "numbers. No text, logos, badges, borders, or other people.";
+        }
+
+        // ProfilePrompt for a real person: their own likeness, from who and where
+        // they are, with FM's ethnicity when it is known.
+        private static string LikenessPrompt(ProfileSnapshot profile, string kind, string label, string name,
+                                             string nationality, string gender, int age)
+        {
+            string firstName = Whitespace.Split(name)[0];
+            string ethnicity = profile.Ethnicity != null ? EthnicityText(profile, name) : "";
+            if (kind == "staff")
+            {
+                string jobTitle = Text(profile.JobTitle, "jobTitle", label);
+                string staffClub = string.IsNullOrEmpty(profile.Club) ? null : Text(profile.Club, "club", label);
+                return "Football Manager profile picture of " + name + ", the " + age + "-year-old " + jobTitle +
+                       (staffClub != null ? " at " + staffClub : "") + ". Nationality: " + nationality + "." +
+                       GenderText(firstName, gender) + " Make it look like " + name + " as they look now. " + ethnicity +
+                       "Wear a simple unbranded dark jacket or training top. " +
+                       PortraitFraming + PortraitPhotography + PortraitBackground +
+                       "No text, logos, badges, borders, or other people.";
+            }
+            string position = Text(profile.Position, "position", "Player");
+            string club = Text(profile.Club, "club", "Player");
+            if (age > 60)
+                throw new ArgumentException("Player age is missing or invalid.");
+            return "Football Manager profile picture of " + name + ", the " + age + "-year-old " + position + " " +
+                   (NoClub(club) ? "who is a free agent" : "who plays for " + club) + ". Nationality: " + nationality + "." +
+                   GenderText(firstName, gender) + " Make it look like " + name + " as they look now. " + ethnicity +
+                   KitText(club) + PortraitFraming + PortraitPhotography + PortraitBackground +
+                   "Do not depict numbers. No text, logos, badges, borders, or other people.";
         }
 
         // ProfilePrompt, for an image request whose input image is a relative's
@@ -430,8 +464,27 @@ namespace RegenerateFMHotReload
         private static readonly string[] TraitKeys = { "face", "features", "hair", "facialHair", "expression" };
 
         private static string AppearancePrompt(string name, int age, string personId, string directory, string gender,
-                                               string family = null) =>
-            AppearanceInstruction(PersonTraits(name, age, personId, directory, gender, family), gender);
+                                               string family, ProfileSnapshot profile) =>
+            AppearanceInstruction(WithHairColour(PersonTraits(name, age, personId, directory, gender, family), profile), gender);
+
+        // The traits' random hair colour suits only a white Northern European:
+        // anyone else gets FM's own hair colour, or one natural for their
+        // ethnicity, so that a guessed ethnicity isn't swayed by it.
+        private static Dictionary<string, string> WithHairColour(Dictionary<string, string> traits, ProfileSnapshot profile)
+        {
+            if (traits == null || !traits.TryGetValue("hair", out string hair) || hair == null ||
+                profile.HairColour == null && profile.Ethnicity == "NorthernEuropean")
+                return traits;
+            int at = hair.LastIndexOf(HairColourLabel, StringComparison.Ordinal);
+            if (at < 0)
+                return traits;
+            return new Dictionary<string, string>(traits)
+            {
+                ["hair"] = hair.Substring(0, at) + HairColourLabel + (profile.HairColour ?? "natural for their ethnicity")
+            };
+        }
+
+        private const string HairColourLabel = "; hair colour: ";
 
         // The person's appearance traits: saved ones, or new ones chosen and saved.
         private static Dictionary<string, string> PersonTraits(string name, int age, string personId, string directory,
@@ -541,7 +594,7 @@ namespace RegenerateFMHotReload
             var colours = new List<string> { "black", "dark brown", "medium brown", "light brown", "dark blond", "auburn" };
             if (age >= 45)
                 colours.AddRange(new[] { "salt-and-pepper", "greying brown", "silver-grey" });
-            string hair = style == "a shaved head" ? style : style + "; hair colour: " + pick("hairColour", colours.ToArray());
+            string hair = style == "a shaved head" ? style : style + HairColourLabel + pick("hairColour", colours.ToArray());
             var facialHair = new List<string> { "clean-shaven" };
             if (age >= 18)
                 facialHair.AddRange(new[] { "clean-shaven", "very light, patchy stubble", "a faint moustache" });
@@ -578,8 +631,9 @@ namespace RegenerateFMHotReload
 
         // ---- Known ethnicities -------------------------------------------------
 
-        // A person's ethnicity as FM drew them in a match ("match"), or as the
-        // user picked it when the face was generated ("chosen").
+        // A person's ethnicity as FM drew them in a match ("match"), from FM's
+        // appearance for a newgen ("newgen", which also marks them as one), or
+        // as the user picked it when the face was generated ("chosen").
         internal sealed class KnownEthnicity
         {
             public string Ethnicity;
@@ -610,8 +664,9 @@ namespace RegenerateFMHotReload
             return true;
         }
 
-        // Adds or replaces people's ethnicities; FM's own never replaces the
-        // user's choice. Returns how many changed.
+        // Adds or replaces people's ethnicities; a match never replaces a
+        // newgen's look, and neither replaces the user's choice. Returns how
+        // many changed.
         public static int SaveEthnicities(string folder, IDictionary<string, KnownEthnicity> people)
         {
             lock (SaveLock)
@@ -625,7 +680,7 @@ namespace RegenerateFMHotReload
                     if (!ValidEthnicity(known))
                         throw new ArgumentException("Ethnicity is invalid.");
                     if (all.TryGetValue(entry.Key, out var old) &&
-                        (old.Source == "chosen" && known.Source != "chosen" ||
+                        (SourceRank(old.Source) > SourceRank(known.Source) ||
                          old.Ethnicity == known.Ethnicity && old.SkinTone == known.SkinTone &&
                          old.HairColour == known.HairColour && old.Source == known.Source))
                         continue;
@@ -648,11 +703,13 @@ namespace RegenerateFMHotReload
             }
         }
 
+        private static int SourceRank(string source) => source == "chosen" ? 2 : source == "newgen" ? 1 : 0;
+
         private static bool ValidEthnicity(KnownEthnicity known) =>
             known != null && Ethnicities.Contains(known.Ethnicity) &&
             (known.SkinTone == null || SkinTones.Contains(known.SkinTone)) &&
             (known.HairColour == null || HairColours.Contains(known.HairColour)) &&
-            (known.Source == "match" || known.Source == "chosen");
+            (known.Source == "match" || known.Source == "newgen" || known.Source == "chosen");
 
         // The saved ethnicities; an unreadable file, or entry, counts as none.
         private static Dictionary<string, KnownEthnicity> ReadEthnicities(string folder)
@@ -859,10 +916,11 @@ namespace RegenerateFMHotReload
             else
             {
                 // A relative's RegenerateFM face, if one has one, lends a slight
-                // family resemblance (closest relative first).
+                // family resemblance (closest relative first); a real person's
+                // likeness needs none.
                 byte[] relativeFace = null;
                 string relation = null;
-                foreach (var relative in FamilyRelatives(profile))
+                foreach (var relative in profile.Likeness ? Enumerable.Empty<(string Relation, string PersonId)>() : FamilyRelatives(profile))
                     if ((relativeFace = CurrentPortrait(folder, relative.PersonId)) != null)
                     {
                         relation = relative.Relation;

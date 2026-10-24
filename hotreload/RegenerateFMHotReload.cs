@@ -275,21 +275,28 @@ namespace RegenerateFMHotReload
                     reference = CaptureReferencePng(picture);
                     newgenFace = IsNewgenPortrait(picture);
                 }
-                else if (!KnownEthnicity(personId.Value, picture, snapshot))
+                else
                 {
-                    if (!ethnicityAsked)
+                    // A real person gets their own likeness; only a newgen without
+                    // FM's look for them needs the user's say on their ethnicity.
+                    bool known = KnownEthnicity(personId.Value, picture, snapshot, out bool newgen);
+                    snapshot.Likeness = !newgen;
+                    if (!known && newgen)
                     {
-                        AskEthnicity(personId.Value, staff, snapshot.Name);
-                        return;
-                    }
-                    if (chosenEthnicity != null)
-                    {
-                        snapshot.Ethnicity = chosenEthnicity;
-                        SaveEthnicities(new Dictionary<string, FaceGenerator.KnownEthnicity>
+                        if (!ethnicityAsked)
                         {
-                            [personId.Value.ToString(CultureInfo.InvariantCulture)] =
-                                new FaceGenerator.KnownEthnicity { Ethnicity = chosenEthnicity, Source = "chosen" }
-                        });
+                            AskEthnicity(personId.Value, staff, snapshot.Name);
+                            return;
+                        }
+                        if (chosenEthnicity != null)
+                        {
+                            snapshot.Ethnicity = chosenEthnicity;
+                            SaveEthnicities(new Dictionary<string, FaceGenerator.KnownEthnicity>
+                            {
+                                [personId.Value.ToString(CultureInfo.InvariantCulture)] =
+                                    new FaceGenerator.KnownEthnicity { Ethnicity = chosenEthnicity, Source = "chosen" }
+                            });
+                        }
                     }
                 }
                 overlay = BuildOverlay(picture, out message);
@@ -298,7 +305,8 @@ namespace RegenerateFMHotReload
                             snapshot.Physical.Count + " physical, " + snapshot.Technical.Count + " technical, " +
                             snapshot.Mental.Count + " mental, " + snapshot.Goalkeeping.Count + " goalkeeping attributes; bio=" +
                             (snapshot.BiographyHeadline != null) + "; family: " +
-                            (FamilyText(snapshot) ?? "none") + (update ? "" : "; ethnicity: " + (snapshot.Ethnicity ?? "guessed")));
+                            (FamilyText(snapshot) ?? "none") + (update ? "" : "; ethnicity: " + (snapshot.Ethnicity ?? "guessed") +
+                                                                (snapshot.Likeness ? "; likeness" : "")));
                 _pending = new PendingGeneration
                 {
                     Task = RequestPortrait(personId.Value, snapshot, settings, update ? "update" : "generate", reference, newgenFace),
@@ -799,24 +807,38 @@ namespace RegenerateFMHotReload
         }
 
         // Fills in the profile's ethnicity from a match, the user's earlier
-        // choice or, while the newgen face shows, FM's newgen appearance.
-        private bool KnownEthnicity(long personId, VisualElement picture, ProfileSnapshot profile)
+        // choice or FM's newgen appearance, which is saved while the newgen face
+        // shows. newgen says the person is one of FM's newgens: their 3D face
+        // shows, or RegenerateFM saved their newgen look before.
+        private bool KnownEthnicity(long personId, VisualElement picture, ProfileSnapshot profile, out bool newgen)
         {
+            string id = personId.ToString(CultureInfo.InvariantCulture);
+            newgen = picture != null && IsNewgenPortrait(picture);
+            FaceGenerator.KnownEthnicity look = null;
+            if (newgen && NewgenEthnicityById.TryGetValue(personId, out int ethnicity) &&
+                ethnicity >= 0 && ethnicity < FaceGenerator.Ethnicities.Length)
+            {
+                look = new FaceGenerator.KnownEthnicity { Ethnicity = FaceGenerator.Ethnicities[ethnicity], Source = "newgen" };
+                if (NewgenSkinToneById.TryGetValue(personId, out int tone) && tone >= 1 && tone <= FaceGenerator.SkinTones.Length)
+                    look.SkinTone = FaceGenerator.SkinTones[tone - 1];
+                SaveEthnicities(new Dictionary<string, FaceGenerator.KnownEthnicity> { [id] = look });
+            }
+            FaceGenerator.KnownEthnicity known = null;
             try
             {
-                if (FaceGenerator.ApplyKnownEthnicity(profile, GraphicsFolder(), personId.ToString(CultureInfo.InvariantCulture)))
-                    return true;
+                known = FaceGenerator.LoadEthnicity(GraphicsFolder(), id);
             }
             catch (Exception error)
             {
                 Log.LogWarning("Could not read saved ethnicities: " + error.Message);
             }
-            if (picture == null || !IsNewgenPortrait(picture) || !NewgenEthnicityById.TryGetValue(personId, out int ethnicity) ||
-                ethnicity < 0 || ethnicity >= FaceGenerator.Ethnicities.Length)
+            known = known ?? look;
+            if (known == null)
                 return false;
-            profile.Ethnicity = FaceGenerator.Ethnicities[ethnicity];
-            if (NewgenSkinToneById.TryGetValue(personId, out int tone) && tone >= 1 && tone <= FaceGenerator.SkinTones.Length)
-                profile.SkinTone = FaceGenerator.SkinTones[tone - 1];
+            newgen |= known.Source == "newgen";
+            profile.Ethnicity = known.Ethnicity;
+            profile.SkinTone = known.SkinTone;
+            profile.HairColour = known.HairColour;
             return true;
         }
 
@@ -1610,8 +1632,7 @@ namespace RegenerateFMHotReload
         {
             var status = ShowDialog(missing.Count + " of " + squadCount +
                 " players have no portrait. Generate " + missing.Count +
-                " faces? Each face makes one billed API request. Players who haven't played in a match you've " +
-                "watched get a guessed ethnicity.", "Cancel", () => CancelSquadScan());
+                " faces? Each face makes one billed API request.", "Cancel", () => CancelSquadScan());
             var generate = new Button((Il2CppSystem.Action)(System.Action)(() => StartSquadBatch(missing)))
             { text = "Generate " + missing.Count + " faces", focusable = false };
             generate.style.height = 34;
@@ -1873,8 +1894,9 @@ namespace RegenerateFMHotReload
                 return;
             if (profile.BiographyHeadline == null && _biographyCache.TryGetValue(personId, out string biography))
                 profile.BiographyHeadline = biography;
-            // Someone FM hasn't drawn in a match gets a guessed ethnicity.
-            KnownEthnicity(personId, null, profile);
+            // A silhouette is a real person, unless RegenerateFM saw them as a newgen.
+            KnownEthnicity(personId, null, profile, out bool newgen);
+            profile.Likeness = !newgen;
             batch.PersonId = personId;
             batch.Status.text = "Generating " + target.Name + " (" + (batch.Index + 1) + "/" + batch.Queue.Count + ")…";
             batch.Request = RequestPortrait(personId, profile, batch.Settings);

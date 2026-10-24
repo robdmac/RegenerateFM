@@ -109,6 +109,7 @@ namespace RegenerateFMHotReload
                 BiographyHeadline = Optional(value, "biographyHeadline"), Gender = Optional(value, "gender"),
                 Ethnicity = Optional(value, "ethnicity"), SkinTone = Optional(value, "skinTone"),
                 HairColour = Optional(value, "hairColour"),
+                Likeness = value.TryGetProperty("likeness", out var likeness) && likeness.ValueKind == JsonValueKind.True,
                 Age = value.TryGetProperty("age", out var age) && age.ValueKind == JsonValueKind.Number ? age.GetInt32() : 0,
             };
             if (value.TryGetProperty("relatives", out var relatives))
