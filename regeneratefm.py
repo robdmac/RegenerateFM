@@ -260,6 +260,51 @@ def _gender_text(name: str, gender: str | None) -> str:
     return {"female": f" {name} is a woman.", "male": f" {name} is a man."}.get(gender, "")
 
 
+# FM's ethnicities (its SI.Match.Ethnicity, in the game's order) and how the
+# prompt describes each; FM26's plugin reads them from matches and newgens.
+ETHNICITIES = {
+    "NorthernEuropean": "white Northern European",
+    "MediterraneanHispanic": "Mediterranean or Hispanic",
+    "NorthAfricanMiddleEastern": "North African or Middle Eastern",
+    "AfricanCaribbean": "Black African or Caribbean",
+    "Asian": "South Asian",
+    "SouthEastAsian": "South-East Asian",
+    "PacificIslander": "Pacific Islander",
+    "NativeAmerican": "Indigenous American",
+    "NativeAustralian": "Indigenous Australian",
+    "MixedRaceWhiteBlack": "mixed race (Black and white)",
+    "EastAsian": "East Asian",
+}
+# FM's skin tones (SI.Match.SkinTone, in order) and the words for each.
+SKIN_TONES = {
+    **{f"White{n}": word for n, word in enumerate(("fair", "fair", "light", "light", "light"), 1)},
+    **{f"Latin{n}": word for n, word in enumerate(("light olive", "light olive", "olive", "olive", "olive", "tan", "tan"), 1)},
+    **{f"African{n}": word for n, word in enumerate(("light brown", "light brown", "medium brown", "medium brown",
+                                                     "brown", "brown", "dark brown", "dark brown"), 1)},
+}
+HAIR_COLOURS = ("black", "dark brown", "light brown", "blond", "ginger", "grey", "white")
+
+
+def _ethnicity_text(profile: dict, name: str) -> str:
+    """The prompt's ethnicity: FM's own when the profile has it (FM26), otherwise
+    a best guess from the person's name and nationality."""
+    ethnicity = profile.get("ethnicity")
+    if ethnicity is None:
+        return (f"Ethnicity is not known: give {name} the most likely ethnicity and skin tone for their full "
+                "name and nationality, remembering that many people's heritage differs from the country they represent. ")
+    if ethnicity not in ETHNICITIES:
+        raise ValueError("Ethnicity is invalid.")
+    skin_tone, hair_colour = profile.get("skinTone"), profile.get("hairColour")
+    if skin_tone is not None and skin_tone not in SKIN_TONES:
+        raise ValueError("Skin tone is invalid.")
+    if hair_colour is not None and hair_colour not in HAIR_COLOURS:
+        raise ValueError("Hair colour is invalid.")
+    parts = [part for part in (f"{SKIN_TONES[skin_tone]} skin" if skin_tone else None,
+                               f"naturally {hair_colour} hair" if hair_colour else None) if part]
+    return (f"Ethnicity: {ETHNICITIES[ethnicity]}" + (", with " + " and ".join(parts) if parts else "") +
+            "; follow this over any other appearance detail. ")
+
+
 def _no_club(club: str) -> bool:
     return club.casefold() in ("free agent", "unattached", "no club")
 
@@ -390,10 +435,9 @@ def profile_prompt(profile: dict, *, person_id: str | None = None,
             f"Football Manager profile picture for {name}, age {age}, nationality {nationality}, "
             f"job title {job_title}{club_text}.{_gender_text(name, gender)}{biography_text} "
             "Create one plausible, original staff portrait for a sports management game. "
-            + appearance + portrait_style(_facial_hair_text(gender)) +
+            + _ethnicity_text(profile, name) + appearance + portrait_style(_facial_hair_text(gender)) +
             "Wear a simple unbranded dark jacket or training top. "
-            "Use age and biography to guide appearance, but do not infer "
-            "ethnicity from nationality. No text, logos, badges, borders, or other people."
+            "Use age and biography to guide appearance. No text, logos, badges, borders, or other people."
         )
     position = _profile_text(profile, "position")
     club = _profile_text(profile, "club")
@@ -426,9 +470,9 @@ def profile_prompt(profile: dict, *, person_id: str | None = None,
            if known_physical else "") +
         f"Best non-physical stats: {fmt(best)}. Weakest non-physical stats: {fmt(worst)}. "
         "Create one plausible, original footballer portrait for a sports management game. "
-        + appearance + portrait_style(_facial_hair_text(gender)) +
+        + _ethnicity_text(profile, name) + appearance + portrait_style(_facial_hair_text(gender)) +
         f"{kit_text}Use age and physical details to guide appearance, but do not depict "
-        "numbers or infer ethnicity from nationality. No text, logos, badges, borders, or other people."
+        "numbers. No text, logos, badges, borders, or other people."
     )
 
 

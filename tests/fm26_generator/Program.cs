@@ -22,7 +22,23 @@ namespace RegenerateFMHotReload
                     string dir = Optional(item, "directory");
                     string id = Optional(item, "personId");
                     if (action == "profile")
-                        result["prompt"] = FaceGenerator.ProfilePrompt(Profile(item.GetProperty("profile")), id, dir);
+                    {
+                        var profile = Profile(item.GetProperty("profile"));
+                        if (item.TryGetProperty("known", out var known) && known.ValueKind == JsonValueKind.True)
+                            FaceGenerator.ApplyKnownEthnicity(profile, dir, id);
+                        result["prompt"] = FaceGenerator.ProfilePrompt(profile, id, dir);
+                    }
+                    else if (action == "saveethnicities")
+                    {
+                        var people = new Dictionary<string, FaceGenerator.KnownEthnicity>();
+                        foreach (var person in item.GetProperty("people").EnumerateObject())
+                            people[person.Name] = new FaceGenerator.KnownEthnicity
+                            {
+                                Ethnicity = Optional(person.Value, "ethnicity"), SkinTone = Optional(person.Value, "skinTone"),
+                                HairColour = Optional(person.Value, "hairColour"), Source = Optional(person.Value, "source"),
+                            };
+                        result["changed"] = FaceGenerator.SaveEthnicities(dir, people);
+                    }
                     else if (action == "relative")
                         result["prompt"] = FaceGenerator.RelativePrompt(Profile(item.GetProperty("profile")), Optional(item, "relation"), id, dir);
                     else if (action == "update")
@@ -91,6 +107,8 @@ namespace RegenerateFMHotReload
                 JobTitle = Optional(value, "jobTitle"), Position = Optional(value, "position"),
                 Club = Optional(value, "club"), Height = Optional(value, "height"),
                 BiographyHeadline = Optional(value, "biographyHeadline"), Gender = Optional(value, "gender"),
+                Ethnicity = Optional(value, "ethnicity"), SkinTone = Optional(value, "skinTone"),
+                HairColour = Optional(value, "hairColour"),
                 Age = value.TryGetProperty("age", out var age) && age.ValueKind == JsonValueKind.Number ? age.GetInt32() : 0,
             };
             if (value.TryGetProperty("relatives", out var relatives))
