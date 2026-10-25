@@ -1032,7 +1032,7 @@ static void *bridge_worker(void *unused)
         log_line("REGENERATEFM24_COMPANION_UNAVAILABLE");
         show_message("RegenerateFM's companion isn't running. FM24 starts it; restart FM24 from Steam to try again. "
                      "If you moved the RegenerateFM folder, run the RegenerateFM installer again. "
-                     "regeneratefm24-companion.log beside fm.app says what went wrong.");
+                     "regeneratefm-fm24.log in the RegenerateFM folder beside fm.app says what went wrong.");
     }
     return NULL;
 }

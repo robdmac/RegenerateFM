@@ -157,6 +157,8 @@ namespace RegenerateFM.Tests
         public void ARejectedKeyIsAskedForAgainWhereTheGameAsks()
         {
             _companion.PreviewOnly = false;
+            // A companion run from a terminal: on the Mac a reload port means FM24 asks for the key.
+            _companion.ReloadPort = 0;
             _profile = new ProfileSnapshot
             {
                 Type = "staff", Name = "Greg Vanney", Age = 49, Nationality = "United States", JobTitle = "Manager", Club = "LA Galaxy",

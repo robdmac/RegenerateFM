@@ -56,6 +56,8 @@ namespace RegenerateFM.Desktop.FM24.Bridge
         private readonly string _token;
         private readonly UdpClient _server;
         private readonly object _busyLock = new object();
+        // Set by Dispose, which then wakes the receive thread (see Dispose).
+        private volatile bool _closing;
         private bool _busy;
         // Per game run (the DLL's start time, not the process ID, which Wine
         // reuses after a restart): the last serial and the reply sent for it.
@@ -108,7 +110,7 @@ namespace RegenerateFM.Desktop.FM24.Bridge
 
         private void Receive()
         {
-            while (true)
+            while (!_closing)
             {
                 byte[] packet;
                 var peer = new IPEndPoint(IPAddress.Any, 0);
@@ -127,6 +129,8 @@ namespace RegenerateFM.Desktop.FM24.Bridge
                     Log("FM24 native bridge receive error (continuing): " + error.Message);
                     continue;
                 }
+                if (_closing)
+                    return;
                 try
                 {
                     Handle(Encoding.ASCII.GetString(packet), peer);
@@ -322,6 +326,17 @@ namespace RegenerateFM.Desktop.FM24.Bridge
 
         public void Dispose()
         {
+            // On macOS closing the socket doesn't interrupt a blocked Receive, and
+            // the close waits for it, so an empty datagram ends the receive first.
+            _closing = true;
+            try
+            {
+                using var wake = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
+                wake.Send(Array.Empty<byte>(), 0, new IPEndPoint(IPAddress.Loopback, Port));
+            }
+            catch (Exception error) when (error is SocketException || error is ObjectDisposedException)
+            {
+            }
             _server.Dispose();
         }
     }

@@ -69,7 +69,6 @@ namespace RegenerateFM.FM26
             public Label Status;
             public bool StopAfterCurrent;
             public System.DateTime NextPlayerUtc;
-            public double LastDiagnosis = -10;
             public System.DateTime? UnfocusedSinceUtc;
             // A TeamSquadReport page's team ("Atlanta United Academy"): Squad opens
             // the Overview, so the batch goes on to this team's tab from there.
@@ -355,11 +354,6 @@ namespace RegenerateFM.FM26
                 }
                 scan.List.scrollOffset = new Vector2(scan.List.scrollOffset.x, scan.OriginalY);
                 _squadScan = null;
-                var kinds = new SortedSet<string>();
-                foreach (var seen in scan.Portraits.Values)
-                    if (seen.Address != null && !Regex.IsMatch(seen.Address, @"\d{4}"))
-                        kinds.Add(seen.Address);
-                Log.LogInfo("DIAG squad portrait kinds: " + string.Join(", ", kinds));
                 Log.LogInfo("RegenerateFM squad scan finished: " + scan.Portraits.Count +
                             " of " + scan.ExpectedCount + " players, " + scan.Missing.Count + " missing portraits");
                 if (scan.Status != null)
@@ -632,20 +626,10 @@ namespace RegenerateFM.FM26
                 SetBatchStage(batch, SquadStage.ReturnToSquad);
                 return;
             }
-            catch (InvalidOperationException error) when (System.DateTime.UtcNow - batch.StageStartedUtc < ProfileBindTimeout)
+            catch (InvalidOperationException) when (System.DateTime.UtcNow - batch.StageStartedUtc < ProfileBindTimeout)
             {
                 // FM creates the header before its bound name, stats and height
                 // arrive; under Rosetta 2 on macOS that took more than 10 s.
-                var waited = (System.DateTime.UtcNow - batch.StageStartedUtc).TotalSeconds;
-                if (waited - batch.LastDiagnosis >= 2)
-                {
-                    batch.LastDiagnosis = waited;
-                    var headers = new List<VisualElement>();
-                    CollectNamed(CurrentRoot(), "ReportHeader", headers);
-                    Log.LogInfo("DIAG batch capture after " + waited.ToString("0.0") + " s: " + headers.Count +
-                                " ReportHeader(s), first " + header.worldBound + "; " + error.Message + " | " +
-                                DescribeTexts(header));
-                }
                 return;
             }
             if (!string.Equals(profile.Name, target.Name, StringComparison.OrdinalIgnoreCase) ||

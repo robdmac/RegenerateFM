@@ -138,11 +138,14 @@ namespace RegenerateFM.Tests
             string game = Path.Combine(SteamLaunch.Resolve(other), "steamapps", "common", "Football Manager 2024");
             Assert.Equal(game, SteamLaunch.FindGameDir("fm24", "fm.exe"));
             var setup = new Fm24Setup(new NativeInstall(mac: false)) { Proton = true };
-            Assert.Null(setup.FindUserDataDir(game));
+            // The Proton prefix is Linux's; Windows and the Mac read the player's own folders.
+            bool linux = !OperatingSystem.IsWindows() && !OperatingSystem.IsMacOS();
+            if (linux)
+                Assert.Null(setup.FindUserDataDir(game));
             string userData = Path.Combine(SteamLaunch.Resolve(other), "steamapps", "compatdata", "2252570", "pfx", "drive_c", "users", "steamuser",
                                            "Documents", "Sports Interactive", "Football Manager 2024");
             Directory.CreateDirectory(userData);
-            if (!OperatingSystem.IsWindows() && !OperatingSystem.IsMacOS())
+            if (linux)
                 Assert.Equal(userData, setup.FindUserDataDir(game));
         }
 
@@ -316,12 +319,14 @@ namespace RegenerateFM.Tests
         public void ARunningFm26IsNotTakenForFm24()
         {
             var native = new NativeInstall(mac: false);
-            var running = new List<(int, string)> { (1, @"Z:\games\steamapps\common\Football Manager 26\fm.exe") };
+            // Proton's process list on Linux; fm.app's executable on the Mac.
+            string executable = OperatingSystem.IsMacOS() ? @"\fm.app\Contents\MacOS\fm" : @"\fm.exe";
+            var running = new List<(int, string)> { (1, @"Z:\games\steamapps\common\Football Manager 26" + executable) };
             RegenerateFM.Desktop.FM24.Memory.Processes.RunningSource = () => running;
             try
             {
                 Assert.False(native.Running("/games/steamapps/common/Football Manager 2024"));
-                running.Add((2, @"Z:\games\steamapps\common\Football Manager 2024\fm.exe"));
+                running.Add((2, @"Z:\games\steamapps\common\Football Manager 2024" + executable));
                 Assert.True(native.Running("/games/steamapps/common/Football Manager 2024"));
             }
             finally
@@ -442,7 +447,8 @@ namespace RegenerateFM.Tests
             var installed = Files(linux.Fm26);
             foreach (var (name, text) in Fm26Files)
                 Assert.Equal(text, installed[name]);
-            Assert.Equal("WINEDLLOVERRIDES=\"winhttp=n,b\" %command%", LaunchOption("3551340"));
+            // The installer is for Linux; elsewhere it sets that system's option.
+            Assert.Equal(SteamLaunch.Option("fm26", SteamLaunch.Resolve(linux.Fm26)) + " %command%", LaunchOption("3551340"));
             Assert.Null(LaunchOption("2252570"));
             Assert.Empty(linux.SetupCalls);
             Assert.Equal(0, linux.Installer.Main(new[] { "fm26", "--remove", "--release", linux.Release }, null));
@@ -490,12 +496,14 @@ namespace RegenerateFM.Tests
             Assert.Equal(0, linux.Installer.Main(new[] { "--release", linux.Release }, null));
             Assert.True(File.Exists(Path.Combine(linux.Fm26, "winhttp.dll")));
             Assert.Equal(new[] { "regeneratefm-fm24.exe" }, Files(companion).Keys);
-            Assert.Equal(new[] { "--game-dir", linux.Fm24, "--companion", Path.Combine(companion, "regeneratefm-fm24.exe") }, linux.SetupCalls.Single());
+            // The game folder as found in Steam's libraries (on the Mac, /var is /private/var).
+            string fm24 = SteamLaunch.Resolve(linux.Fm24);
+            Assert.Equal(new[] { "--game-dir", fm24, "--companion", Path.Combine(companion, "regeneratefm-fm24.exe") }, linux.SetupCalls.Single());
             File.WriteAllText(Path.Combine(linux.Fm24, NativeInstall.Manifest), "{}");
             File.WriteAllText(Path.Combine(companion, "regeneratefm-fm24.log"), "a log");
             File.WriteAllText(Path.Combine(companion, "notes.txt"), "the player's own");
             Assert.Equal(0, linux.Installer.Main(new[] { "--remove", "--release", linux.Release }, null));
-            Assert.Equal(new[] { "--game-dir", linux.Fm24, "--remove" }, linux.SetupCalls.Last());
+            Assert.Equal(new[] { "--game-dir", fm24, "--remove" }, linux.SetupCalls.Last());
             Assert.Equal(new[] { "notes.txt" }, Files(companion).Keys);
         }
 

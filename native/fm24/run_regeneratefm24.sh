@@ -38,11 +38,13 @@ fi
 # Start RegenerateFM's companion, as the Windows DLL does: the setup records it
 # (companion=) in regeneratefm24.ini. It is given this shell's process ID,
 # which exec below hands to FM24, and stops when FM24 does, or at once if a
-# companion is already running. It logs to regeneratefm24-companion.log here.
+# companion is already running. It logs to regeneratefm-fm24.log beside itself;
+# its output goes there too, so a start-up failure before it opens the log is
+# kept. The size check is here, before that file is open in two places.
 CONFIG="${BASEDIR}/regeneratefm24.ini"
 COMPANION=$(/usr/bin/sed -n 's/^companion=//p' "$CONFIG" 2>/dev/null)
 if [ -n "$COMPANION" ] && [ -x "$COMPANION" ]; then
-    LOG="${BASEDIR}/regeneratefm24-companion.log"
+    LOG="$(/usr/bin/dirname "$COMPANION")/regeneratefm-fm24.log"
     if [ -f "$LOG" ] && [ "$(/usr/bin/stat -f %z "$LOG")" -gt 1000000 ]; then
         /bin/mv -f "$LOG" "$LOG.old"
     fi

@@ -517,8 +517,10 @@ namespace RegenerateFM.Tests
             Processes.Opener = pid => unreadable.Contains(pid) ? throw new IOException("no answer") : new FakeProcess(pid: pid);
             try
             {
-                string game = "C:/Games/Football Manager 2024/fm.exe";
-                processes.AddRange(new[] { (7, "/bin/sh"), (9, game), (10, "C:/Games/Football Manager 26/fm.exe") });
+                // The game's executable on this system (fm.app's on the Mac).
+                string executable = OperatingSystem.IsMacOS() ? "/fm.app/Contents/MacOS/fm" : "/fm.exe";
+                string game = "C:/Games/Football Manager 2024" + executable;
+                processes.AddRange(new[] { (7, "/bin/sh"), (9, game), (10, "C:/Games/Football Manager 26" + executable) });
                 Assert.Equal(9, People.FindGame().Pid);
                 processes.RemoveAll(entry => entry.Item1 == 9);
                 Assert.Contains("isn't running. Start it", Assert.Throws<MemoryUnavailableException>(People.FindGame).Message);
@@ -526,7 +528,9 @@ namespace RegenerateFM.Tests
                 Assert.Contains("More than one FM24", Assert.Throws<MemoryUnavailableException>(People.FindGame).Message);
                 processes.RemoveAll(entry => entry.Item1 == 8);
                 unreadable.Add(9);
-                Assert.Contains("can't read the running FM24 (no answer)", Assert.Throws<MemoryUnavailableException>(People.FindGame).Message);
+                // On the Mac the reads go through the library in the game, so that's what isn't answering.
+                Assert.Contains(OperatingSystem.IsMacOS() ? "its library in the game isn't answering" : "can't read the running FM24 (no answer)",
+                                Assert.Throws<MemoryUnavailableException>(People.FindGame).Message);
             }
             finally
             {
