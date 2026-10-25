@@ -94,7 +94,7 @@ namespace RegenerateFM
             var chosen = AppearanceTraits(personId, age, gender, family);
             if (path != null)
             {
-                Portraits.AtomicWrite(path, Encoding.UTF8.GetBytes(Json.Text(json =>
+                AtomicFile.Write(path, Encoding.UTF8.GetBytes(Json.Text(json =>
                 {
                     json.WriteStartObject();
                     json.WriteNumber("schemaVersion", 1);

@@ -72,10 +72,7 @@ namespace RegenerateFM.Desktop.Linux
             foreach (string path in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories).OrderBy(path => path, StringComparer.Ordinal))
             {
                 string destination = Path.Combine(target, Path.GetRelativePath(source, path));
-                Directory.CreateDirectory(Path.GetDirectoryName(destination));
-                string temporary = Path.Combine(Path.GetDirectoryName(destination), "." + Path.GetFileName(destination) + ".regeneratefm-tmp");
-                File.Copy(path, temporary, overwrite: true);
-                File.Move(temporary, destination, overwrite: true);
+                AtomicFile.Write(destination, File.ReadAllBytes(path), (int)File.GetUnixFileMode(path));
                 copied++;
             }
             return copied;
@@ -141,11 +138,8 @@ namespace RegenerateFM.Desktop.Linux
             if (!File.Exists(payload))
                 throw new SetupException("The release's FM24 folder is missing: " + Path.GetDirectoryName(payload));
             string target = CompanionDir();
-            Directory.CreateDirectory(target);
             string companion = Path.Combine(target, Companion);
-            string temporary = companion + ".regeneratefm-tmp";
-            File.Copy(payload, temporary, overwrite: true);
-            File.Move(temporary, companion, overwrite: true);
+            AtomicFile.Write(companion, File.ReadAllBytes(payload), AtomicFile.Executable);
             foreach (string old in OldCompanionFiles)
                 Delete(Path.Combine(target, old));
             Log("Copied the companion to " + target + ".");

@@ -37,7 +37,7 @@ namespace RegenerateFM.Desktop.FM24.Setup
         public const string Config = "regeneratefm24.ini";
         public const string Manifest = "regeneratefm24-install.json";
         public const int DefaultPort = 8769;
-        private static readonly Regex TokenPattern = new Regex("^[A-Za-z0-9_-]{40,128}$", RegexOptions.Compiled);
+        internal static readonly Regex TokenPattern = new Regex("^[A-Za-z0-9_-]{40,128}$", RegexOptions.Compiled);
 
         public NativeInstall(bool mac)
         {
@@ -170,47 +170,38 @@ namespace RegenerateFM.Desktop.FM24.Setup
             }
         }
 
-        // Writes ``data`` through a new temporary file beside ``path``, then renames it.
-        public static void AtomicWrite(string path, byte[] data, UnixFileMode mode)
-        {
-            string temporary = Path.Combine(Path.GetDirectoryName(path),
-                                            "." + Path.GetFileName(path) + ".regeneratefm-" + Guid.NewGuid().ToString("N") + ".tmp");
-            try
-            {
-                using (var file = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write))
-                {
-                    file.Write(data);
-                    file.Flush(flushToDisk: true);
-                }
-                if (!OperatingSystem.IsWindows())
-                    File.SetUnixFileMode(temporary, mode);
-                File.Move(temporary, path, overwrite: true);
-            }
-            finally
-            {
-                if (File.Exists(temporary))
-                    File.Delete(temporary);
-            }
-        }
+        public static void AtomicWrite(string path, byte[] data, UnixFileMode mode) => AtomicFile.Write(path, data, (int)mode);
 
         // The manifest, the original two-panel format upgraded in memory; null when there is none.
         public static JsonObject LoadManifest(string path)
         {
             if (!File.Exists(path))
                 return null;
-            var metadata = JsonNode.Parse(File.ReadAllText(path)) as JsonObject ?? throw new InvalidDataException("Invalid manifest.");
+            var invalid = new InvalidDataException("Invalid manifest.");
+            var metadata = JsonNode.Parse(File.ReadAllText(path)) as JsonObject ?? throw invalid;
             if (!metadata.ContainsKey("version"))
             {
-                var panels = new JsonObject();
-                var hashes = metadata["panelSha256"].AsArray();
-                panels[PanelFiles["player"]] = new JsonObject { ["sha256"] = hashes[0].GetValue<string>(), ["created"] = false };
-                panels[PanelFiles["staff"]] = new JsonObject { ["sha256"] = hashes[1].GetValue<string>(), ["created"] = false };
-                metadata = new JsonObject { ["version"] = 2, ["dllSha256"] = metadata["dllSha256"].GetValue<string>(), ["panels"] = panels };
+                if (!(metadata["panelSha256"] is JsonArray hashes) || hashes.Count != 2 || Text(hashes[0]) == null || Text(hashes[1]) == null)
+                    throw invalid;
+                var panels = new JsonObject
+                {
+                    [PanelFiles["player"]] = new JsonObject { ["sha256"] = Text(hashes[0]), ["created"] = false },
+                    [PanelFiles["staff"]] = new JsonObject { ["sha256"] = Text(hashes[1]), ["created"] = false },
+                };
+                metadata = new JsonObject { ["version"] = 2, ["dllSha256"] = Text(metadata["dllSha256"]), ["panels"] = panels };
             }
-            if (metadata["version"]?.GetValue<int>() != 2)
+            if (!(metadata["version"] is JsonValue version) || !version.TryGetValue(out int number) || number != 2)
                 throw new InvalidDataException("Unsupported native RegenerateFM installation manifest.");
+            if (Text(metadata["dllSha256"]) == null || !(metadata["panels"] is JsonObject entries))
+                throw invalid;
+            foreach (var (_, entry) in entries)
+                if (!(entry is JsonObject panel) || Text(panel["sha256"]) == null ||
+                    !(panel["created"] is JsonValue created) || !created.TryGetValue(out bool _))
+                    throw invalid;
             return metadata;
         }
+
+        private static string Text(JsonNode node) => node is JsonValue value && value.TryGetValue(out string text) ? text : null;
 
         public static bool HasPopup(string panel)
         {
@@ -428,7 +419,7 @@ namespace RegenerateFM.Desktop.FM24.Setup
                 metadata = LoadManifest(manifest);
             }
             catch (Exception error) when (error is JsonException || error is InvalidDataException || error is InvalidOperationException ||
-                                          error is NullReferenceException || error is FormatException)
+                                          error is FormatException)
             {
                 throw new SetupException("Could not read " + manifest + ": " + error.Message);
             }

@@ -94,11 +94,18 @@ namespace RegenerateFM.Tests
             {
                 Type = "staff", Name = "Greg Vanney", Age = 49, Nationality = "United States", JobTitle = "Manager", Club = "LA Galaxy",
             };
+            Assert.True(_companion.Generate(null, "generate").Refreshed);
+            string earlier = Assert.Single(Saved());
             _companion.Reload = () => throw new TimeoutException("no reply");
             var result = _companion.Generate(null, "generate");
             Assert.True(result.Ok);
             Assert.False(result.Refreshed);
             Assert.Contains("Reload Skin", result.Warning);
+            // FM24 still shows the earlier face until it reloads, so that file stays.
+            Assert.Equal(2, Saved().Length);
+            Assert.Contains(earlier, Saved());
+            _companion.Reload = () => { };
+            Assert.True(_companion.Generate(null, "generate").Refreshed);
             Assert.Single(Saved());
         }
 

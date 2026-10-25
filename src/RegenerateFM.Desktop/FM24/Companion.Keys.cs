@@ -162,33 +162,43 @@ namespace RegenerateFM.Desktop.FM24
                     {
                     }
                 }
-                string problem = KeyRejected ? RejectedText() : null;
-                while (true)
-                {
-                    string text = (problem != null ? problem + "\n\n" : "") + CreditsText +
-                                  "\n\nOr use your own OpenAI API key. " + KeyCost + " Paste it (it starts with sk-) with " +
-                                  "Ctrl+V or type it, then choose Save key. Get a key… opens " + KeyStore.KeysPage + ".\n\n" +
-                                  "The key or sign-in is saved encrypted for your Windows user in " + KeyStore.Folder +
-                                  ". Delete that folder to forget it.";
-                    string entered;
-                    try
+                bool unavailable = false;
+                bool saved = AskUntilSaved(KeyRejected ? RejectedText() : null,
+                    "Paste it (it starts with sk-) with Ctrl+V or type it, then choose Save key.",
+                    "The key or sign-in is saved encrypted for your Windows user in", text =>
                     {
-                        entered = AskInWindow(text);
-                    }
-                    catch (Exception error) when (error is IOException || error is InvalidOperationException)
-                    {
-                        Log("Couldn't show the key dialog (" + error.Message + ").");
-                        return false;
-                    }
-                    if (entered == null)
-                    {
-                        Log("No OpenAI key was saved; choosing a face command asks again.");
-                        return false;
-                    }
-                    problem = entered == CreditsChoice ? SignInWithCredits() : CheckAndSave(entered);
-                    if (problem == null)
-                        return true;
-                }
+                        try
+                        {
+                            return AskInWindow(text);
+                        }
+                        catch (Exception error) when (error is IOException || error is InvalidOperationException)
+                        {
+                            Log("Couldn't show the key dialog (" + error.Message + ").");
+                            unavailable = true;
+                            return null;
+                        }
+                    });
+                if (!saved && !unavailable)
+                    Log("No OpenAI key was saved; choosing a face command asks again.");
+                return saved;
+            }
+        }
+
+        // Asks with ``ask`` (null when the player cancels) until a key or credits
+        // sign-in is saved; false if cancelled.
+        private bool AskUntilSaved(string problem, string howToPaste, string whereSaved, Func<string, string> ask)
+        {
+            while (true)
+            {
+                string text = (problem != null ? problem + "\n\n" : "") + CreditsText +
+                              "\n\nOr use your own OpenAI API key. " + KeyCost + " " + howToPaste + " Get a key… opens " +
+                              KeyStore.KeysPage + ".\n\n" + whereSaved + " " + KeyStore.Folder + ". Delete that folder to forget it.";
+                string entered = ask(text);
+                if (entered == null)
+                    return false;
+                problem = entered == CreditsChoice ? SignInWithCredits() : CheckAndSave(entered);
+                if (problem == null)
+                    return true;
             }
         }
 
@@ -212,30 +222,23 @@ namespace RegenerateFM.Desktop.FM24
             }
             lock (_keyLock)
             {
-                while (true)
-                {
-                    string text = (problem != null ? problem + "\n\n" : "") + CreditsText +
-                                  "\n\nOr use your own OpenAI API key. " + KeyCost + " Paste or type it (it starts with sk-), " +
-                                  "then choose Save key. Get a key… opens " + KeyStore.KeysPage + ".\n\n" +
-                                  "The key or sign-in is kept on this Mac only, readable only by your user account, in " +
-                                  KeyStore.Folder + ". Delete that folder to forget it.";
-                    string entered;
-                    try
+                bool unavailable = false;
+                bool saved = AskUntilSaved(problem, "Paste or type it (it starts with sk-), then choose Save key.",
+                    "The key or sign-in is kept on this Mac only, readable only by your user account, in", text =>
                     {
-                        entered = Dll.AskKey(ReloadPort, Token, text);
-                    }
-                    catch (Exception error) when (error is DialogUnavailableException || error is ArgumentException ||
-                                                  error is TimeoutException || error is System.Net.Sockets.SocketException)
-                    {
-                        Log("FM24 couldn't ask for the OpenAI key (" + error.Message + ").");
-                        return true;
-                    }
-                    if (entered == null)
-                        return false;
-                    problem = entered == CreditsChoice ? SignInWithCredits() : CheckAndSave(entered);
-                    if (problem == null)
-                        return true;
-                }
+                        try
+                        {
+                            return Dll.AskKey(ReloadPort, Token, text);
+                        }
+                        catch (Exception error) when (error is DialogUnavailableException || error is ArgumentException ||
+                                                      error is TimeoutException || error is System.Net.Sockets.SocketException)
+                        {
+                            Log("FM24 couldn't ask for the OpenAI key (" + error.Message + ").");
+                            unavailable = true;
+                            return null;
+                        }
+                    });
+                return saved || unavailable;
             }
         }
 

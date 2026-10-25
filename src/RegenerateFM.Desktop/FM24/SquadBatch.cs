@@ -178,10 +178,11 @@ namespace RegenerateFM.Desktop.FM24
             }
             catch (Exception error) when (dialog != null)
             {
-                // Anything else still ends the progress dialog, so Stop isn't left doing nothing.
+                // Anything else still ends the progress dialog (so Stop isn't left
+                // doing nothing), which then says all the player needs.
+                _companion.Log("FM24 squad batch failed: " + error);
                 Finish(dialog, "Squad faces stopped: " + error.Message);
                 dialog = null;
-                throw;
             }
             finally
             {

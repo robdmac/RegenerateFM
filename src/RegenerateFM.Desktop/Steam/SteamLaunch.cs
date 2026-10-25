@@ -342,9 +342,7 @@ namespace RegenerateFM.Desktop.Steam
                     string backup = config + BackupSuffix;
                     if (!File.Exists(backup))
                         File.Copy(config, backup);
-                    string temporary = config + ".regeneratefm-tmp";
-                    File.WriteAllText(temporary, updated, new UTF8Encoding(false));
-                    File.Move(temporary, config, overwrite: true);
+                    AtomicFile.Write(config, new UTF8Encoding(false).GetBytes(updated));
                     changed.Add(config);
                 }
             return changed;

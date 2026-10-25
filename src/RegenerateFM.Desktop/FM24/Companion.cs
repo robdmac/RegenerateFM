@@ -329,20 +329,8 @@ namespace RegenerateFM.Desktop.FM24
                 var settings = RequestSettings();
                 clock.Restart();
                 var png = (reference != null ? EditPng(settings, prompt, reference) : GeneratePng(settings, prompt)).GetAwaiter().GetResult();
-                Portraits.SavePortrait(GraphicsDir, playerId, png);
-                Log("Image request and save took " + clock.Elapsed.TotalSeconds.ToString("0.0") + " s.");
-                progress?.Loading();
-                try
-                {
-                    Reload();
-                }
-                catch (Exception error) when (Expected(error) || error is TimeoutException || error is System.Net.Sockets.SocketException)
-                {
-                    string warning = "Portrait saved, but FM24 reload failed: " + error.Message + ". Use Preferences > Reload Skin.";
-                    // "Shown": the progress dialog now says so; nothing else needs to.
-                    return new FaceResult { Ok = true, PlayerId = playerId, Warning = warning, Shown = progress != null && progress.Fail(warning) };
-                }
-                return new FaceResult { Ok = true, PlayerId = playerId, Refreshed = true };
+                Log("Image request took " + clock.Elapsed.TotalSeconds.ToString("0.0") + " s.");
+                return SaveAndReload(playerId, png, progress);
             }
             catch (Exception error) when (Expected(error) || error is MissingApiKeyException)
             {
@@ -356,6 +344,26 @@ namespace RegenerateFM.Desktop.FM24
                 lock (_lock)
                     _inFlight = false;
             }
+        }
+
+        // Saves the face and has FM24 reload it. The earlier face stays until the
+        // reload succeeds: FM24 keeps showing it until then.
+        private FaceResult SaveAndReload(string playerId, byte[] png, IFaceProgress progress)
+        {
+            string saved = Portraits.SavePortrait(GraphicsDir, playerId, png, removeEarlier: false);
+            progress?.Loading();
+            try
+            {
+                Reload();
+            }
+            catch (Exception error) when (Expected(error) || error is TimeoutException || error is System.Net.Sockets.SocketException)
+            {
+                string warning = "Portrait saved, but FM24 reload failed: " + error.Message + ". Use Preferences > Reload Skin.";
+                // "Shown": the progress dialog now says so; nothing else needs to.
+                return new FaceResult { Ok = true, PlayerId = playerId, Warning = warning, Shown = progress != null && progress.Fail(warning) };
+            }
+            Portraits.RemoveEarlier(saved, playerId);
+            return new FaceResult { Ok = true, PlayerId = playerId, Refreshed = true };
         }
 
         // The settings for a request; MissingKey when there is no key at all.
@@ -389,21 +397,7 @@ namespace RegenerateFM.Desktop.FM24
                 if (PreviewOnly)
                     return new FaceResult { Ok = true, Preview = true, PlayerId = playerId, Prompt = prompt };
                 Portraits.CheckGraphicsConfig(GraphicsDir);
-                var png = GeneratePng(RequestSettings(), prompt).GetAwaiter().GetResult();
-                Portraits.SavePortrait(GraphicsDir, playerId, png);
-                try
-                {
-                    Reload();
-                }
-                catch (Exception error) when (Expected(error) || error is TimeoutException || error is System.Net.Sockets.SocketException)
-                {
-                    return new FaceResult
-                    {
-                        Ok = true, PlayerId = playerId,
-                        Warning = "Portrait saved, but FM24 reload failed: " + error.Message + ". Use Preferences > Reload Skin.",
-                    };
-                }
-                return new FaceResult { Ok = true, PlayerId = playerId, Refreshed = true };
+                return SaveAndReload(playerId, GeneratePng(RequestSettings(), prompt).GetAwaiter().GetResult(), null);
             }
             catch (Exception error) when (Expected(error) || error is MissingApiKeyException)
             {

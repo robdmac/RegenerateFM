@@ -137,7 +137,9 @@ namespace RegenerateFM
         // load the same file again, so a face saved over the old file would
         // not appear until a restart. The person's earlier files are removed
         // once config.xml maps the new one; if config.xml fails, the new file is.
-        public static string SavePortrait(string directory, string personId, byte[] png)
+        // ``removeEarlier`` false keeps the person's earlier files for FM24,
+        // which shows them until its skin reload succeeds (RemoveEarlier then).
+        public static string SavePortrait(string directory, string personId, byte[] png, bool removeEarlier = true)
         {
             ValidateId(personId);
             if (!Png.IsPng(png))
@@ -163,10 +165,10 @@ namespace RegenerateFM
                         document.Save(writer);
                     xml = buffer.ToArray();
                 }
-                AtomicWrite(imagePath, png);
+                AtomicFile.Write(imagePath, png);
                 try
                 {
-                    AtomicWrite(configPath, xml);
+                    AtomicFile.Write(configPath, xml);
                 }
                 catch (Exception)
                 {
@@ -180,35 +182,26 @@ namespace RegenerateFM
                     }
                     throw;
                 }
-                // Earlier files of this person that config.xml no longer maps; one
-                // that can't be removed now is removed after the next face.
-                foreach (var old in Directory.EnumerateFiles(directory, personId + "*.png"))
-                {
-                    string oldStem = Path.GetFileNameWithoutExtension(old);
-                    if (oldStem != stem && IsPortraitStem(oldStem, personId))
-                    {
-                        try { File.Delete(old); }
-                        catch (IOException) { }
-                        catch (UnauthorizedAccessException) { }
-                    }
-                }
+                if (removeEarlier)
+                    RemoveEarlier(imagePath, personId);
                 return imagePath;
             }
         }
 
-        internal static void AtomicWrite(string path, byte[] content)
+        // The person's files beside ``current`` that config.xml no longer maps;
+        // one that can't be removed now is removed after the next face.
+        public static void RemoveEarlier(string current, string personId)
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(path));
-            string temporary = Path.Combine(Path.GetDirectoryName(path), ".regeneratefm-" + Guid.NewGuid().ToString("N"));
-            try
+            string stem = Path.GetFileNameWithoutExtension(current);
+            foreach (var old in Directory.EnumerateFiles(Path.GetDirectoryName(current), personId + "*.png"))
             {
-                File.WriteAllBytes(temporary, content);
-                File.Move(temporary, path, overwrite: true);
-            }
-            finally
-            {
-                if (File.Exists(temporary))
-                    File.Delete(temporary);
+                string oldStem = Path.GetFileNameWithoutExtension(old);
+                if (oldStem != stem && IsPortraitStem(oldStem, personId))
+                {
+                    try { File.Delete(old); }
+                    catch (IOException) { }
+                    catch (UnauthorizedAccessException) { }
+                }
             }
         }
     }

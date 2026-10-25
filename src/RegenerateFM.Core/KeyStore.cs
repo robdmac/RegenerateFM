@@ -77,26 +77,9 @@ namespace RegenerateFM
         public static void Save(string path, string key)
         {
             var payload = Encoding.UTF8.GetBytes(Clean(key));
-            Directory.CreateDirectory(Path.GetDirectoryName(path));
             var data = OperatingSystem.IsWindows() ? Protected.Concat(Protect(payload)).ToArray() : Plain.Concat(payload).ToArray();
-            string temporary = path + ".tmp";
-            try
-            {
-                if (!OperatingSystem.IsWindows())
-                {
-                    // Owner-only before the key is written, like keystore.py's 0600.
-                    using (File.Create(temporary)) { }
-                    if (chmod(temporary, OwnerReadWrite) != 0)
-                        throw new IOException("Could not make the key file private (error " + Marshal.GetLastWin32Error() + ").");
-                }
-                File.WriteAllBytes(temporary, data);
-                File.Move(temporary, path, overwrite: true);
-            }
-            finally
-            {
-                if (File.Exists(temporary))
-                    File.Delete(temporary);
-            }
+            // Owner-only before the key is written.
+            AtomicFile.Write(path, data, AtomicFile.OwnerOnly);
         }
 
         private static bool StartsWith(byte[] data, byte[] prefix)
@@ -121,11 +104,6 @@ namespace RegenerateFM
 
         [DllImport("kernel32.dll")]
         private static extern IntPtr LocalFree(IntPtr memory);
-
-        [DllImport("libc", SetLastError = true)]
-        private static extern int chmod(string path, uint mode);
-
-        private const uint OwnerReadWrite = 0x180; // 0600
 
         private const int UiForbidden = 0x1;
 

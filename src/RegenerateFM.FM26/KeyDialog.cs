@@ -345,12 +345,6 @@ namespace RegenerateFM.FM26
         {
             if (_creditsStart != null || _creditsSignIn != null)
                 return;
-            if (_keyDialogSignedIn)
-            {
-                Application.OpenURL(CreditsServiceUrl() + "/link");
-                _keyStatus.text = "The credits page is open in your browser. Your new credits work as soon as you've paid.";
-                return;
-            }
             string service;
             try
             {
@@ -361,7 +355,14 @@ namespace RegenerateFM.FM26
                 _keyStatus.text = error.Message;
                 return;
             }
+            if (_keyDialogSignedIn)
+            {
+                Application.OpenURL(service + "/link");
+                _keyStatus.text = "The credits page is open in your browser. Your new credits work as soon as you've paid.";
+                return;
+            }
             _keyStatus.text = "Opening your browser…";
+            _creditsService = service;
             _creditsStart = Credits.Start(service);
         }
 
@@ -403,7 +404,7 @@ namespace RegenerateFM.FM26
             if (_creditsPoll == null)
             {
                 if (System.DateTime.UtcNow >= _creditsNextPollUtc)
-                    _creditsPoll = Credits.Check(CreditsServiceUrl(), signIn.DeviceCode);
+                    _creditsPoll = Credits.Check(_creditsService, signIn.DeviceCode);
                 return;
             }
             if (!_creditsPoll.IsCompleted)

@@ -80,7 +80,7 @@ namespace RegenerateFM
                 {
                     var ordered = new List<string>(all.Keys);
                     ordered.Sort(StringComparer.Ordinal);
-                    Portraits.AtomicWrite(Path.Combine(folder, FileName), Encoding.UTF8.GetBytes(Json.Text(json =>
+                    AtomicFile.Write(Path.Combine(folder, FileName), Encoding.UTF8.GetBytes(Json.Text(json =>
                     {
                         json.WriteStartObject();
                         json.WriteNumber("schemaVersion", 1);

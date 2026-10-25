@@ -78,6 +78,7 @@ namespace RegenerateFM.FM26
         // RegenerateFM credits sign-in in progress (Credits): starting, then polling.
         private Task<Credits.SignIn> _creditsStart;
         private Credits.SignIn _creditsSignIn;
+        private string _creditsService;  // the service the sign-in started with
         private Task<Credits.Poll> _creditsPoll;
         private System.DateTime _creditsNextPollUtc;
         // The key dialog is open for a game already signed in to RegenerateFM credits
@@ -134,6 +135,17 @@ namespace RegenerateFM.FM26
             return Settings.Load(Settings.DefaultPath).ForKey(key);
         }
 
-        private static string CreditsServiceUrl() => Settings.Load(Settings.DefaultPath).CreditsServiceUrl;
+        // ArgumentException, with the message for the key dialog, when settings.ini can't be used.
+        private static string CreditsServiceUrl()
+        {
+            try
+            {
+                return Settings.Load(Settings.DefaultPath).CreditsServiceUrl;
+            }
+            catch (Exception error) when (error is IOException || error is UnauthorizedAccessException)
+            {
+                throw new ArgumentException("Could not read " + Settings.DefaultPath + ": " + error.Message);
+            }
+        }
     }
 }

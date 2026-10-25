@@ -24,7 +24,6 @@ namespace RegenerateFM.Desktop.FM24.Setup
             ["player"] = "/panels/player/player overview panel.xml",
             ["staff"] = "/panels/non_player/non player profile.xml",
         };
-        private static readonly Regex TokenPattern = new Regex("^[A-Za-z0-9_-]{40,128}$", RegexOptions.Compiled);
         public const string QuitSteam = "Steam is running. Quit Steam first (Steam > Exit, not just closing its window), then run the " +
                                         "RegenerateFM setup again: Steam only keeps a game's launch option set while it is closed.";
 
@@ -130,7 +129,7 @@ namespace RegenerateFM.Desktop.FM24.Setup
         public static string InstalledToken(string game)
         {
             InstalledConfig(game).TryGetValue("token", out string token);
-            return token != null && TokenPattern.IsMatch(token) ? token : null;
+            return token != null && NativeInstall.TokenPattern.IsMatch(token) ? token : null;
         }
 
         public static string NewToken() =>
@@ -158,7 +157,7 @@ namespace RegenerateFM.Desktop.FM24.Setup
                                                    NativeInstall.Digest(Resources.Bytes(Native.Launcher)));
             }
             catch (Exception error) when (error is IOException || error is InvalidDataException || error is System.Text.Json.JsonException ||
-                                          error is InvalidOperationException || error is NullReferenceException ||
+                                          error is InvalidOperationException ||
                                           error is UnauthorizedAccessException)
             {
                 return false;
@@ -208,7 +207,9 @@ namespace RegenerateFM.Desktop.FM24.Setup
                 }
                 catch (Exception error) when (error is IOException || error is InvalidDataException)
                 {
-                    Log("The optional RegenerateFM skin couldn't be built (" + error.Message + "); the companion builds it when FM24 first starts.");
+                    // The companion FM24 starts tries again, which helps only if the problem has gone.
+                    Log("The optional RegenerateFM skin couldn't be built (" + error.Message + "). The face commands in a " +
+                        "profile's Overview tab menu still work; for them on the portrait too, fix that and run the setup again.");
                 }
             }
             Directory.CreateDirectory(Path.Combine(userData, "graphics", "regeneratefm"));
