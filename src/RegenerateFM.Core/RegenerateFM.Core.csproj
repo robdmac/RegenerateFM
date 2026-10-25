@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Shared by the FM26 plugin (which compiles these files into its own DLL,
+       for BepInEx's .NET 6) and the desktop programs. Nothing here may use the
+       game, BepInEx or anything newer than .NET 6. -->
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <RootNamespace>RegenerateFM</RootNamespace>
+    <CheckEolTargetFramework>false</CheckEolTargetFramework>
+  </PropertyGroup>
+</Project>

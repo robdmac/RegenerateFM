@@ -9,15 +9,15 @@ Steps marked **billed** make one image API request each.
 
 ## Install and upgrade
 
-1. With FM24 closed, run `fm24/native_menu/install.py` over the existing
-   installation. Expect a version 2 `regeneratefm24-install.json` listing the two
+1. With FM24 closed, run `regeneratefm-fm24 setup` (on Linux, the release's
+   `install-linux.sh fm24`) over the existing installation. Expect a version 2 `regeneratefm24-install.json` listing the two
    portrait panels, and (for an install that had it) the message that the
    Squad screen Faces button was removed.
 2. Start FM24 with `WINEDLLOVERRIDES="winmm=n,b"`. Expect
    `REGENERATEFM24_NATIVE_MENU_HOOK_INSTALLED`, `REGENERATEFM24_SQUAD_MENU_INSTALLED`,
    `REGENERATEFM24_BRIDGE_READY` and `REGENERATEFM24_RELOAD_READY` in `regeneratefm24.log`.
 
-## Preview mode (`--native-menu --preview-only`)
+## Preview mode (`--preview-only`)
 
 3. Player portrait → Generate new face: the prompt for the correct ID appears.
 4. Staff portrait → Generate new face: the same check for a staff profile.
@@ -51,7 +51,7 @@ Steps marked **billed** make one image API request each.
 10. Click twice quickly. Expect the second click to show the "already
     processing" dialog.
 
-## Billed generation (`--native-menu`)
+## Billed generation
 
 11. **billed** Player with no portrait: the portrait is saved and reloads in game.
 12. **billed** Regenerate the same player: the new image replaces the old one
@@ -70,6 +70,47 @@ Steps marked **billed** make one image API request each.
 18. `install.py --remove`. Expect the original RegenerateFM panels to be restored,
     the squad panel and the empty `panels/team` directory to be removed, and
     the game to start without the hook once the launch option is cleared.
+
+## C# port and 1.0.0 names: 2026-10-25
+
+The FM24 companion, its setup and the Linux installer are now C#
+(`src/RegenerateFM.Desktop`), sharing the generator with the FM26 plugin
+(`src/RegenerateFM.Core`). The plugin is `BepInEx/plugins/RegenerateFM/RegenerateFM.dll`
+(plugin ID `fm.regenerate`); both games read `settings.ini` beside the key
+instead of `regeneratefm.hotreload.cfg` and `.env`; the token lives only in
+`regeneratefm24.ini`; the Python web form and `import` are gone. Entries below
+this one name the Python files of the time.
+
+- [x] `dotnet test tests/RegenerateFM.Tests`: 98 tests, including all 180
+  prompt cases and 270 appearance-trait cases recorded from the Python
+  generator, and `python3 -m unittest discover -s tests/tools`.
+- [x] `tools/make_release.py` published the companion (13 MB) and the Linux
+  installer (15 MB) with no trimming warnings.
+- [x] Linux, Steam/Proton (Proton 9): `install-linux.sh` refused with Steam
+  running, then updated FM26, the FM26 Demo and FM24 from the Python build
+  (the old plugin folder removed; FM24's DLL, token and skin kept, "already set
+  up"; the companion replaced). Steam's launch options were unchanged.
+- [x] FM26: the plugin loaded as `RegenerateFM 1.0.0`; Generate face through
+  the stand-in (with `settings.ini`'s test addresses), then one **billed** face
+  with the default `settings.ini` it wrote.
+- [x] FM24: the DLL started the C# companion under Proton; with no key, its
+  Win32 key window opened over FM24 and saved a key (DPAPI, `RFMK1`);
+  Update face for Messi from FM24's bundled JPEG and mask (stand-in); Update
+  face greyed for a person with no face; the Squad scan (29 players, all with
+  faces); Inter Miami II's confirmation (11 of 12 missing, 11 brief records)
+  and a stand-in batch stopped with Stop after this face; one **billed**
+  Generate (Lucas Meek) and one **billed** Update from a bundled photo (Ryan
+  Sailor).
+- [ ] Windows: the companion's double-click setup and terminal key prompt,
+  FM24 starting it, a face and a squad batch; FM26's plugin (copied by hand:
+  delete `BepInEx/plugins/RegenerateFMHotReload` first).
+- [ ] macOS: `dotnet publish -r osx-arm64`, `macos/make_installer.py` (the
+  companion is signed with the allow-jit entitlement), the installer's FM24
+  and FM26 install, update from the Python build and uninstall, the companion
+  reading through the Mac library, the in-game key prompt and a face.
+- [ ] Stop at the stand-in's speed took effect three faces late (the skin
+  reload closes the progress dialog before its answer is read); the Python
+  companion had the same logic. Check that Stop is prompt at real speed.
 
 ## Independent review: 2026-10-14
 

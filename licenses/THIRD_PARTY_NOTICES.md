@@ -11,9 +11,9 @@ this `licenses` folder (`third-party/` unless shown otherwise), and
 Every GitHub release has `RegenerateFM-third-party-source.zip` beside the
 release ZIP and `RegenerateFM-macOS.dmg`. It holds the source of BepInEx,
 UnityDoorstop, Il2CppInterop, funchook and diStorm3 at the commits bundled
-here, the macOS patches (`hotreload/macos/patches`) and the script that applies
-them and builds the patched parts (`hotreload/macos/build.py`).
-`make_source_archive.py` makes it.
+here, the macOS patches (`macos/patches`) and the script that applies
+them and builds the patched parts (`macos/build.py`).
+`tools/make_source_archive.py` makes it.
 
 ## FM26 (the release ZIP's `FM26` folder)
 
@@ -52,24 +52,19 @@ changes:
 
 | Component | Licence | Licence file | Source |
 |---|---|---|---|
-| Il2CppInterop 1.5.3 (`Il2CppInterop.Runtime.dll`, `Il2CppInterop.Common.dll`), modified | LGPL-3.0 | `Il2CppInterop-LICENSE.txt`, with the GPL-3.0 in `LICENSE` | https://github.com/BepInEx/Il2CppInterop at `dbda1cb`, with `hotreload/macos/patches/il2cppinterop-macos.patch` |
-| funchook 1.1.3 (`libfunchook.dylib`), modified | GPL-2.0-or-later with a linking exception | `funchook.txt` | https://github.com/kubo/funchook at `88388db`, with `hotreload/macos/patches/funchook-rosetta.patch` |
+| Il2CppInterop 1.5.3 (`Il2CppInterop.Runtime.dll`, `Il2CppInterop.Common.dll`), modified | LGPL-3.0 | `Il2CppInterop-LICENSE.txt`, with the GPL-3.0 in `LICENSE` | https://github.com/BepInEx/Il2CppInterop at `dbda1cb`, with `macos/patches/il2cppinterop-macos.patch` |
+| funchook 1.1.3 (`libfunchook.dylib`), modified | GPL-2.0-or-later with a linking exception | `funchook.txt` | https://github.com/kubo/funchook at `88388db`, with `macos/patches/funchook-rosetta.patch` |
 | diStorm3 (inside `libfunchook.dylib`) | BSD-3-Clause | `diStorm3.txt` | https://github.com/gdabah/distorm at `ab59d6e` |
 
-## The FM24 companion (the `FM24` folder, and `FM24-macOS` in the macOS installer)
+## The FM24 companion and the Linux installer
 
-Both are packaged with PyInstaller and carry this `licenses` folder:
+The FM24 companion (`FM24/regeneratefm-fm24.exe`, and `FM24-macOS` in the macOS
+installer) and the Linux installer (`linux/regeneratefm`) are each one
+self-contained .NET program, built from `src/RegenerateFM.Desktop`:
 
 | Component | Licence | Licence file | Source |
 |---|---|---|---|
-| Python (3.11 on Windows; Apple's 3.9 build on macOS) | PSF License | `Python.txt` | https://github.com/python/cpython |
-| Pillow, with the image libraries its wheels bundle (libjpeg-turbo, libpng, libtiff, libwebp, OpenJPEG, Little CMS, FreeType, HarfBuzz, Brotli, libavif, zlib-ng, liblzma, libxcb and others) | MIT-CMU, and each library's licence | `Pillow.txt` | https://github.com/python-pillow/Pillow |
-| zstandard (python-zstandard) | BSD-3-Clause | `python-zstandard.txt` | https://github.com/indygreg/python-zstandard |
-| Zstandard (zstd, inside zstandard) | BSD-3-Clause | `zstd.txt` | https://github.com/facebook/zstd |
-| PyInstaller's bootloader | GPL-2.0 with an exception for bundled programs | `PyInstaller.txt` | https://github.com/pyinstaller/pyinstaller |
-
-Portions of this software are copyright © The FreeType Project (www.freetype.org).
-All rights reserved.
-
-On macOS the companion's secure connections use the system's own LibreSSL, which
-isn't bundled.
+| .NET runtime | MIT, with its own third-party notices | `dotnet-runtime.txt`, `dotnet-runtime-THIRD-PARTY-NOTICES.txt` | https://github.com/dotnet/runtime |
+| ZstdSharp (reads FM24's archives) | MIT | `ZstdSharp.txt` | https://github.com/oleg-st/ZstdSharp |
+| Zstandard (zstd, which ZstdSharp is a port of) | BSD-3-Clause | `zstd.txt` | https://github.com/facebook/zstd |
+| StbImageSharp (reads FM24's photos), a port of stb_image | Public domain or MIT | `StbImageSharp.txt` (stb's licence) | https://github.com/StbSharp/StbImageSharp |

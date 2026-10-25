@@ -1,0 +1,14 @@
+<Project>
+  <!-- Shared by every C# project: src/ and tests/. -->
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Version>1.0.0</Version>
+    <Authors>Rob Macrae</Authors>
+    <Copyright>Copyright © 2026 Rob Macrae. GNU GPL v3 or later.</Copyright>
+    <Deterministic>true</Deterministic>
+    <!-- The DLLs record this checkout's path for their debug symbols; record a neutral one. -->
+    <PathMap>$(MSBuildThisFileDirectory)=/RegenerateFM/</PathMap>
+  </PropertyGroup>
+</Project>
