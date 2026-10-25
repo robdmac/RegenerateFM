@@ -406,16 +406,17 @@ back it was 16.8%, against 14.1% idle afterwards: the companion reads the
 game's memory from outside and never pauses it. The companion uses no
 measurable CPU when idle (29 MB of memory).
 
-Each full pass over FM24's writable memory took 2–4 s with the Python
+Each full pass over FM24's writable memory took 2–4 s with an earlier Python
 companion, mostly its byte searches; the C# companion searches with .NET's
-vectorised `IndexOf`, and its passes haven't been timed yet. The companion
-avoids repeat passes (measured with the Python companion):
+vectorised `IndexOf`. The companion also avoids repeat passes. Measured on
+Linux under Proton (Inter Miami save, the companion's own log; the C# times
+on 2026-10-25):
 
-| Read | Before | Now |
-|---|---|---|
-| Generate (profile, biography and the check read) | about 10 s | 3.4 s, 2.0 s for the same person again |
-| Update face | about 10 s | 2.1 s |
-| Squad roster | about 8.5 s | about 4.2 s |
+| Read | Python, first version | Python, with the changes below | C# |
+|---|---|---|---|
+| Generate (profile, biography and the check read) | about 10 s | 3.4 s, 2.0 s for the same person again | 0.3 s, 0.2 s again or for another player |
+| Update face | about 10 s | 2.1 s | 0.2 s |
+| Squad roster (29 players) | about 8.5 s | about 4.2 s | 0.9 s, 0.6 s again |
 
 - The check read before a request uses the open screen's header and the
   person record found the first time, instead of two more memory passes.
