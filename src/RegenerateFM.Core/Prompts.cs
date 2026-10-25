@@ -17,8 +17,8 @@ using System.Xml.Linq;
 
 namespace RegenerateFM
 {
-    // The image prompts. tests/RegenerateFM.Tests checks they are the ones
-    // regeneratefm.py, the Python generator before the C# port, built.
+    // The image prompts. tests/RegenerateFM.Tests checks them against
+    // Fixtures/expected-prompts.json.
     public static class Prompts
     {
         private static readonly string[] PhysicalStats =

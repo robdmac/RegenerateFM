@@ -54,10 +54,6 @@ namespace RegenerateFM.Tests
                                    .Select(record => ((string)record.Attribute("from"), (string)record.Attribute("to"))).OrderBy(r => r.Item2).ToList();
             string stem = Path.GetFileNameWithoutExtension(second);
             Assert.Equal(new[] { (stem, "graphics/pictures/person/5/portrait"), (stem, "graphics/pictures/person/r-5/portrait") }, records);
-            // A face saved under the old name ("7.png") is replaced and removed.
-            File.WriteAllBytes(Path.Combine(graphics, "7.png"), png);
-            Assert.Matches(@"^7-[0-9a-f]{16}\.png$", Path.GetFileName(Portraits.SavePortrait(graphics, "7", png)));
-            Assert.False(File.Exists(Path.Combine(graphics, "7.png")));
             File.WriteAllText(Path.Combine(graphics, "config.xml"), "<record><list id='other'/></record>");
             var refused = Assert.Throws<ArgumentException>(() => Portraits.SavePortrait(graphics, "9", png));
             Assert.Equal("Existing config.xml has no maps list; refusing to alter it.", refused.Message);

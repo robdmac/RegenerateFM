@@ -114,7 +114,7 @@ namespace RegenerateFM
             error is JsonException || error is KeyNotFoundException || error is InvalidOperationException ||
             error is FormatException || error is OverflowException || error is ArgumentException;
 
-        // A JSON number as a whole number (5.0 included, as Python's int()).
+        // A JSON number as a whole number (5.0 included).
         private static int Whole(JsonElement value)
         {
             double number = value.GetDouble();

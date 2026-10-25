@@ -149,15 +149,11 @@ class MacInstallerTests(unittest.TestCase):
         payload = self.make_payload()
         self.assertEqual(self.cli("games", steam=steam).decode(), f"3551340 {game}\n")
 
-        # An earlier build's plugin folder goes, so it never loads beside the new one.
-        (game / "BepInEx" / "plugins" / "RegenerateFMHotReload").mkdir(parents=True)
-        (game / "BepInEx" / "plugins" / "RegenerateFMHotReload" / "RegenerateFMHotReload.dll").write_text("old")
         self.assertEqual(self.cli("needs-change", game, steam=steam), b"true\n")
         output = self.cli("install", payload, game, steam=steam).decode()
         self.assertIn("copied 6", output)
         self.assertIn("launch options changed 1", output)
         self.assertEqual((game / "BepInEx/plugins/RegenerateFM/RegenerateFM.dll").read_text(), "plugin")
-        self.assertFalse((game / "BepInEx/plugins/RegenerateFMHotReload").exists())
         self.assertTrue(os.access(game / "run_regeneratefm.sh", os.X_OK))
         self.assertEqual(os.readlink(game / "Data"), "fm.app/Contents/Resources/Data")
         attributes = subprocess.run(["xattr", str(game / "libdoorstop.dylib")], capture_output=True, text=True).stdout

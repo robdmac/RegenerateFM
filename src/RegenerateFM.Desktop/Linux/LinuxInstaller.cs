@@ -25,14 +25,10 @@ namespace RegenerateFM.Desktop.Linux
     {
         public static readonly string[] AllGames = { "fm26", "fm26demo", "fm24" };
         public const string Plugin = "BepInEx/plugins/RegenerateFM";
-        // The plugin's folder before 1.0.0's rename, removed so the old one never loads beside it.
-        public const string OldPlugin = "BepInEx/plugins/RegenerateFMHotReload";
         // What the FM26 folder adds beside fm.exe. Faces and settings are in
         // FM26's user-data folder, so removing these keeps them.
         public static readonly string[] Fm26Added = { "BepInEx", "dotnet", "winhttp.dll", "doorstop_config.ini", ".doorstop_version" };
         public const string Companion = "regeneratefm-fm24.exe";
-        // What the Python companion before 1.0.0 kept beside itself; it goes with the update.
-        private static readonly string[] OldCompanionFiles = { "_internal", ".fm24-auth", ".env.example", "LICENSE", "NOTICE.md", "licenses" };
         public const string QuitSteam = "Steam is running. Quit Steam first (Steam > Exit, not just closing its window), then run " +
                                         "install-linux.sh again: Steam only keeps a game's launch option set while it is closed.";
         public const string Usage =
@@ -89,14 +85,13 @@ namespace RegenerateFM.Desktop.Linux
 
         private static bool Installed(string game, string folder) =>
             game == "fm24" ? File.Exists(Path.Combine(folder, NativeInstall.Manifest))
-                           : Directory.Exists(Path.Combine(folder, Plugin)) || Directory.Exists(Path.Combine(folder, OldPlugin));
+                           : Directory.Exists(Path.Combine(folder, Plugin));
 
         private static List<string> InstallFm26(string folder, string release)
         {
             string payload = Path.Combine(release, "FM26");
             if (!File.Exists(Path.Combine(payload, Plugin, "RegenerateFM.dll")))
                 throw new SetupException("The release's FM26 folder is missing: " + payload);
-            Delete(Path.Combine(folder, OldPlugin));
             return new List<string> { "Copied " + CopyTree(payload, folder) + " files into " + folder + "." };
         }
 
@@ -107,13 +102,12 @@ namespace RegenerateFM.Desktop.Linux
             string plugins = Path.Combine(folder, "BepInEx", "plugins");
             var others = Directory.Exists(plugins)
                 ? Directory.EnumerateFileSystemEntries(plugins).Select(Path.GetFileName)
-                           .Where(name => name != "RegenerateFM" && name != "RegenerateFMHotReload" && !name.StartsWith("."))
+                           .Where(name => name != "RegenerateFM" && !name.StartsWith("."))
                            .OrderBy(name => name, StringComparer.Ordinal).ToList()
                 : new List<string>();
             if (others.Count > 0)
             {
                 Delete(Path.Combine(folder, Plugin));
-                Delete(Path.Combine(folder, OldPlugin));
                 return new List<string> { "Removed the RegenerateFM plugin. BepInEx was left in place because it has other plugins: " +
                                           string.Join(", ", others) + "." };
             }
@@ -140,8 +134,6 @@ namespace RegenerateFM.Desktop.Linux
             string target = CompanionDir();
             string companion = Path.Combine(target, Companion);
             AtomicFile.Write(companion, File.ReadAllBytes(payload), AtomicFile.Executable);
-            foreach (string old in OldCompanionFiles)
-                Delete(Path.Combine(target, old));
             Log("Copied the companion to " + target + ".");
             RunFm24Setup(new[] { "--game-dir", folder, "--companion", companion });
             return new List<string>();
@@ -154,7 +146,7 @@ namespace RegenerateFM.Desktop.Linux
             if (!File.Exists(Path.Combine(target, Companion)))
                 return new List<string>();
             // The companion and its log go; the key and settings are in FM24's prefix.
-            foreach (string entry in new[] { Companion, "regeneratefm-fm24.log", "regeneratefm-fm24.log.old" }.Concat(OldCompanionFiles))
+            foreach (string entry in new[] { Companion, "regeneratefm-fm24.log", "regeneratefm-fm24.log.old" })
                 Delete(Path.Combine(target, entry));
             foreach (string directory in new[] { target, Path.GetDirectoryName(target) })
             {

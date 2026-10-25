@@ -23,7 +23,7 @@ namespace RegenerateFM
     {
         public const string NoFacialHair = "no facial hair";
 
-        // ---- Appearance traits (appearance.py) -----------------------------
+        // ---- Appearance traits ---------------------------------------------
 
         private static readonly string[] TraitKeys = { "face", "features", "hair", "facialHair", "expression" };
 

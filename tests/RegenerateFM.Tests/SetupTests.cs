@@ -246,47 +246,6 @@ namespace RegenerateFM.Tests
             Assert.False(File.Exists(Path.Combine(fm24.Skin, NativeInstall.PanelFiles["player"])));
         }
 
-        private static string Sha(string path) => NativeInstall.Digest(path);
-
-        // A version 2 install that added the Squad screen's Faces button.
-        private void LegacySquadInstall(Fm24 fm24, bool ownPanel)
-        {
-            foreach (string kind in new[] { "player", "staff" })
-            {
-                string panel = Path.Combine(fm24.Skin, NativeInstall.PanelFiles[kind]);
-                File.Copy(panel, panel + NativeInstall.BackupSuffix);
-                File.WriteAllText(panel, Skin.ModifyPanel(File.ReadAllText(panel), kind));
-            }
-            string squad = Path.Combine(fm24.Skin, NativeInstall.LegacySquadPanel);
-            Directory.CreateDirectory(Path.GetDirectoryName(squad));
-            if (ownPanel)
-                File.WriteAllText(squad + NativeInstall.BackupSuffix, SquadPanel);
-            File.WriteAllText(squad, SquadPanel.Replace("<!-- quick pick -->", "<widget id=\"fmnQ\"/><!-- quick pick -->"));
-            File.WriteAllBytes(fm24.Dll, fm24.Library);
-            var panels = new JsonObject();
-            foreach (string name in new[] { NativeInstall.PanelFiles["player"], NativeInstall.PanelFiles["staff"], NativeInstall.LegacySquadPanel })
-                panels[name] = new JsonObject { ["sha256"] = Sha(Path.Combine(fm24.Skin, name)), ["created"] = name == NativeInstall.LegacySquadPanel && !ownPanel };
-            File.WriteAllText(Path.Combine(fm24.Game, NativeInstall.Manifest),
-                              new JsonObject { ["version"] = 2, ["dllSha256"] = NativeInstall.Digest(fm24.Library), ["panels"] = panels }.ToJsonString());
-        }
-
-        [Fact]
-        public void AnUpgradeRemovesTheSquadFacesButton()
-        {
-            var fm24 = new Fm24(_root);
-            LegacySquadInstall(fm24, ownPanel: false);
-            fm24.Install();
-            Assert.False(JsonNode.Parse(File.ReadAllText(Path.Combine(fm24.Game, NativeInstall.Manifest)))["panels"].AsObject().ContainsKey(NativeInstall.LegacySquadPanel));
-            Assert.False(Directory.Exists(Path.Combine(fm24.Skin, "panels", "team")));
-            fm24.Remove();
-            Assert.Equal(PlayerPanel, File.ReadAllText(Path.Combine(fm24.Skin, NativeInstall.PanelFiles["player"])));
-            var mine = new Fm24(new TempFolder());
-            LegacySquadInstall(mine, ownPanel: true);
-            mine.Install();
-            string squad = Path.Combine(mine.Skin, NativeInstall.LegacySquadPanel);
-            Assert.Equal(SquadPanel, File.ReadAllText(squad));
-            Assert.False(File.Exists(squad + NativeInstall.BackupSuffix));
-        }
 
         [Fact]
         public void AnotherWinmmDllAndAnEditedPanelAreRefused()
@@ -339,31 +298,6 @@ namespace RegenerateFM.Tests
             };
             Assert.Throws<IOException>(() => fm24.Remove());
             AssertSame(installed, fm24.Snapshot());
-        }
-
-        [Fact]
-        public void TheOriginalTwoPanelManifestUpgrades()
-        {
-            var fm24 = new Fm24(_root);
-            var names = new[] { NativeInstall.PanelFiles["player"], NativeInstall.PanelFiles["staff"] };
-            foreach (var (name, kind) in names.Zip(new[] { "player", "staff" }))
-            {
-                string panel = Path.Combine(fm24.Skin, name);
-                File.Copy(panel, panel + NativeInstall.BackupSuffix);
-                File.WriteAllText(panel, Skin.ModifyPanel(File.ReadAllText(panel), kind));
-            }
-            File.WriteAllBytes(fm24.Dll, fm24.Library);
-            File.WriteAllText(Path.Combine(fm24.Game, NativeInstall.Manifest), new JsonObject
-            {
-                ["dllSha256"] = NativeInstall.Digest(fm24.Library),
-                ["panelSha256"] = new JsonArray(Sha(Path.Combine(fm24.Skin, names[0])), Sha(Path.Combine(fm24.Skin, names[1]))),
-            }.ToJsonString());
-            fm24.Install();
-            var manifest = JsonNode.Parse(File.ReadAllText(Path.Combine(fm24.Game, NativeInstall.Manifest)));
-            Assert.Equal((2, 2), (manifest["version"].GetValue<int>(), manifest["panels"].AsObject().Count));
-            fm24.Remove();
-            Assert.Equal(PlayerPanel, File.ReadAllText(Path.Combine(fm24.Skin, names[0])));
-            Assert.Equal(StaffPanel, File.ReadAllText(Path.Combine(fm24.Skin, names[1])));
         }
 
         [Fact]
@@ -504,13 +438,10 @@ namespace RegenerateFM.Tests
         {
             var linux = LinuxSetUp();
             File.WriteAllText(Path.Combine(linux.Fm26, "winhttp.dll"), "MZ older");
-            // An earlier build's plugin folder goes, so it never loads beside the new one.
-            Directory.CreateDirectory(Path.Combine(linux.Fm26, LinuxInstaller.OldPlugin));
             Assert.Equal(0, linux.Installer.Main(new[] { "fm26", "--release", linux.Release }, null));
             var installed = Files(linux.Fm26);
             foreach (var (name, text) in Fm26Files)
                 Assert.Equal(text, installed[name]);
-            Assert.False(Directory.Exists(Path.Combine(linux.Fm26, LinuxInstaller.OldPlugin)));
             Assert.Equal("WINEDLLOVERRIDES=\"winhttp=n,b\" %command%", LaunchOption("3551340"));
             Assert.Null(LaunchOption("2252570"));
             Assert.Empty(linux.SetupCalls);

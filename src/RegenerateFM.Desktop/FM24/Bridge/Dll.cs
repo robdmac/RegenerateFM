@@ -254,7 +254,7 @@ namespace RegenerateFM.Desktop.FM24.Bridge
             var data = Encoding.UTF8.GetBytes(Collapse(text));
             if (data.Length <= MaxText)
                 return text;
-            // Drop a character cut in half, as Python's decode("utf-8", "ignore") does.
+            // Drop a character cut in half.
             int end = MaxText - 3;
             while (end > 0 && (data[end] & 0xC0) == 0x80)
                 end--;

@@ -81,7 +81,7 @@ namespace RegenerateFM
         // A file RegenerateFM saved for this person: "<id>" (before faces were
         // versioned, and from the FM26 web page) or "<id>-<16 hex>".
         private static bool IsPortraitStem(string stem, string personId) =>
-            stem == personId || Regex.IsMatch(stem ?? "", "^" + personId + "-[0-9a-f]{16}$");
+            Regex.IsMatch(stem ?? "", "^" + personId + "-[0-9a-f]{16}$");
 
         // RegenerateFM's saved portrait for this ID, if config.xml still maps it.
         public static byte[] CurrentPortrait(string directory, string personId)
@@ -152,8 +152,7 @@ namespace RegenerateFM
                 string configPath = Path.Combine(directory, "config.xml");
                 var (document, maps) = LoadMaps(directory);
                 var targets = Targets(personId);
-                foreach (var record in maps.Elements("record").Where(record => (string)record.Attribute("from") == personId ||
-                                                                                targets.Contains((string)record.Attribute("to"))).ToList())
+                foreach (var record in maps.Elements("record").Where(record => targets.Contains((string)record.Attribute("to"))).ToList())
                     record.Remove();
                 foreach (var prefix in new[] { "", "r-" })
                     maps.Add(new XElement("record", new XAttribute("from", stem),

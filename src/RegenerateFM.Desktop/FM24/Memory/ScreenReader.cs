@@ -132,7 +132,7 @@ namespace RegenerateFM.Desktop.FM24.Memory
                 list.Add(widget);
                 try
                 {
-                    // Python's list.pop() takes the last; pushing in order keeps that walk.
+                    // Depth first, last child first.
                     foreach (long child in Widgets.ChildrenOf(game, widget))
                         pending.Push(child);
                 }

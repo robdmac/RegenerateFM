@@ -157,7 +157,7 @@ static BOOL read_game(const void *address, void *buffer, SIZE_T size)
 #define PERSON_OBJECT          0x01000000u
 #define PERSON_HANDLE          8
 /* Person objects' vtables (MSVC RTTI): db::ACTUAL_PLAYER, db::ACTUAL_NON_PLAYER
-   and db::ACTUAL_PLAYER_AND_NON_PLAYER, as in layout.py's person_vtables. */
+   and db::ACTUAL_PLAYER_AND_NON_PLAYER, as in the companion's Layout.cs. */
 #define PLAYER_VTABLE_RVA        0x5A4EE78
 #define NON_PLAYER_VTABLE_RVA    0x5A4C358
 #define PLAYER_COACH_VTABLE_RVA  0x5C7ECB8

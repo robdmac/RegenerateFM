@@ -16,7 +16,7 @@ The plugin is pinned to the checked FM26 26.3.2 game binaries and those of the F
 dotnet build src/RegenerateFM.FM26 -c Release -p:GameDir="/path/to/Football Manager 26"
 ```
 
-Copy `src/RegenerateFM.FM26/bin/Release/net6.0/RegenerateFM.dll` into `Football Manager 26/BepInEx/plugins/RegenerateFM/` and restart FM26. (Builds before 1.0.0 were `RegenerateFMHotReload.dll` in `BepInEx/plugins/RegenerateFMHotReload`; the installers remove that folder, and if you copy by hand, delete it so the two don't both load.)
+Copy `src/RegenerateFM.FM26/bin/Release/net6.0/RegenerateFM.dll` into `Football Manager 26/BepInEx/plugins/RegenerateFM/` and restart FM26.
 
 ## Credits or OpenAI key
 
@@ -52,4 +52,4 @@ Faces are saved as `<person ID>-<16 hex digits>.png`, a new name for each face (
 - **Mapping:** `config.xml` maps each face to the person's ordinary and generated-player IDs.
 - **Appearance traits:** these are kept under `.regeneratefm-appearances/`, so a regenerated face keeps the same traits.
 
-The generator is `src/RegenerateFM.Core`, which FM24's companion uses too; `tests/RegenerateFM.Tests` checks its prompts against the ones the earlier Python generator made. The plugin's own files are by area: `Plugin.cs` (loading), `GameBuild.cs` (the checked FM26 builds), `Generation.cs`, `Profiles.cs`, `Ethnicity.cs`, `SquadBatch.cs`, `KeyDialog.cs`, `PortraitMenu.cs` and `Patches.cs`. Request and graphics-reload timeouts release their locks, so a stalled reload doesn't need an FM26 restart before trying again. Removing the DLL and restarting turns the controls off.
+The generator is `src/RegenerateFM.Core`, which FM24's companion uses too; `tests/RegenerateFM.Tests` checks its prompts against `tests/RegenerateFM.Tests/Fixtures/expected-prompts.json`. The plugin's own files are by area: `Plugin.cs` (loading), `GameBuild.cs` (the checked FM26 builds), `Generation.cs`, `Profiles.cs`, `Ethnicity.cs`, `SquadBatch.cs`, `KeyDialog.cs`, `PortraitMenu.cs` and `Patches.cs`. Request and graphics-reload timeouts release their locks, so a stalled reload doesn't need an FM26 restart before trying again. Removing the DLL and restarting turns the controls off.

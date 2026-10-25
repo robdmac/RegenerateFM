@@ -54,10 +54,8 @@ regeneratefm-fm24 setup --game-dir '/path/to/Football Manager 2024'
 
 This installs `winmm.dll`, a private `regeneratefm24.ini`, and an installation manifest
 beside `fm.exe`. It backs up both RegenerateFM panels before adding the native popup.
-The Squad menu item needs no skin change. Running the installer again over an
-existing installation upgrades it in place; an earlier installation's Squad
-screen **Faces** button is removed (its panel copy deleted, or your own squad
-panel restored from its backup). It refuses to
+The Squad menu item needs no skin change. Running the setup again updates an
+installation in place. It refuses to
 overwrite an unknown DLL or panels edited since installation. Every write is
 journaled: if any step fails, all files are restored to their previous state.
 No installation paths are compiled into the DLL. Configuration and logging
@@ -323,7 +321,7 @@ the rows. The DLL then:
   `REGENERATEFM24F <serial> yes|no`. On `no` it sets the `FMFU` row's `disa`
   property, which FM24 draws greyed out and ignores clicks on; on `yes` it
   clears it. The UI thread waits at most 30 ms. Without an answer (no
-  companion, an older companion, a failed check) the row stays enabled and
+  companion, a failed check) the row stays enabled and
   the companion refuses an update without a face, as before. After an
   unanswered check the DLL stops waiting: Wine reports nothing for a closed
   loopback port, so without a companion every menu would otherwise pause
@@ -524,9 +522,7 @@ if it fails, and saves it in `~/Library/Application Support/RegenerateFM`.
 **Companion.** `run_regeneratefm24.sh` starts the companion, as the Windows DLL
 does: the setup records `companion=` (the companion's own path) in
 `regeneratefm24.ini`. Steam runs the launcher under Rosetta, so the companion is
-started as arm64 (`arch -arm64`). (The launcher still understands the Python
-companion's `python=` and `python_arch=` lines, which the C# setup no longer
-writes.) It
+started as arm64 (`arch -arm64`). It
 gets the launcher's process ID, which `exec` hands to FM24, stops when FM24
 does or at once if a companion is already running, and logs to
 `regeneratefm24-companion.log` beside `fm.app`. The launcher's Apple Silicon check

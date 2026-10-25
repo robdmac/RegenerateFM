@@ -5,9 +5,10 @@
 // companion (FM24-macOS) in Contents/Resources. For FM26 it copies FM26-macOS
 // beside fm.app; for FM24 it copies the companion into the game folder's
 // RegenerateFM folder and runs its setup, which installs the Mac library and
-// run_regeneratefm24.sh. It then sets the game's Steam launch option the way
-// steam_launch.py does, so Play in Steam starts RegenerateFM. fm.app itself is
-// never changed. macos/make_installer.py builds, signs and packs it.
+// run_regeneratefm24.sh. It then sets the game's Steam launch option as the
+// desktop program's SteamLaunch does, so Play in Steam starts RegenerateFM.
+// fm.app itself is never changed. macos/make_installer.py builds, signs and
+// packs it.
 //
 // With --cli it runs one step without a window, for tests:
 //   --cli launch-option <localconfig.vdf> <app ID> <prefix> [--remove]
@@ -22,7 +23,7 @@
 import AppKit
 import SwiftUI
 
-// ---- Steam's launch option (steam_launch.py) ----------------------------
+// ---- Steam's launch option (as src/RegenerateFM.Desktop/Steam/SteamLaunch.cs) ----
 
 enum SteamConfig {
     static let appsPath = ["userlocalconfigstore", "software", "valve", "steam", "apps"]
@@ -146,7 +147,7 @@ struct Game: Hashable {
 }
 
 /// The path with symbolic links resolved, as realpath(3) gives it
-/// (resolvingSymlinksInPath drops /private, which Python's resolve() keeps).
+/// (resolvingSymlinksInPath drops /private, which realpath keeps).
 func realPath(_ url: URL) -> URL {
     guard let resolved = realpath(url.path, nil) else { return url.standardizedFileURL }
     defer { free(resolved) }
@@ -266,8 +267,6 @@ enum Steam {
 enum Installer {
     static let launcher = "run_regeneratefm.sh"
     static let plugin = "BepInEx/plugins/RegenerateFM"
-    /// The plugin's folder before 1.0.0's rename, removed so the old one never loads beside it.
-    static let oldPlugin = "BepInEx/plugins/RegenerateFMHotReload"
     /// What the FM26-macOS folder adds beside fm.app. Faces and settings are
     /// in FM26's user-data folder, so removing these keeps them.
     static let added = ["BepInEx", "dotnet", "libdoorstop.dylib", ".doorstop_version", launcher]
@@ -317,8 +316,8 @@ enum Installer {
         return arch.terminationStatus == 0
     }
 
-    /// Copies the payload into the game folder, replacing what an earlier
-    /// version put there; the number of files copied.
+    /// Copies the payload into the game folder, replacing what is there; the
+    /// number of files copied.
     static func copyFiles(from payload: URL, to folder: URL) throws -> Int {
         let manager = FileManager.default
         guard manager.fileExists(atPath: folder.appendingPathComponent("fm.app").path) else {
@@ -327,8 +326,6 @@ enum Installer {
         guard let walker = manager.enumerator(at: payload, includingPropertiesForKeys: [.isDirectoryKey]) else {
             throw SteamConfig.ConfigError(errorDescription: "The installer's files are missing.")
         }
-        let old = folder.appendingPathComponent(oldPlugin)
-        if manager.fileExists(atPath: old.path) { try manager.removeItem(at: old) }
         var copied = 0
         let base = realPath(payload).path
         for case let source as URL in walker {
@@ -411,12 +408,10 @@ enum Installer {
         let manager = FileManager.default
         let plugins = folder.appendingPathComponent("BepInEx/plugins")
         let others = ((try? manager.contentsOfDirectory(atPath: plugins.path)) ?? [])
-            .filter { $0 != "RegenerateFM" && $0 != "RegenerateFMHotReload" && !$0.hasPrefix(".") }
+            .filter { $0 != "RegenerateFM" && !$0.hasPrefix(".") }
         if !others.isEmpty {
-            for name in [plugin, oldPlugin] {
-                let ours = folder.appendingPathComponent(name)
-                if manager.fileExists(atPath: ours.path) { try manager.removeItem(at: ours) }
-            }
+            let ours = folder.appendingPathComponent(plugin)
+            if manager.fileExists(atPath: ours.path) { try manager.removeItem(at: ours) }
             return "Removed the RegenerateFM plugin. BepInEx was left in place because it has other plugins: "
                 + others.sorted().joined(separator: ", ") + "."
         }

@@ -29,10 +29,6 @@ namespace RegenerateFM.Desktop.FM24.Setup
             ["player"] = "panels/player/player overview panel.xml",
             ["staff"] = "panels/non_player/non player profile.xml",
         };
-        // Earlier versions added a Squad screen "Faces" button here. The squad
-        // command now lives in FM24's own Squad menu, so an upgrade removes
-        // that panel change.
-        public const string LegacySquadPanel = "panels/team/team squad.xml";
         public const string BackupSuffix = ".regeneratefm-native-backup";
         public const string Config = "regeneratefm24.ini";
         public const string Manifest = "regeneratefm24-install.json";
@@ -172,24 +168,13 @@ namespace RegenerateFM.Desktop.FM24.Setup
 
         public static void AtomicWrite(string path, byte[] data, UnixFileMode mode) => AtomicFile.Write(path, data, (int)mode);
 
-        // The manifest, the original two-panel format upgraded in memory; null when there is none.
+        // The manifest; null when there is none.
         public static JsonObject LoadManifest(string path)
         {
             if (!File.Exists(path))
                 return null;
             var invalid = new InvalidDataException("Invalid manifest.");
             var metadata = JsonNode.Parse(File.ReadAllText(path)) as JsonObject ?? throw invalid;
-            if (!metadata.ContainsKey("version"))
-            {
-                if (!(metadata["panelSha256"] is JsonArray hashes) || hashes.Count != 2 || Text(hashes[0]) == null || Text(hashes[1]) == null)
-                    throw invalid;
-                var panels = new JsonObject
-                {
-                    [PanelFiles["player"]] = new JsonObject { ["sha256"] = Text(hashes[0]), ["created"] = false },
-                    [PanelFiles["staff"]] = new JsonObject { ["sha256"] = Text(hashes[1]), ["created"] = false },
-                };
-                metadata = new JsonObject { ["version"] = 2, ["dllSha256"] = Text(metadata["dllSha256"]), ["panels"] = panels };
-            }
             if (!(metadata["version"] is JsonValue version) || !version.TryGetValue(out int number) || number != 2)
                 throw new InvalidDataException("Unsupported native RegenerateFM installation manifest.");
             if (Text(metadata["dllSha256"]) == null || !(metadata["panels"] is JsonObject entries))
@@ -331,8 +316,6 @@ namespace RegenerateFM.Desktop.FM24.Setup
             var transaction = NewTransaction();
             try
             {
-                if (installed != null && installed.ContainsKey(LegacySquadPanel))
-                    RestorePanel(skin, LegacySquadPanel, installed[LegacySquadPanel], transaction);
                 var panels = new JsonObject();
                 foreach (var (name, entry) in adopted)
                     panels[name] = entry;
@@ -362,8 +345,6 @@ namespace RegenerateFM.Desktop.FM24.Setup
             }
             Log("Installed the FM24 native portrait menus and the Squad menu's \"Generate missing squad faces...\" item " +
                 "with an authenticated loopback bridge.");
-            if (installed != null && installed.ContainsKey(LegacySquadPanel))
-                Log("Removed the earlier Squad screen Faces button; the command is now in the Squad menu.");
             if (Mac)
                 Log("Steam launch option for FM24: \"" + Path.Combine(game, Launcher) + "\" %command%");
             else if (OperatingSystem.IsWindows())

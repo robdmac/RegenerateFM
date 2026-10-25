@@ -1031,7 +1031,7 @@ static void *bridge_worker(void *unused)
         }
         log_line("REGENERATEFM24_COMPANION_UNAVAILABLE");
         show_message("RegenerateFM's companion isn't running. FM24 starts it; restart FM24 from Steam to try again. "
-                     "If you moved the RegenerateFM folder, run python3 fm24/setup_fm24.py again. "
+                     "If you moved the RegenerateFM folder, run the RegenerateFM installer again. "
                      "regeneratefm24-companion.log beside fm.app says what went wrong.");
     }
     return NULL;

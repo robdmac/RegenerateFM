@@ -278,8 +278,8 @@ namespace RegenerateFM.Desktop.FM24.Memory
             return records[0];
         }
 
-        // Python's str.isprintable: no control, format, surrogate, private-use or
-        // unassigned characters, and no separators other than the space.
+        // No control, format, surrogate, private-use or unassigned characters,
+        // and no separators other than the space.
         public static bool IsPrintable(string text)
         {
             foreach (var rune in text.EnumerateRunes())
@@ -302,8 +302,8 @@ namespace RegenerateFM.Desktop.FM24.Memory
             return true;
         }
 
-        // Python's " ".join(text.split()).
-        // Python's str.split() also splits at the separators U+001C to U+001F.
+        // Runs of white space (and the separators U+001C to U+001F) as one
+        // space, without any at either end.
         public static string CollapseSpaces(string text) =>
             string.Join(" ", text.Split(SplitAt, StringSplitOptions.RemoveEmptyEntries));
 

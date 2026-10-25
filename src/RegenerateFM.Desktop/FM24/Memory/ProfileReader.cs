@@ -635,7 +635,7 @@ namespace RegenerateFM.Desktop.FM24.Memory
             return count * 2 > records.Count ? best : "";
         }
 
-        // Python's Counter.most_common(1): the highest count, the first counted on a tie.
+        // The highest count, the first counted on a tie.
         private static (string, int) MostCommon(Dictionary<string, int> counts)
         {
             var best = counts.First();

@@ -85,7 +85,7 @@ namespace RegenerateFM.Desktop.Steam
 
         private static string Home => Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
-        // A path with its symbolic links followed, as Python's Path.resolve().
+        // A full path with its symbolic links followed.
         public static string Resolve(string path)
         {
             var full = Path.GetFullPath(path);

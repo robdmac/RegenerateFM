@@ -36,8 +36,7 @@ namespace RegenerateFM.Desktop.FM24.Setup
             }
         }
 
-        // Text without a byte-order mark and with \n line endings, as Python's
-        // read_text(encoding="utf-8-sig").
+        // Text without a byte-order mark and with \n line endings.
         public static string ReadText(string path)
         {
             string text = File.ReadAllText(path, new UTF8Encoding(false)).Replace("\r\n", "\n").Replace('\r', '\n');
@@ -158,8 +157,7 @@ namespace RegenerateFM.Desktop.FM24.Setup
             return Indented(root) + "\n";
         }
 
-        // The element re-indented with tabs, without an XML declaration (as
-        // Python's ElementTree.indent and tostring).
+        // The element re-indented with tabs, without an XML declaration.
         private static string Indented(XElement root)
         {
             foreach (var text in root.DescendantNodesAndSelf().OfType<XText>().Where(node => string.IsNullOrWhiteSpace(node.Value)).ToList())

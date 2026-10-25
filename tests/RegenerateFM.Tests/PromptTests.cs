@@ -7,13 +7,12 @@ using Xunit;
 
 namespace RegenerateFM.Tests
 {
-    // The prompts and appearance traits are exactly the ones regeneratefm.py,
-    // the Python generator FM24 used before the C# port, built
-    // (Fixtures/python-prompts.json, recorded from it).
+    // The prompts and appearance traits for a range of profiles, exactly as
+    // Fixtures/expected-prompts.json has them.
     public class PromptTests
     {
         private static readonly JsonDocument Fixtures =
-            JsonDocument.Parse(File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Fixtures", "python-prompts.json")));
+            JsonDocument.Parse(File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Fixtures", "expected-prompts.json")));
 
         public static ProfileSnapshot Profile(JsonElement json)
         {
@@ -46,7 +45,7 @@ namespace RegenerateFM.Tests
             item.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
 
         [Fact]
-        public void PromptsMatchThePythonGenerator()
+        public void PromptsMatchTheExpectedOnes()
         {
             int checkedCases = 0;
             foreach (var item in Fixtures.RootElement.GetProperty("cases").EnumerateArray())
@@ -77,7 +76,7 @@ namespace RegenerateFM.Tests
         }
 
         [Fact]
-        public void AppearanceTraitsMatchThePythonGenerator()
+        public void AppearanceTraitsMatchTheExpectedOnes()
         {
             foreach (var item in Fixtures.RootElement.GetProperty("traits").EnumerateArray())
             {
