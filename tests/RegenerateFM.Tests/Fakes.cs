@@ -27,6 +27,7 @@ namespace RegenerateFM.Tests
         {
             KeyStore.FolderOverride = Data;
             Credits.Delay = (_, _) => System.Threading.Tasks.Task.CompletedTask;
+            RegenerateFM.Desktop.Linux.UnityLibraries.Download = _ => throw new System.IO.IOException("The tests don't download.");
         }
     }
 

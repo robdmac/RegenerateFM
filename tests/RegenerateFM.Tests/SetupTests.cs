@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Text;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -467,6 +468,46 @@ namespace RegenerateFM.Tests
             Assert.True(File.Exists(other));
             Assert.True(File.Exists(Path.Combine(linux.Fm26, "winhttp.dll")));
             Assert.False(Directory.Exists(Path.Combine(linux.Fm26, LinuxInstaller.Plugin)));
+        }
+
+        [Fact]
+        public void UnityLibrariesAreDownloadedForBepInExOnce()
+        {
+            var linux = LinuxSetUp();
+            string header = Path.Combine(linux.Fm26, "fm_Data", "globalgamemanagers");
+            Directory.CreateDirectory(Path.GetDirectoryName(header));
+            File.WriteAllBytes(header, new byte[48].Concat(Encoding.ASCII.GetBytes("6000.0.52f1-fm26-05f1\0")).ToArray());
+            var urls = new List<string>();
+            var lines = new List<string>();
+            linux.Installer.Log = lines.Add;
+            UnityLibraries.Download = url =>
+            {
+                urls.Add(url);
+                throw new HttpRequestException("timed out");
+            };
+            try
+            {
+                // Not reached: the installer says so, and BepInEx tries itself.
+                Assert.Equal(0, linux.Installer.Main(new[] { "fm26", "--release", linux.Release }, null));
+                Assert.Contains(lines, line => line.Contains("Couldn't download Unity's libraries") && line.Contains("timed out"));
+                string zip = Path.Combine(linux.Fm26, "BepInEx", "unity-libs", "6000.0.52.zip");
+                Assert.False(File.Exists(zip));
+                UnityLibraries.Download = url =>
+                {
+                    urls.Add(url);
+                    return new byte[] { (byte)'P', (byte)'K', 3, 4, 1 };
+                };
+                Assert.Equal(0, linux.Installer.Main(new[] { "fm26", "--release", linux.Release }, null));
+                Assert.Equal(new byte[] { (byte)'P', (byte)'K', 3, 4, 1 }, File.ReadAllBytes(zip));
+                // Kept on an update; BepInEx uses it rather than downloading.
+                Assert.Equal(0, linux.Installer.Main(new[] { "fm26", "--release", linux.Release }, null));
+                Assert.Equal(new[] { "https://unity.bepinex.dev/libraries/6000.0.52.zip" }, urls.Distinct());
+                Assert.Equal(2, urls.Count);
+            }
+            finally
+            {
+                UnityLibraries.Download = _ => throw new IOException("The tests don't download.");
+            }
         }
 
         [Fact]

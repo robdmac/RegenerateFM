@@ -18,7 +18,8 @@
 //   --cli install-fm24 <packaged companion folder> <FM24 folder>
 //   --cli uninstall-fm24 <FM24 folder>
 // REGENERATEFM_STEAM_ROOT points it at another Steam folder (and then it
-// doesn't check whether Steam is running).
+// doesn't check whether Steam is running), and REGENERATEFM_UNITY_LIBS_SOURCE
+// replaces BepInEx's Unity libraries URL.
 
 import AppKit
 import SwiftUI
@@ -402,6 +403,63 @@ enum Installer {
         return text
     }
 
+    /// BepInEx makes FM26's interop assemblies on the game's first start, from
+    /// Unity's base libraries, which it downloads from unity.bepinex.dev. If
+    /// that site doesn't answer, FM26 starts without RegenerateFM and only
+    /// BepInEx's log says why. BepInEx uses a zip already in BepInEx/unity-libs
+    /// instead, so the installer downloads it first (as the Linux installer's
+    /// UnityLibraries does). What happened, or nil if the zip was there.
+    static func fetchUnityLibraries(_ folder: URL) -> String? {
+        guard let version = unityVersion(folder) else {
+            return "Couldn't read FM26's Unity version, so BepInEx will download Unity's libraries itself when FM26 first starts."
+        }
+        let zip = folder.appendingPathComponent("BepInEx/unity-libs/\(version).zip")
+        if FileManager.default.fileExists(atPath: zip.path) { return nil }
+        let source = (ProcessInfo.processInfo.environment["REGENERATEFM_UNITY_LIBS_SOURCE"]
+            ?? "https://unity.bepinex.dev/libraries/{VERSION}.zip").replacingOccurrences(of: "{VERSION}", with: version)
+        let failed = "BepInEx tries again when FM26 starts; if RegenerateFM's commands are missing in FM26, click Install again later."
+        guard let url = URL(string: source) else { return "Couldn't download Unity's libraries for BepInEx from \(source). \(failed)" }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForResource = 60
+        var result: Result<Data, Error> = .failure(URLError(.unknown))
+        let done = DispatchSemaphore(value: 0)
+        URLSession(configuration: configuration).dataTask(with: url) { data, response, error in
+            if let error = error {
+                result = .failure(error)
+            } else if let http = response as? HTTPURLResponse, http.statusCode != 200 {
+                result = .failure(URLError(.badServerResponse, userInfo: [NSLocalizedDescriptionKey: "HTTP \(http.statusCode)"]))
+            } else {
+                result = .success(data ?? Data())
+            }
+            done.signal()
+        }.resume()
+        done.wait()
+        do {
+            let data = try result.get()
+            guard data.starts(with: [0x50, 0x4b, 3, 4]) else {
+                return "Unity's libraries from \(source) aren't a ZIP file, so BepInEx will download them itself when FM26 first starts."
+            }
+            try FileManager.default.createDirectory(at: zip.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try data.write(to: zip, options: .atomic)
+        } catch {
+            return "Couldn't download Unity's libraries for BepInEx from \(source) (\(error.localizedDescription)). \(failed)"
+        }
+        return "Downloaded Unity's libraries for BepInEx (\(version))."
+    }
+
+    /// FM26's Unity version as BepInEx names its zip ("6000.0.52" for
+    /// 6000.0.52f1), from the header of the game's globalgamemanagers.
+    static func unityVersion(_ folder: URL) -> String? {
+        let path = folder.appendingPathComponent("fm.app/Contents/Resources/Data/globalgamemanagers")
+        guard let handle = try? FileHandle(forReadingFrom: path), let header = try? handle.read(upToCount: 256) else { return nil }
+        try? handle.close()
+        let text = String(decoding: header.map { $0 < 0x80 ? $0 : 0x20 }, as: UTF8.self)
+        guard let regex = try? NSRegularExpression(pattern: "(\\d+)\\.(\\d+)\\.(\\d+)[abfp]\\d+"),
+              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) else { return nil }
+        let parts = (1...3).compactMap { Range(match.range(at: $0), in: text).map { String(text[$0]) } }
+        return parts.joined(separator: ".")
+    }
+
     /// Removes what copyFiles added. Another mod's BepInEx plugins are kept,
     /// with BepInEx, and then only RegenerateFM's plugin goes.
     static func removeFiles(from folder: URL) throws -> String {
@@ -490,18 +548,27 @@ final class Model: ObservableObject {
             return
         }
         guard let payload = Installer.payload else { message = "The installer's files are missing."; return }
-        do {
-            _ = try Installer.copyFiles(from: payload, to: game.folder)
-        } catch {
-            message = "Couldn't copy RegenerateFM into \(game.name): \(error.localizedDescription)"
-            return
+        working = true
+        message = "Installing RegenerateFM in \(game.name)…"
+        DispatchQueue.global().async {
+            let result = Result { () -> String? in
+                _ = try Installer.copyFiles(from: payload, to: game.folder)
+                return Installer.fetchUnityLibraries(game.folder)
+            }
+            DispatchQueue.main.async {
+                self.working = false
+                switch result {
+                case .success(let libraries): self.finishInstall(game, note: libraries)
+                case .failure(let error): self.message = "Couldn't copy RegenerateFM into \(game.name): \(error.localizedDescription)"
+                }
+            }
         }
-        finishInstall(game)
     }
 
     /// With the files in place: the launch option, and what to do next.
-    private func finishInstall(_ game: Game) {
+    private func finishInstall(_ game: Game, note: String? = nil) {
         var text = "RegenerateFM \(Installer.version) is installed in \(game.name)."
+        if let note = note, !note.hasPrefix("Downloaded") { text += " " + note }
         if !Steam.needsChange(game, remove: false) {
             text += " Its Steam launch option is already set: press Play in Steam."
         } else if Steam.running() {
@@ -642,6 +709,7 @@ func runCommandLine(_ arguments: [String]) -> Int32 {
         case "install" where arguments.count == 3:
             let folder = URL(fileURLWithPath: arguments[2])
             print("copied \(try Installer.copyFiles(from: URL(fileURLWithPath: arguments[1]), to: folder))")
+            if let libraries = Installer.fetchUnityLibraries(folder) { print(libraries) }
             let game = Game(name: Steam.games[0].0, appID: Steam.games[0].1, folder: folder)
             // Only a test Steam folder's launch options are changed from the command line.
             if Steam.testRoot != nil { print("launch options changed \(try Steam.update(game, remove: false))") }

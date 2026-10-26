@@ -81,9 +81,10 @@ class MacInstallerTests(unittest.TestCase):
                                  *(["--remove"] if remove else [])], capture_output=True)
         return result.stdout, result.stderr.decode().strip() if result.returncode else None
 
-    def cli(self, *args, steam=None, ok=True):
+    def cli(self, *args, steam=None, ok=True, unity_libs=None):
         """The installer's output, or its error message when ok is False."""
-        env = dict(os.environ, REGENERATEFM_STEAM_ROOT=str(steam or self.tmp / "no-steam"))
+        env = dict(os.environ, REGENERATEFM_STEAM_ROOT=str(steam or self.tmp / "no-steam"),
+                   REGENERATEFM_UNITY_LIBS_SOURCE=unity_libs or (self.tmp / "no-libraries" / "{VERSION}.zip").as_uri())
         result = subprocess.run([str(self.installer), "--cli", *map(str, args)], capture_output=True, env=env)
         if not ok:
             self.assertEqual(result.returncode, 1)
@@ -182,6 +183,27 @@ class MacInstallerTests(unittest.TestCase):
         self.assertEqual(other.read_text(), CONFIG.replace('"3551340"', '"2252570"'))
         self.assertFalse(Path(str(other) + ".regeneratefm-backup").exists())
         self.assertIn('"LaunchOptions"\t\t""', config.read_text())
+
+    def test_unity_libraries_are_downloaded_for_bepinex(self):
+        steam, game, _ = self.make_steam()
+        payload = self.make_payload()
+        header = game / "fm.app/Contents/Resources/Data/globalgamemanagers"
+        header.parent.mkdir(parents=True)
+        header.write_bytes(bytes(48) + b"6000.0.52f1-fm26-05f1\0" + bytes(200))
+        zip_file = game / "BepInEx/unity-libs/6000.0.52.zip"
+        # Not there: the installer says so, and BepInEx tries itself.
+        self.assertIn("Couldn't download Unity's libraries", self.cli("install", payload, game, steam=steam).decode())
+        self.assertFalse(zip_file.exists())
+        source = self.tmp / "libraries"
+        source.mkdir()
+        (source / "6000.0.52.zip").write_bytes(b"PK\x03\x04 libraries")
+        output = self.cli("install", payload, game, steam=steam, unity_libs=source.as_uri() + "/{VERSION}.zip")
+        self.assertIn("Downloaded Unity's libraries for BepInEx (6000.0.52)", output.decode())
+        self.assertEqual(zip_file.read_bytes(), b"PK\x03\x04 libraries")
+        # Kept on an update.
+        (source / "6000.0.52.zip").unlink()
+        self.assertNotIn("Unity's libraries", self.cli("install", payload, game, steam=steam).decode())
+        self.assertEqual(zip_file.read_bytes(), b"PK\x03\x04 libraries")
 
 
 if __name__ == "__main__":

@@ -13,8 +13,10 @@ namespace RegenerateFM.Desktop.Linux
     // and the games closed, it:
     //
     //   FM26, FM26 Demo  copies the release's FM26 folder (BepInEx and the
-    //                    plugin) into the game folder, and sets the launch
-    //                    option that makes Proton load BepInEx's winhttp.dll
+    //                    plugin) into the game folder, downloads the Unity
+    //                    libraries BepInEx needs (UnityLibraries), and sets
+    //                    the launch option that makes Proton load BepInEx's
+    //                    winhttp.dll
     //   FM24             copies the packaged companion to
     //                    ~/.local/share/RegenerateFM/FM24, so the downloaded
     //                    release can be deleted, and sets FM24 up for it
@@ -92,7 +94,11 @@ namespace RegenerateFM.Desktop.Linux
             string payload = Path.Combine(release, "FM26");
             if (!File.Exists(Path.Combine(payload, Plugin, "RegenerateFM.dll")))
                 throw new SetupException("The release's FM26 folder is missing: " + payload);
-            return new List<string> { "Copied " + CopyTree(payload, folder) + " files into " + folder + "." };
+            var lines = new List<string> { "Copied " + CopyTree(payload, folder) + " files into " + folder + "." };
+            string libraries = UnityLibraries.Fetch(folder);
+            if (libraries != null)
+                lines.Add(libraries);
+            return lines;
         }
 
         // Removes what InstallFm26 added. Another mod's BepInEx plugins are kept,
