@@ -31,6 +31,17 @@ namespace RegenerateFM.Tests
         }
     }
 
+    // A test of the Linux installer or Steam's launch options, which Windows
+    // doesn't use (it also runs on macOS, where the installer's code is shared).
+    public sealed class NotOnWindowsFactAttribute : Xunit.FactAttribute
+    {
+        public NotOnWindowsFactAttribute()
+        {
+            if (OperatingSystem.IsWindows())
+                Skip = "Windows has no Steam launch option or Linux installer.";
+        }
+    }
+
     // Sparse little-endian process memory, at byte level. Missing bytes are
     // unreadable unless ``zeros``.
     public sealed class FakeProcess : GameProcess
@@ -227,10 +238,13 @@ namespace RegenerateFM.Tests
     }
 
     // A stand-in for OpenAI's image API and the RegenerateFM credits service:
-    // records each request and answers it.
+    // records each request and answers it. A small HTTP/1.1 server on a
+    // socket rather than HttpListener, which on Windows goes through http.sys:
+    // that wants a URL reservation for a non-administrator, and Wine's drops
+    // uploads.
     public sealed class StandIn : IDisposable
     {
-        private readonly HttpListener _listener = new HttpListener();
+        private readonly TcpListener _listener = new TcpListener(IPAddress.Loopback, 0);
         public readonly ConcurrentQueue<(string Method, string Path, string Authorization, string ContentType, byte[] Body, string Agent)> Requests =
             new ConcurrentQueue<(string, string, string, string, byte[], string)>();
         public byte[] Image;
@@ -245,123 +259,125 @@ namespace RegenerateFM.Tests
         public StandIn(byte[] image = null)
         {
             Image = image ?? Pngs.Make(1024);
-            for (int attempt = 0; ; attempt++)
-            {
-                Port = new Random().Next(20000, 60000);
-                _listener.Prefixes.Clear();
-                _listener.Prefixes.Add("http://127.0.0.1:" + Port + "/");
-                try
-                {
-                    _listener.Start();
-                    break;
-                }
-                catch (HttpListenerException) when (attempt < 20)
-                {
-                }
-            }
+            _listener.Start();
+            Port = ((IPEndPoint)_listener.LocalEndpoint).Port;
             new Thread(Serve) { IsBackground = true }.Start();
         }
 
-        public int Port { get; private set; }
+        public int Port { get; }
         public string Url => "http://127.0.0.1:" + Port;
         public List<(string Method, string Path, string Authorization, string ContentType, byte[] Body, string Agent)> Received => Requests.ToList();
 
         private void Serve()
         {
-            while (_listener.IsListening)
+            while (true)
             {
-                HttpListenerContext context;
+                TcpClient client;
                 try
                 {
-                    context = _listener.GetContext();
+                    client = _listener.AcceptTcpClient();
                 }
-                catch (Exception error) when (error is HttpListenerException || error is ObjectDisposedException || error is InvalidOperationException)
+                catch (Exception error) when (error is SocketException || error is ObjectDisposedException || error is InvalidOperationException)
                 {
                     return;
                 }
+                new Thread(() => Answer(client)) { IsBackground = true }.Start();
+            }
+        }
+
+        // One request per connection, answered with Connection: close.
+        private void Answer(TcpClient client)
+        {
+            using (client)
+            {
                 try
                 {
-                    Handle(context);
+                    var stream = client.GetStream();
+                    var request = Read(stream);
+                    if (request == null)
+                        return;
+                    Requests.Enqueue(request.Value);
+                    var (status, value) = Handle(request.Value);
+                    var body = JsonSerializer.SerializeToUtf8Bytes(value);
+                    string reason = status switch { 200 => "OK", 401 => "Unauthorized", 404 => "Not Found", 410 => "Gone", _ => "Error" };
+                    stream.Write(Encoding.ASCII.GetBytes("HTTP/1.1 " + status + " " + reason + "\r\nContent-Type: application/json\r\n" +
+                                                         "Content-Length: " + body.Length + "\r\nConnection: close\r\n\r\n"));
+                    stream.Write(body);
                 }
-                catch (Exception error) when (error is HttpListenerException || error is IOException)
+                catch (Exception error) when (error is IOException || error is SocketException || error is ObjectDisposedException)
                 {
                 }
             }
         }
 
-        private void Send(HttpListenerContext context, int status, object value)
+        // The request's line, headers and Content-Length body, or null if the
+        // connection closed first.
+        private static (string Method, string Path, string Authorization, string ContentType, byte[] Body, string Agent)? Read(Stream stream)
         {
-            var body = JsonSerializer.SerializeToUtf8Bytes(value);
-            context.Response.StatusCode = status;
-            context.Response.ContentType = "application/json";
-            context.Response.ContentLength64 = body.Length;
-            context.Response.OutputStream.Write(body);
-            context.Response.Close();
+            var head = new List<byte>();
+            while (head.Count < 4 || head[^4] != '\r' || head[^3] != '\n' || head[^2] != '\r' || head[^1] != '\n')
+            {
+                int next = stream.ReadByte();
+                if (next < 0)
+                    return null;
+                head.Add((byte)next);
+            }
+            string[] lines = Encoding.ASCII.GetString(head.ToArray()).Split("\r\n");
+            string[] start = lines[0].Split(' ');
+            var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string line in lines.Skip(1))
+            {
+                int colon = line.IndexOf(':');
+                if (colon > 0)
+                    headers[line.Substring(0, colon).Trim()] = line.Substring(colon + 1).Trim();
+            }
+            var body = new byte[headers.TryGetValue("Content-Length", out string length) ? int.Parse(length) : 0];
+            stream.ReadExactly(body);
+            string path = start[1].Split('?')[0];
+            return (start[0], path, headers.GetValueOrDefault("Authorization"), headers.GetValueOrDefault("Content-Type"), body,
+                    headers.GetValueOrDefault("User-Agent"));
         }
 
-        private void Handle(HttpListenerContext context)
+        private (int, object) Handle((string Method, string Path, string Authorization, string ContentType, byte[] Body, string Agent) request)
         {
-            var request = context.Request;
-            var buffer = new MemoryStream();
-            request.InputStream.CopyTo(buffer);
-            string path = request.Url.AbsolutePath;
-            string auth = request.Headers["Authorization"];
-            Requests.Enqueue((request.HttpMethod, path, auth, request.ContentType, buffer.ToArray(), request.UserAgent));
+            string path = request.Path;
+            string auth = request.Authorization;
             if (Status(path) is int error)
-            {
-                Send(context, error, new { error = new { message = "Stand-in error " + error + "." } });
-                return;
-            }
-            if (request.HttpMethod == "GET" && path.EndsWith("/models"))
+                return (error, new { error = new { message = "Stand-in error " + error + "." } });
+            if (request.Method == "GET" && path.EndsWith("/models"))
             {
                 bool good = auth == "Bearer " + GoodKey || auth == "Bearer " + Token;
-                Send(context, good ? 200 : 401, good ? (object)new { data = Array.Empty<object>() } : new { error = new { message = "Incorrect API key" } });
-                return;
+                return (good ? 200 : 401, good ? (object)new { data = Array.Empty<object>() } : new { error = new { message = "Incorrect API key" } });
             }
             if (path == "/device/start")
             {
-                Send(context, 200, StartAnswer(new Dictionary<string, object>
+                return (200, StartAnswer(new Dictionary<string, object>
                 {
                     ["device_code"] = new string('d', 43), ["user_code"] = "WXYZ-K7P3",
                     ["verification_uri_complete"] = (LinkHost ?? Url) + "/link?code=WXYZ-K7P3", ["expires_in"] = 600, ["interval"] = 2,
                 }));
-                return;
             }
             if (path == "/device/poll")
             {
                 if (Expire)
-                    Send(context, 410, new { error = new { message = "expired" } });
-                else if (Pending > 0)
+                    return (410, new { error = new { message = "expired" } });
+                if (Pending > 0)
                 {
                     Pending--;
-                    Send(context, 200, new { status = "pending", interval = 2 });
+                    return (200, new { status = "pending", interval = 2 });
                 }
-                else
-                    Send(context, 200, new { status = "approved", token = Token, email = "player@example.com", credits = 75 });
-                return;
+                return (200, new { status = "approved", token = Token, email = "player@example.com", credits = 75 });
             }
             if (path.EndsWith("/images/generations") || path.EndsWith("/images/edits"))
             {
                 if ((auth ?? "").Contains("bad-key"))
-                    Send(context, 401, new { error = new { message = "Incorrect API key provided: sk-bad-key." } });
-                else
-                    Send(context, 200, new { data = new[] { new { b64_json = Convert.ToBase64String(Image) } } });
-                return;
+                    return (401, new { error = new { message = "Incorrect API key provided: sk-bad-key." } });
+                return (200, new { data = new[] { new { b64_json = Convert.ToBase64String(Image) } } });
             }
-            Send(context, 404, new { });
+            return (404, new { });
         }
 
-        public void Dispose()
-        {
-            try
-            {
-                _listener.Stop();
-                _listener.Close();
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-        }
+        public void Dispose() => _listener.Stop();
     }
 
     public static class Pngs

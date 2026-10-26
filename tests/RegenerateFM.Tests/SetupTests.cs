@@ -88,7 +88,7 @@ namespace RegenerateFM.Tests
             return config;
         }
 
-        [Fact]
+        [NotOnWindowsFact]
         public void AccountsAreChangedWithABackupAndNeverWhileSteamRuns()
         {
             string owner = Account("1", Config), other = Account("2", "\"UserLocalConfigStore\"\n{\n}\n");
@@ -439,7 +439,7 @@ namespace RegenerateFM.Tests
         private string LaunchOption(string app) => SteamLaunch.AppBlock(File.ReadAllText(Path.Combine(_steam, "userdata", "1", "config", "localconfig.vdf")), app)
                                                               ?.Value?.Value;
 
-        [Fact]
+        [NotOnWindowsFact]
         public void Fm26IsInstalledAndRemovedWithItsLaunchOption()
         {
             var linux = LinuxSetUp();
@@ -457,7 +457,7 @@ namespace RegenerateFM.Tests
             Assert.Equal("", LaunchOption("3551340"));
         }
 
-        [Fact]
+        [NotOnWindowsFact]
         public void AnotherModsPluginKeepsBepInEx()
         {
             var linux = LinuxSetUp();
@@ -470,7 +470,7 @@ namespace RegenerateFM.Tests
             Assert.False(Directory.Exists(Path.Combine(linux.Fm26, LinuxInstaller.Plugin)));
         }
 
-        [Fact]
+        [NotOnWindowsFact]
         public void UnityLibrariesAreDownloadedForBepInExOnce()
         {
             var linux = LinuxSetUp();
@@ -510,7 +510,7 @@ namespace RegenerateFM.Tests
             }
         }
 
-        [Fact]
+        [NotOnWindowsFact]
         public void NothingChangesWhileSteamOrTheGameRuns()
         {
             var linux = LinuxSetUp();
@@ -529,7 +529,7 @@ namespace RegenerateFM.Tests
             Assert.Equal(0, linux.Installer.Main(new[] { "fm26", "--release", linux.Release }, null));
         }
 
-        [Fact]
+        [NotOnWindowsFact]
         public void EveryGameFoundIsSetUpAndTheFm24CompanionCopied()
         {
             var linux = LinuxSetUp();
@@ -548,7 +548,7 @@ namespace RegenerateFM.Tests
             Assert.Equal(new[] { "notes.txt" }, Files(companion).Keys);
         }
 
-        [Fact]
+        [NotOnWindowsFact]
         public void AFailedGameDoesNotStopTheOthersAndANamedGameMustBeFound()
         {
             var linux = LinuxSetUp();
