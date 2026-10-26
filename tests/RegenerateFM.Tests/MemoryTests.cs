@@ -416,8 +416,18 @@ namespace RegenerateFM.Tests
                      .Q(other, image + 0x5A6D858).I(other + 8, 0x0E, 1234, 1234)  // an official
                      .Q(database + 0x98, table, table + 8 * 0x20).Q(table + 8 * 0x0E, person)
                      .Q(person, image + PlayerVtable).I(person + 8, 0x0E, 4000829, 4000829);
+                int reads = moved.Reads;
                 Assert.Equal("4000829", PersonHandles.TableRecord(moved, 0x0E)?.PersonId);
                 Assert.Equal(0x98, moved.PersonTableSlot);
+                // Every slot in one read, not two each: on the Mac each is a request to FM24.
+                Assert.InRange(moved.Reads - reads, 1, 20);
+
+                // The companion finds FM24 once for the Mac library's references.
+                int found = 0;
+                var companion = new Companion { FindGame = () => { found++; return game; }, Log = _ => { } };
+                Assert.Equal("4000829", companion.ResolveReference(0x0100000E, wait: false));
+                Assert.Equal("4000829", companion.ResolveReference(0x0100000E, wait: false));
+                Assert.Equal(1, found);
             }
             finally
             {

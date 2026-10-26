@@ -273,19 +273,68 @@ namespace RegenerateFM.Desktop.FM24
             return ExistingPortrait.Has(personId, GraphicsDir, GameDir, wait: false);
         }
 
+        // The FM24 the last reference was found in: finding it again lists
+        // every process, about 4 ms of the 30 the menu's face check may take.
+        private GameProcess _referenceGame;
+
         // The person ID for the object browser reference the Mac library sends
         // when the header shows no ID.
         public string ResolveReference(uint reference, bool wait)
         {
+            var game = _referenceGame;
+            if (game != null)
+            {
+                try
+                {
+                    return PersonHandles.PersonForReference(game, reference, wait);
+                }
+                catch (Exception error) when (error is MemoryUnavailableException || People.Unreadable(error))
+                {
+                    _referenceGame = null;
+                }
+            }
             try
             {
-                return PersonHandles.PersonForReference(FindGame(), reference, wait);
+                game = FindGame();
+                string person = PersonHandles.PersonForReference(game, reference, wait);
+                _referenceGame = game;
+                return person;
             }
             catch (MemoryUnavailableException error)
             {
                 throw new InvalidOperationException(error.Message + " No image request was made.");
             }
         }
+
+        // Finds FM24's person table once a game is loaded, checking every few
+        // seconds, and makes one face check, so the Mac library's first one,
+        // which names a person by reference, is answered within its 30 ms: the
+        // first takes about 45 ms (finding FM24, the table's slot and compiling
+        // the code that reads them), later ones about 1 ms.
+        public void FindPersonTable()
+        {
+            while (true)
+            {
+                try
+                {
+                    // Handle 0 is the table's first person. Without the table a
+                    // reference is looked for with a memory scan, so not before.
+                    if (PersonHandles.TableRecord(FindGame(), 0) != null)
+                    {
+                        FaceExists(ResolveReference(FirstPerson, wait: false));
+                        return;
+                    }
+                }
+                catch (Exception error) when (error is MemoryUnavailableException || error is InvalidOperationException ||
+                                              People.Unreadable(error))
+                {
+                }
+                Thread.Sleep(5000);
+            }
+        }
+
+        // The reference to the person with handle 0.
+        private const uint FirstPerson = 0x01000000;
 
         // A face for the open profile, if it is still ``expectedId``: "generate"
         // a new one, or "update" the person's existing portrait.

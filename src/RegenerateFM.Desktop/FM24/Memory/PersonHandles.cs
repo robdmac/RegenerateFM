@@ -101,12 +101,23 @@ namespace RegenerateFM.Desktop.FM24.Memory
             return number.ToString(CultureInfo.InvariantCulture);
         }
 
-        // The person ID and record at this handle in the database's vector at ``slot``, or null.
-        private static (string, long)? SlotPerson(GameProcess game, long database, int slot, int handle)
+        // The person ID and record at this handle in the database's vector at
+        // ``slot``, or null. ``slots`` holds the database's first bytes, if read.
+        private static (string, long)? SlotPerson(GameProcess game, long database, int slot, int handle, ReadOnlySpan<byte> slots = default)
         {
             try
             {
-                long begin = game.U64(database + slot), end = game.U64(database + slot + 8);
+                long begin, end;
+                if (slot + 16 <= slots.Length)
+                {
+                    begin = BinaryPrimitives.ReadInt64LittleEndian(slots.Slice(slot));
+                    end = BinaryPrimitives.ReadInt64LittleEndian(slots.Slice(slot + 8));
+                }
+                else
+                {
+                    begin = game.U64(database + slot);
+                    end = game.U64(database + slot + 8);
+                }
                 if (begin == 0 || end <= begin || (end - begin) % 8 != 0 || handle >= (end - begin) / 8)
                     return null;
                 long person = game.U64(begin + 8L * handle);
@@ -142,9 +153,20 @@ namespace RegenerateFM.Desktop.FM24.Memory
             var person = SlotPerson(game, database, first, handle);
             if (person != null)
                 return person;
+            // Every slot in one read: on the Mac each read is a request to the
+            // game's library, and FM24's menu waits only 30 ms for a face check.
+            var slots = new byte[DatabaseScan + 8];
+            int read = 0;
+            try
+            {
+                read = game.ReadInto(database, slots);
+            }
+            catch (Exception error) when (People.Unreadable(error))
+            {
+            }
             var found = new SortedDictionary<int, (string, long)>();
             for (int slot = 0; slot < DatabaseScan; slot += 8)
-                if (slot != first && SlotPerson(game, database, slot, handle) is (string, long) other)
+                if (slot != first && SlotPerson(game, database, slot, handle, slots.AsSpan(0, read)) is (string, long) other)
                     found[slot] = other;
             if (new HashSet<(string, long)>(found.Values).Count != 1)
                 return null;

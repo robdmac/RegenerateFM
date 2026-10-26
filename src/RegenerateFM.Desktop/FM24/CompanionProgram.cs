@@ -202,6 +202,8 @@ namespace RegenerateFM.Desktop.FM24
                 {
                 }
             });
+            if (OperatingSystem.IsMacOS())
+                Quietly(companion.FindPersonTable);
             if (!preview && OperatingSystem.IsMacOS())
                 Quietly(companion.CheckSavedKey);
             if (startedBy != null)

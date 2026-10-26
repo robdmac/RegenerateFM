@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Net;
@@ -296,6 +297,9 @@ namespace RegenerateFM.Desktop.FM24.Bridge
             }
         }
 
+        // How long the DLL's menu waits for AnswerFace (FACE_TIMEOUT_MS).
+        private const int FaceWaitMs = 30;
+
         // "REGENERATEFM24F 1 <serial> <person> <token>": does the person shown in
         // FM24's portrait popup have a face? The DLL greys out Update face on
         // "no" and leaves it enabled without an answer.
@@ -306,6 +310,7 @@ namespace RegenerateFM.Desktop.FM24.Bridge
                 return;
             string person = fields[3];
             bool has;
+            var clock = Stopwatch.StartNew();
             try
             {
                 if (person.StartsWith("r", StringComparison.Ordinal))
@@ -322,6 +327,9 @@ namespace RegenerateFM.Desktop.FM24.Bridge
                 return;
             }
             Send("REGENERATEFM24F " + fields[2] + " " + (has ? "yes" : "no"), peer);
+            if (clock.ElapsedMilliseconds > FaceWaitMs)
+                Log("FM24 face check took " + clock.ElapsedMilliseconds + " ms, longer than FM24's menu waits (" + FaceWaitMs +
+                    " ms), so Update face stayed enabled.");
         }
 
         public void Dispose()
