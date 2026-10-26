@@ -13,6 +13,18 @@ namespace RegenerateFM.Desktop
     {
         public static int Main(string[] args)
         {
+            // Windows' console writes in its OEM code page (850 or 437), which
+            // has no €; in UTF-8 every message shows as written.
+            if (OperatingSystem.IsWindows())
+            {
+                try
+                {
+                    Console.OutputEncoding = new System.Text.UTF8Encoding(false);
+                }
+                catch (IOException)
+                {
+                }
+            }
             if (args.Length > 0 && args[0] == "install")
             {
                 try

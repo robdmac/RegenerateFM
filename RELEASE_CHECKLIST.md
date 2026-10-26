@@ -101,6 +101,15 @@ this one name the Python files of the time.
   and a stand-in batch stopped with Stop after this face; one **billed**
   Generate (Lucas Meek) and one **billed** Update from a bundled photo (Ryan
   Sailor).
+- [x] Windows rehearsed under Wine (Proton 10, a scratch prefix): `dotnet test`
+  with the Windows .NET 10.0.402 SDK passed 92 and skipped the 7 tests of the
+  Linux installer and launch options. The packaged companion, started through
+  the Windows shell, found FM24 in a second Steam library through the
+  registry's `SteamPath` and `libraryfolders.vdf`, refused until FM24's
+  Documents folder existed, then installed the DLL, UTF-16 ini and skin,
+  took a hidden key (checked by the stand-in, saved `RFMK1`) and waited for
+  Enter; run again it only said it was set up, and `setup --remove` undid it.
+  This found the console printing € as `?` (now UTF-8).
 - [ ] Windows: the companion's double-click setup and terminal key prompt,
   FM24 starting it, a face and a squad batch; FM26's plugin (copied by hand:
   delete `BepInEx/plugins/RegenerateFMHotReload` first).

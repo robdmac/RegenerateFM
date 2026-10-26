@@ -94,7 +94,7 @@ namespace RegenerateFM.Tests
             Assert.Contains("Ethnicity: Black African or Caribbean, with dark brown skin and naturally dark brown hair; " +
                             "follow this over any other appearance detail.", Prompts.ProfilePrompt(player, "28122642", null));
             var saved = JsonDocument.Parse(File.ReadAllText(Path.Combine(folder.Path, KnownEthnicities.FileName))).RootElement.GetProperty("people");
-            Assert.Equal("{\"ethnicity\":\"AfricanCaribbean\",\"source\":\"chosen\"}", saved.GetProperty("2000047230").GetRawText().Replace(" ", "").Replace("\n", ""));
+            Assert.Equal("{\"ethnicity\":\"AfricanCaribbean\",\"source\":\"chosen\"}", saved.GetProperty("2000047230").GetRawText().Replace(" ", "").Replace("\r", "").Replace("\n", ""));
             // An unreadable file counts as no saved ethnicities.
             File.WriteAllText(Path.Combine(folder.Path, KnownEthnicities.FileName), "{not json");
             Assert.False(KnownEthnicities.Apply(Player(), folder.Path, "28122642"));
@@ -145,8 +145,8 @@ namespace RegenerateFM.Tests
             Assert.Equal(ImageApi.KeyRejected, ImageApi.CheckKey(settings, "sk-wrong-key-0123456789abcdef").GetAwaiter().GetResult());
             KeyStore.Save(path, "  " + api.GoodKey + "\n");
             Assert.Equal(api.GoodKey, KeyStore.Load(path));
-            // Off Windows the file is marked unencrypted and readable only by its owner.
-            Assert.Equal("RFMK0\n", Encoding.ASCII.GetString(File.ReadAllBytes(path), 0, 6));
+            // Encrypted for the user on Windows; elsewhere marked unencrypted and readable only by its owner.
+            Assert.Equal(OperatingSystem.IsWindows() ? "RFMK1\n" : "RFMK0\n", Encoding.ASCII.GetString(File.ReadAllBytes(path), 0, 6));
             if (!OperatingSystem.IsWindows())
                 Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(path));
             Assert.Contains("starts with sk-", Assert.Throws<ArgumentException>(() => KeyStore.Save(path, "my key")).Message);
