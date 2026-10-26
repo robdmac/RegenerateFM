@@ -1,2 +1,0 @@
-Pillow>=10,<12
-zstandard>=0.22,<1

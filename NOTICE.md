@@ -12,7 +12,7 @@ WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
 PARTICULAR PURPOSE. See the GNU General Public License in `LICENSE` for more
 details.
 
-The software bundled in the release (BepInEx, .NET, Python and others) is under
+The software bundled in the release (BepInEx, .NET and others) is under
 its own licences; see `licenses/THIRD_PARTY_NOTICES.md`.
 
 ## Additional permission under GNU GPL version 3 section 7

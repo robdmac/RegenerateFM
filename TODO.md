@@ -308,18 +308,13 @@
 
 ## After launch (2026-10-22)
 
-- **FM24 companion in C#.** The companion is about 6,200 lines of Python,
-  so every packaged build carries a Python (the Mac build bundles Apple's
-  3.9, which is out of support; kept for now, by choice, rather than
-  switching to python.org's 3.12). Its ssl module uses macOS's own
-  LibreSSL 2.8.3 (`/usr/lib/libssl.46.dylib`): TLS 1.2 only, no TLS 1.3.
-  Checked 2026-10-22: credits.regenerate.fm and api.openai.com both connect
-  over TLS 1.2 with verified certificates; it would break only if either
-  dropped TLS 1.2. Port it to C# and reuse the FM26 plugin's
-  `hotreload/FaceGenerator.cs`, which already does the prompts, appearance,
-  relatives, OpenAI and credits requests and saving, with prompt parity
-  tested against `regeneratefm.py`. Still to port: the FM24 memory reading,
-  profiles, squads, dialogs and setup. Compiled with .NET NativeAOT for
-  win-x64 (also run under Proton) and osx-arm64, it needs no runtime and
-  leaves one copy of the prompt code instead of two. Several days of work,
-  then the FM24 in-game checks again on macOS, Windows and Linux.
+- **FM24 companion in C#.** Done in code on the `csharp-core` branch
+  (2026-10-25): the companion, its setup and the Linux installer are
+  `src/RegenerateFM.Desktop`, sharing `src/RegenerateFM.Core` with the FM26
+  plugin, so there is one copy of the prompt code and no Python in any
+  release (Apple's Python 3.9 and its LibreSSL with it). They are published as
+  self-contained, trimmed single files rather than NativeAOT, which can't be
+  built for Windows or macOS from Linux; .NET 10 runs fine under Proton 9.
+  Checked on Linux/Proton (see RELEASE_CHECKLIST.md, 2026-10-25). Still to
+  do: the in-game checks on Windows and macOS, and the macOS build and
+  signing of the companion (`macos/make_installer.py`).

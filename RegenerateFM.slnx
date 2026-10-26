@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/RegenerateFM.Core/RegenerateFM.Core.csproj" />
+    <Project Path="src/RegenerateFM.Desktop/RegenerateFM.Desktop.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/RegenerateFM.Tests/RegenerateFM.Tests.csproj" />
+  </Folder>
+</Solution>

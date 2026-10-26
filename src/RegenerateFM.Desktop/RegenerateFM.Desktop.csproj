@@ -1,0 +1,53 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- RegenerateFM outside the games: the FM24 companion and its setup
+       (regeneratefm-fm24.exe for Windows and Proton, regeneratefm-fm24 for
+       macOS) and the Linux installer (regeneratefm). Each is published as one
+       self-contained file, so players need no .NET:
+         dotnet publish src/RegenerateFM.Desktop -c Release -r win-x64
+         dotnet publish src/RegenerateFM.Desktop -c Release -r linux-x64
+         dotnet publish src/RegenerateFM.Desktop -c Release -r osx-arm64     (on a Mac) -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>RegenerateFM.Desktop</RootNamespace>
+    <AssemblyName>regeneratefm-fm24</AssemblyName>
+    <AssemblyName Condition="$(RuntimeIdentifier.StartsWith('linux'))">regeneratefm</AssemblyName>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <!-- Which of FM24's native libraries this build carries: the Mac build's, or fm.exe's DLL. -->
+    <NativeMac>false</NativeMac>
+    <NativeMac Condition="$(RuntimeIdentifier.StartsWith('osx')) Or ('$(RuntimeIdentifier)' == '' And $([MSBuild]::IsOSPlatform('OSX')))">true</NativeMac>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' != ''">
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <PublishTrimmed>true</PublishTrimmed>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../RegenerateFM.Core/RegenerateFM.Core.csproj" />
+    <PackageReference Include="StbImageSharp" Version="2.30.16" />
+    <PackageReference Include="ZstdSharp.Port" Version="0.8.8" />
+  </ItemGroup>
+  <!-- FM24's native library for this build, and what the setup checks. -->
+  <ItemGroup>
+    <EmbeddedResource Include="../../native/fm24/supported_build.json" LogicalName="supported_build.json" />
+    <EmbeddedResource Include="../../native/fm24/supported_build_macos.json" LogicalName="supported_build_macos.json" />
+    <EmbeddedResource Include="../../native/fm24/run_regeneratefm24.sh" LogicalName="run_regeneratefm24.sh" />
+    <EmbeddedResource Include="../../native/fm24/build/winmm.dll" LogicalName="winmm.dll"
+                      Condition="Exists('../../native/fm24/build/winmm.dll') And !$(NativeMac)" />
+    <EmbeddedResource Include="../../native/fm24/build-macos/libregeneratefm24.dylib" LogicalName="libregeneratefm24.dylib"
+                      Condition="Exists('../../native/fm24/build-macos/libregeneratefm24.dylib') And $(NativeMac)" />
+  </ItemGroup>
+  <Target Name="RequireNativeLibrary" BeforeTargets="Build" Condition="'$(RuntimeIdentifier)' != ''">
+    <Error Condition="!$(NativeMac) And !Exists('../../native/fm24/build/winmm.dll')"
+           Text="Build FM24's DLL first (native/fm24/build.py): native/fm24/build/winmm.dll is missing." />
+    <Error Condition="$(NativeMac) And !Exists('../../native/fm24/build-macos/libregeneratefm24.dylib')"
+           Text="Build FM24's Mac library first (native/fm24/build_macos.py): native/fm24/build-macos/libregeneratefm24.dylib is missing." />
+  </Target>
+  <ItemGroup>
+    <InternalsVisibleTo Include="RegenerateFM.Tests" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- dotnet test tests/RegenerateFM.Tests: Core's prompts and files, and the
+       desktop programs (the FM24 companion, its setup and the Linux installer)
+       against fake game memory, a fake FM24 DLL and a stand-in image API. No
+       billed request is made. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+    <PackageReference Include="ZstdSharp.Port" Version="0.8.8" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/RegenerateFM.Core/RegenerateFM.Core.csproj" />
+    <ProjectReference Include="../../src/RegenerateFM.Desktop/RegenerateFM.Desktop.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Fixtures/**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
