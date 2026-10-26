@@ -531,9 +531,9 @@ namespace RegenerateFM.FM26
             return label;
         }
 
-        // The page a dialog was shown over: the profile's person, or the squad
-        // list's team. A message closes when you leave that page or press Escape;
-        // a running squad scan or batch keeps its dialog until it ends.
+        // The page a dialog was shown over: the profile's person, the squad list's
+        // team, or the staff list's club. A message closes when you leave that
+        // page or press Escape; a running scan or batch keeps its dialog until it ends.
         private string _dialogPage;
         private int _dialogPageMisses;
         private VisualElement _escapeRoot;
@@ -543,7 +543,9 @@ namespace RegenerateFM.FM26
             var header = FindNamed(root, "ReportHeader");
             if (header != null && HeaderId(header, out long id))
                 return "person " + id;
-            return SquadTable(root) != null ? "squad " + (SquadPageTeam(root) ?? "") : null;
+            if (SquadTable(root) != null)
+                return "squad " + (SquadPageTeam(root) ?? "");
+            return StaffScroll(root) != null ? "staff " + FirstText(FindNamed(TopPage(root), "TeamName")) : null;
         }
 
         private void CheckDialogPage()

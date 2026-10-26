@@ -93,6 +93,9 @@ namespace RegenerateFM.FM26
         // batch takes the player as needing scouting rather than still loading.
         private static readonly TimeSpan ScoutingSettle = TimeSpan.FromSeconds(5);
         private static readonly TimeSpan GenderWait = TimeSpan.FromSeconds(3);
+        // How long a staff list name has to open its profile before the batch
+        // takes it as not a link.
+        private static readonly TimeSpan StaffOpenWait = TimeSpan.FromSeconds(8);
 
         public override void Load()
         {
