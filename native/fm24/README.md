@@ -25,13 +25,20 @@ before hooking anything. Any other build is left unhooked.
 - **Squad menu:** **Generate missing squad faces…** at the end of the Squad
   screen's **Overview** menu, and in the reserve and youth team tabs of the
   Development Center and another club's Players tab.
+- **Staff menu:** **Generate missing staff faces…** at the end of the Staff
+  screen's **Overview** menu and another club's **Staff** menu (any tab menu
+  with the staff list's **All** row, `tcsp`).
 - **Greyed Update face:** when a menu opens, the library asks the companion
   whether the person has a face, and greys out **Update face** if not. It
   waits at most 30 ms, so a menu opens about 2–3 ms later than without
   RegenerateFM.
 - **In-game dialogs:** the squad confirmation, progress (with **Stop after
   this face**), results and errors use FM24's own dialog, built the way FM24
-  builds its "Quit game?" question. Progress for a single face is shown on the
+  builds its "Quit game?" question. When a batch can include the club's
+  other people, the confirmation is a choice of three: its Yes and No are
+  relabelled with the two answers (No posts its own event) and the dialog's
+  hidden Cancel button is shown as No. FM24 closes the dialog on Cancel
+  without an event, so a choice that disappears counts as No. Progress for a single face is shown on the
   portrait popup, or in a dialog with other skins.
 - **Skin reload:** after a face is saved, the library runs FM24's own "reload
   current skin" command on the UI thread, so the new face appears without

@@ -11,16 +11,21 @@ namespace RegenerateFM.Desktop.FM24.Memory
 {
     public sealed class SquadRow
     {
-        public SquadRow(string personId, long record, string name)
+        public SquadRow(string personId, long record, string name, bool staff = false, string job = null)
         {
             PersonId = personId;
             Record = record;
             Name = name;
+            Staff = staff;
+            Job = job;
         }
 
         public string PersonId { get; }
         public long Record { get; }
         public string Name { get; }
+        public bool Staff { get; }
+        // A staff member's job, or null (a player, or a job RegenerateFM can't name).
+        public string Job { get; }
     }
 
     public sealed class SquadState
@@ -350,23 +355,7 @@ namespace RegenerateFM.Desktop.FM24.Memory
                         : state.Coaches > 0 || state.Others > 0 ? NotASquad
                         : "The open FM24 Squad table has no players.");
                 }
-                state.Today = DateTime.MinValue;
-                if (catalogue)
-                {
-                    var today = ScreenReader.ScreenDate(game);
-                    if (today == null)
-                    {
-                        // The date strings in memory for the current year. Person records
-                        // carry the year they were last updated in: the current one, or
-                        // for some youth players the one before.
-                        int year = state.Rows.Max(row => (int)game.U16(row.Record + game.Layout.RecordYear));
-                        if (year <= 1900 || year >= 2200)
-                            throw new MemoryUnavailableException("Could not read FM24's current year.");
-                        today = Today(dates.Where(entry => entry.Key.EndsWith(" " + year, StringComparison.Ordinal))
-                                           .ToDictionary(entry => entry.Key, entry => entry.Value));
-                    }
-                    state.Today = today.Value;
-                }
+                state.Today = catalogue ? Today(game, dates, state.Rows.Select(row => row.Record)) : DateTime.MinValue;
             }
             catch (MemoryUnavailableException)
             {
@@ -377,6 +366,48 @@ namespace RegenerateFM.Desktop.FM24.Memory
                 throw new MemoryUnavailableException("Could not read the FM24 Squad table: " + error.Message);
             }
             return state;
+        }
+
+        // The in-game date: shown in the top bar, else the date strings in
+        // memory for the current year. Person records carry the year they were
+        // last updated in: the current one, or for some youth players the one
+        // before.
+        private static DateTime Today(GameProcess game, Dictionary<string, int> dates, IEnumerable<long> records)
+        {
+            var today = ScreenReader.ScreenDate(game);
+            if (today != null)
+                return today.Value;
+            int year = records.Select(record => (int)game.U16(record + game.Layout.RecordYear)).DefaultIfEmpty(0).Max();
+            if (year <= 1900 || year >= 2200)
+                throw new MemoryUnavailableException("Could not read FM24's current year.");
+            return Today(dates.Where(entry => entry.Key.EndsWith(" " + year, StringComparison.Ordinal))
+                              .ToDictionary(entry => entry.Key, entry => entry.Value));
+        }
+
+        // FM24's indexed portraits and the in-game date, for people read without
+        // a list (``records``, for the current year if the date isn't shown).
+        public static (HashSet<string> Indexed, DateTime Today) Catalogue(GameProcess game, IList<long> records, int attempts = 3)
+        {
+            try
+            {
+                long manager = Widgets.UiManager(game);
+                for (int attempt = 0; ; attempt++)
+                {
+                    try
+                    {
+                        var (_, indexed, dates) = ScanCells(game, manager, catalogue: true);
+                        return (indexed, Today(game, dates, records));
+                    }
+                    catch (MemoryUnavailableException) when (attempt + 1 < attempts)
+                    {
+                        // FM24 can unmap memory during a scan; a later pass is complete.
+                    }
+                }
+            }
+            catch (Exception error) when (People.Unreadable(error))
+            {
+                throw new MemoryUnavailableException("Could not read FM24's portrait index: " + error.Message);
+            }
         }
 
         // The 'id  ' of every data row in the table's row model, in table order.

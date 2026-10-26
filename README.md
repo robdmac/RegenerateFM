@@ -1,6 +1,6 @@
 # RegenerateFM
 
-RegenerateFM makes new portraits for Football Manager players and staff who don't have one, and updates the faces they already have. You choose **Generate new face** or **Update face** from the person's portrait menu in the game. The face is created from their profile and appears in the game a few seconds later. A whole squad can be done in one go.
+RegenerateFM makes new portraits for Football Manager players and staff who don't have one, and updates the faces they already have. You choose **Generate new face** or **Update face** from the person's portrait menu in the game. The face is created from their profile and appears in the game a few seconds later. A whole squad can be done in one go, and in FM24 a club's whole staff.
 
 ![RegenerateFM in FM26: Generate face or Update face from a profile's Actions menu, then the new portrait, for silhouetted players and staff and for newgens' 3D game faces](docs/regeneratefm-demo.gif)
 
@@ -100,7 +100,7 @@ It needs nothing else installed: it's one self-contained program. If FM24 isn't 
 
 **macOS (Apple Silicon)** uses the installer, as FM26 does: open `RegenerateFM-macOS.dmg`, run **RegenerateFM Installer** and choose Football Manager 2024. It copies the packaged companion into the game folder's `RegenerateFM` folder, installs `libregeneratefm24.dylib`, `run_regeneratefm24.sh` and the RegenerateFM skin, and sets FM24's Steam launch option (with Steam closed), so Play in Steam starts FM24 with RegenerateFM and the companion; nothing else needs installing. The first time you choose a face command, FM24 asks in the game how you want to pay: credits or your OpenAI key. **Uninstall** in the installer removes it again. From source instead: build the Mac library with `python3 native/fm24/build_macos.py`, publish the companion and run its `setup` with FM24 closed; see [src/RegenerateFM.Desktop/FM24/README.md](src/RegenerateFM.Desktop/FM24/README.md). `fm.app` itself is never changed, and **Show screen IDs in Title Bar** isn't needed on the Mac.
 
-In FM24, the profile's **Overview** tab menu has **Generate new face** and **Update face**, with any skin; with the RegenerateFM skin, so does a popup on the portrait. The Squad screen's **Overview** menu has **Generate missing squad faces…**. Progress, confirmations and errors appear in FM24's own dialogs.
+In FM24, the profile's **Overview** tab menu has **Generate new face** and **Update face**, with any skin; with the RegenerateFM skin, so does a popup on the portrait. The Squad screen's **Overview** menu has **Generate missing squad faces…**, and the Staff screen's has **Generate missing staff faces…**; each can include the club's other people (its staff, or its players) in the same batch. Progress, confirmations and errors appear in FM24's own dialogs.
 
 ## Settings
 

@@ -113,6 +113,11 @@ this one name the Python files of the time.
 - [ ] Windows: the companion's double-click setup and terminal key prompt,
   FM24 starting it, a face and a squad batch; FM26's plugin (copied by hand:
   delete `BepInEx/plugins/RegenerateFMHotReload` first).
+- [ ] FM24 staff faces on Windows/Proton (checked on the Mac, 2026-10-26): the
+  DLL's **Generate missing staff faces…** in the Staff screen's Overview
+  menu, the three-button choice (each answer, and No closing it), and the
+  Windows layout's guesses: a contract's job at +0x1C, a club object's index
+  at +8, and the screen's club reference (type 3).
 - [ ] macOS: `dotnet publish -r osx-arm64`, `macos/make_installer.py` (the
   companion is signed with the allow-jit entitlement), the installer's FM24
   and FM26 install, update from the Python build and uninstall, the companion

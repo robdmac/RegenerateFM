@@ -420,6 +420,61 @@ namespace RegenerateFM.Desktop.FM24.Memory
             return TeamName(game, game.Pointer(contract + 0x10));
         }
 
+        // The club details (db::CLUB) of the team holding the person's contract,
+        // which all of a club's teams share.
+        public static long ContractClub(GameProcess game, long record)
+        {
+            long contract = game.Pointer(record + game.Layout.Contract);
+            if (contract == 0)
+                throw new NoContractException();
+            if (game.Pointer(contract + 8) != record - 12)
+                throw new MemoryUnavailableException("FM24 contract points to another person.");
+            long team = game.Pointer(contract + 0x10);
+            if (!Is(game, team, game.Layout.TeamVtable))
+                throw new MemoryUnavailableException("Invalid FM24 club object.");
+            long details = game.Pointer(team + 0x30);
+            if (!Is(game, details, game.Layout.ClubVtable))
+                throw new MemoryUnavailableException("FM24 club details do not match the club.");
+            return details;
+        }
+
+        // The staff member's job, from the code in their contract, or null for a
+        // code RegenerateFM doesn't know.
+        public static string ContractJob(GameProcess game, long record)
+        {
+            long contract = game.Pointer(record + game.Layout.Contract);
+            if (contract == 0 || game.Pointer(contract + 8) != record - 12)
+                return null;
+            return StaffReader.JobTitle(game.U16(contract + game.Layout.ContractJob));
+        }
+
+        // Prompt fields for a staff member read by record, as a list shows them:
+        // ``name`` and ``job`` as listed, the club holding their contract.
+        public static ProfileSnapshot StaffListProfile(GameProcess game, long record, string name, string job, DateTime today)
+        {
+            var raw = game.Read(record, 0x40);
+            uint number = BinaryPrimitives.ReadUInt32LittleEndian(raw);
+            if (!raw.AsSpan(0, 8).SequenceEqual(People.IdTwice(number)) || People.PersonKind(game, record, raw[16]) != "staff")
+                throw new MemoryUnavailableException("Not a validated FM24 staff record.");
+            DateTime birth;
+            try
+            {
+                birth = People.RecordDates(game, record, raw).Birth;
+            }
+            catch (InvalidDataException)
+            {
+                throw new MemoryUnavailableException("Invalid FM24 birth date.");
+            }
+            int age = today.Year - birth.Year - ((today.Month, today.Day).CompareTo((birth.Month, birth.Day)) < 0 ? 1 : 0);
+            if (age < 16 || age > 100)
+                throw new MemoryUnavailableException("Invalid FM24 staff age.");
+            return new ProfileSnapshot
+            {
+                Type = "staff", Gender = Gender, Name = name, Age = age, Nationality = Nation(game, record),
+                JobTitle = job ?? StaffReader.UnknownJob, Club = Club(game, record),
+            };
+        }
+
         // The club a player plays for now, so a loaned player wears the loan
         // club's kit. A player's record holds it: the loan club while on loan,
         // otherwise the contract club. Staff records leave it empty.
