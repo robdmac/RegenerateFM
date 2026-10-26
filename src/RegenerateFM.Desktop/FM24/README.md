@@ -121,7 +121,7 @@ To see the prompt with **no image API request or portrait write**, start the com
 
 Live checks on one Steam/Proton installation and save:
 - **Previews:** Generate, Update face and the squad command, run with every X11 entry point set to fail. No X11 calls were made.
-- **Staff (Mac, 2026-10-26, preview mode):** MK Dons' 30 staff (jobs from Chairperson to Sports Scientist, the Under 18s' too) and, with **Include players**, its 20 players without a face: 50 prompts. The squad command offering the 30 staff, and Chelsea's staff (86, every job named). The three-button dialog's answers, and No (FM24's Cancel), on the Mac.
+- **Staff (Mac, 2026-10-26, preview mode):** MK Dons' 30 staff (jobs from Chairperson to Sports Scientist, the Under 18s' too) and, with **Include players**, its 20 players without a face: 50 prompts. The squad command offering the 30 staff, and Chelsea's staff (86, every job named). The three-button dialog's answers, and No (FM24's Cancel), on the Mac. Women are described as women (Sue Dawson, a director; Caitlin O'Reilly, a physio) from a flag in their record.
 - **Billed single face:** a Generate through the portrait popup (Gabriel Pec, LA Galaxy); with the C# companion, a Generate (Lucas Meek, Inter Miami II) and an Update from FM24's bundled photo (Ryan Sailor).
 - **Billed squad batch:** two LA Galaxy faces, with Stop ending the run after the second face; with the C# companion and a stand-in image API, an Inter Miami II batch with Stop.
 

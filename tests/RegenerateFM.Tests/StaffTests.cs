@@ -126,6 +126,10 @@ namespace RegenerateFM.Tests
             Assert.Equal(("staff", "Erbil Bozkurt", 28, "Goalkeeping Coach", "MK Dons", "Icelandic"),
                          (profile.Type, profile.Name, profile.Age, profile.JobTitle, profile.Club, profile.Nationality));
             Assert.Equal(StaffReader.UnknownJob, ProfileReader.StaffListProfile(game, record, "Erbil Bozkurt", null, Today).JobTitle);
+            Assert.Equal("male", profile.Gender);
+            // A woman's record flags her (Sue Dawson, a director): her prompt mustn't call her a man.
+            game.Put(record + Layout.Windows.PersonFlags, new byte[] { 0x11 });
+            Assert.Equal("female", ProfileReader.StaffListProfile(game, record, "Sue Dawson", "Director", Today).Gender);
             // A player isn't described as staff.
             game.Q(record - 12, Image + MemoryTests.PlayerVtable);
             Assert.Throws<MemoryUnavailableException>(() => ProfileReader.StaffListProfile(game, record, "Erbil Bozkurt", "Coach", Today));

@@ -21,9 +21,13 @@ namespace RegenerateFM.Desktop.FM24.Memory
     // before it can be used in a prompt. Nothing here writes to the game.
     public static class ProfileReader
     {
-        // FM24's database has only men: women's football arrived in FM26. The
-        // prompt gives facial hair only to a person said to be a man.
-        public const string Gender = "male";
+        // FM24 has no women's football, but its staff include women (directors,
+        // physios, scouts). A flag in the record says so; the prompt gives
+        // facial hair only to a person said to be a man.
+        public const int Female = 0x10;
+
+        public static string Gender(GameProcess game, long record) =>
+            (game.Read(record + game.Layout.PersonFlags, 1)[0] & Female) != 0 ? "female" : "male";
         // What the prompt calls a player with no club (a plain shirt).
         public const string FreeAgent = "Free agent";
 
@@ -470,7 +474,7 @@ namespace RegenerateFM.Desktop.FM24.Memory
                 throw new MemoryUnavailableException("Invalid FM24 staff age.");
             return new ProfileSnapshot
             {
-                Type = "staff", Gender = Gender, Name = name, Age = age, Nationality = Nation(game, record),
+                Type = "staff", Gender = Gender(game, record), Name = name, Age = age, Nationality = Nation(game, record),
                 JobTitle = job ?? StaffReader.UnknownJob, Club = Club(game, record),
             };
         }
@@ -613,15 +617,15 @@ namespace RegenerateFM.Desktop.FM24.Memory
                 if (jobs.Count != 1 || jobs.First().Length == 0)
                     throw new MemoryUnavailableException("Could not verify the FM24 staff job title.");
                 if (identityOnly)
-                    return new ProfileSnapshot { Type = "staff", Gender = Gender, Name = identity.Name, Age = age, Club = club };
+                    return new ProfileSnapshot { Type = "staff", Gender = Gender(game, record), Name = identity.Name, Age = age, Club = club };
                 return new ProfileSnapshot
                 {
-                    Type = "staff", Gender = Gender, Name = identity.Name, Age = age, Nationality = nation,
+                    Type = "staff", Gender = Gender(game, record), Name = identity.Name, Age = age, Nationality = nation,
                     JobTitle = jobs.First(), Club = club,
                 };
             }
             if (identityOnly)
-                return new ProfileSnapshot { Type = "player", Gender = Gender, Name = identity.Name, Age = age, Club = playing };
+                return new ProfileSnapshot { Type = "player", Gender = Gender(game, record), Name = identity.Name, Age = age, Club = playing };
             var raw = game.Read(record + game.Layout.Attributes, 54);
             int heightCm = game.U16(record + game.Layout.Height);
             string rated = Position(game, record);
@@ -634,7 +638,7 @@ namespace RegenerateFM.Desktop.FM24.Memory
                 throw new MemoryUnavailableException("FM24 position ratings and title disagree.");
             var profile = new ProfileSnapshot
             {
-                Type = "player", Gender = Gender, Name = identity.Name, Age = age, Nationality = nation,
+                Type = "player", Gender = Gender(game, record), Name = identity.Name, Age = age, Nationality = nation,
                 Position = position, Club = playing, Height = Height(heightCm),
                 Physical = Attributes(raw, Physical), Mental = Attributes(raw, Mental),
             };
@@ -727,7 +731,7 @@ namespace RegenerateFM.Desktop.FM24.Memory
             string position = Position(game, record);
             var profile = new ProfileSnapshot
             {
-                Type = "player", Gender = Gender, Name = name, Age = age, Nationality = Nation(game, record),
+                Type = "player", Gender = Gender(game, record), Name = name, Age = age, Nationality = Nation(game, record),
                 Position = position, Club = PlayingClub(game, record, club), Height = Height(heightCm),
                 Physical = Attributes(ratings, Physical), Mental = Attributes(ratings, Mental),
             };
