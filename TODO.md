@@ -318,3 +318,37 @@
   Checked on Linux/Proton (see RELEASE_CHECKLIST.md, 2026-10-25). Still to
   do: the in-game checks on Windows and macOS, and the macOS build and
   signing of the companion (`macos/make_installer.py`).
+
+## Requested (2026-10-27)
+
+- **Other stores and launchers.** Confirmed for the 29 October launch:
+  Steam, the Epic Games Store, the Microsoft Store, and PC Game Pass and
+  Xbox Game Pass Ultimate. Everything so far assumes Steam: the build checks
+  pin Steam's game binaries (another store's build may differ and turn the
+  buttons off), the macOS installer and FM24's setup look in Steam
+  libraries, and macOS and Linux start RegenerateFM through Steam's launch
+  option. To check:
+  - **Epic Games Store:** its binaries against the pins, BepInEx's
+    `winhttp.dll` loading when Epic starts `fm.exe`, and on macOS and Linux
+    (Heroic or Lutris) how to start RegenerateFM without a Steam launch
+    option.
+  - **Microsoft Store and Game Pass** (the Xbox app): installed under
+    `WindowsApps` unless the Xbox app's "advanced management" install is
+    chosen; whether BepInEx and FM24's DLL can load there at all, and where
+    the game's user-data folder is.
+- **Languages, regional formats and screen sizes.** Every check so far used
+  FM in English at a large window. The FM26 plugin reads the screen's English
+  text: "years old", attribute and position names, "Height", "Free Agent",
+  and the "Staff", "All Staff", "First Team", "Squad Numbers" and "Under 21s"
+  labels it clicks or returns to. FM24 reads the top bar's date ("16 Sep
+  2023") for ages. To check:
+  - FM24 and FM26 in another language (FM ships several), and English with
+    US dates and dollars (FM26 on Windows showed "12/31/2026" and "$80.5K
+    p/a"). Currency isn't read anywhere, so a change there should only
+    matter where it changes a label.
+  - Window sizes and resolutions, including scaling. On 2026-10-27 the
+    Windows VM (1381x1062 points at 200%) got FM26's compact profile header
+    ("16 y/o (3/26/2008)", "M/AM (C)", the nation in another box), which the
+    plugin couldn't read: every player failed as an "incomplete profile".
+    It now reads both headers; the staff header and the list pages at small
+    sizes are still to check, and FM24's skin at small sizes.

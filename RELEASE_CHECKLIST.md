@@ -123,6 +123,14 @@ this one name the Python files of the time.
   Analyst), not the preferred job under the name (Recruitment Analyst); and
   Club Site's Staff tile is also found when FM26 shows it as a carousel
   (ClubAllStaffAI, at Barnsley), where the tick box had found no staff.
+  On Windows 11 (Parallels, 2026-10-27, with the image stand-in): MK Dons'
+  checks repeated with Atlanta United (17 of 19 staff, the tick box counting
+  10 of 23 players through Club Site, a 26-face batch and a 16-face staff
+  batch, only the owner skipped). The VM's small screen (1381x1062 points at
+  200%) showed FM26's compact profile headers, which the plugin couldn't read
+  (every player an incomplete profile, staff given the wrong club, job or
+  nation); both compact headers are now read. Nations are codes there
+  ("WAL").
 - [x] FM24 staff faces on Windows/Proton (checked on the Mac, 2026-10-26; on
   Linux/Proton 2026-10-27 with the DLL built from this source and the image
   stand-in): the DLL's **Generate missing staff faces…** in the Staff

@@ -29,12 +29,16 @@ namespace RegenerateFM.FM26
         internal static Plugin Instance;
         internal static bool WaitingForGraphics;
         private static readonly Regex Tags = new Regex("<[^>]*>", RegexOptions.Compiled);
-        private static readonly Regex AgePattern = new Regex(@"\b(\d{1,2}) years old\b", RegexOptions.Compiled);
+        // "16 years old" in the full-size profile header, "16 y/o (3/26/2008)" in
+        // the compact one FM26 shows on a smaller screen.
+        private static readonly Regex AgePattern = new Regex(@"\b(\d{1,2}) (?:years old|y/o)\b", RegexOptions.Compiled);
         private static readonly Regex IdPattern = new Regex(@"\bID:\s*(\d{1,20})\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex StatPattern = new Regex(@"^(?:[1-9]|1[0-9]|20)(?:[-–](?:[1-9]|1[0-9]|20))?$", RegexOptions.Compiled);
         // One position or several, comma-separated: "Attacking Midfielder (Right), Striker (Centre)".
         private const string OnePosition = @"(?:Goalkeeper|Defender|Wing[- ]Back|Defensive Midfielder|Midfielder|Attacking Midfielder|Striker)(?:\s*\([^)]{1,30}\))?";
         private static readonly Regex PositionPattern = new Regex("^" + OnePosition + @"(?:\s*,\s*" + OnePosition + ")*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        // The compact header's abbreviations: "M/AM (C)", "D (RL), DM".
+        private static readonly Regex ShortPositionPattern = new Regex(@"^(?:GK|(?:D|WB|DM|M|AM|ST)(?:/(?:D|WB|DM|M|AM|ST))*(?: \([RLC]{1,3}\))?)(?:, (?:GK|(?:D|WB|DM|M|AM|ST)(?:/(?:D|WB|DM|M|AM|ST))*(?: \([RLC]{1,3}\))?))*$", RegexOptions.Compiled);
         private static readonly HashSet<string> PhysicalNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "Acceleration", "Agility", "Balance", "Jumping Reach", "Natural Fitness", "Pace", "Stamina", "Strength"
