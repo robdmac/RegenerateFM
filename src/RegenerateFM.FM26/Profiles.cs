@@ -227,7 +227,12 @@ namespace RegenerateFM.FM26
             }
             profile.JobTitle = FirstText(FindNamed(banner, "Frame 1000003901")) ?? profile.JobTitle;
             // A staff header has no PlayingTeam: the club is the contract box's first text.
-            profile.Club = FirstText(FindNamed(header, "PlayingTeam")) ?? FirstText(FindNamed(header, "Frame 1000003767"));
+            var contract = FindNamed(header, "Frame 1000003767");
+            profile.Club = FirstText(FindNamed(header, "PlayingTeam")) ?? FirstText(contract);
+            // The text under the name is the job ticked in Preferred Jobs (a Head
+            // Performance Analyst can show Recruitment Analyst); the contract box
+            // has the job at the club.
+            profile.JobTitle = FirstText(FindNamed(contract, "Frame 1000003768")) ?? profile.JobTitle;
             // Its nation is shown twice, as a code by the age ("ENG") and in full ("England").
             foreach (var nation in NamedElements(header, "Frame 1000003766"))
             {

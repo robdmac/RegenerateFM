@@ -37,7 +37,10 @@ namespace RegenerateFM.Tests
             Assert.Equal("Goalkeeping Coach", StaffReader.JobTitle(0x22));
             // A player-coach's version of a job sets the lowest bit.
             Assert.Equal("Coach", StaffReader.JobTitle(0x03));
-            Assert.Null(StaffReader.JobTitle(0x42));
+            // The high byte isn't part of the job.
+            Assert.Equal("Chief Doctor", StaffReader.JobTitle(0xE26));
+            Assert.Equal(("Owner", "President"), (StaffReader.JobTitle(0x42), StaffReader.JobTitle(0x46)));
+            Assert.Null(StaffReader.JobTitle(0x7E));
         }
 
         [Fact]
@@ -55,7 +58,7 @@ namespace RegenerateFM.Tests
                 (0x300000, 101, true, first, 0x22),     // Goalkeeping Coach
                 (0x310000, 102, true, youth, 0x0C),     // the Under 18s' Physio
                 (0x330000, 104, false, first, 0),       // a player
-                (0x340000, 105, true, first, 0x42),     // a job RegenerateFM can't name, and no readable name
+                (0x340000, 105, true, first, 0x7E),     // a job RegenerateFM can't name, and no readable name
                 (0x350000, 106, true, 0, 0),            // no contract
             };
             for (int i = 0; i < people.Length; i++)

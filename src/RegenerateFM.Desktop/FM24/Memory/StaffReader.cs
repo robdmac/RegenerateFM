@@ -21,9 +21,11 @@ namespace RegenerateFM.Desktop.FM24.Memory
         private const int ClubType = 3;
         private const int IndexMask = 0x7FFFFF;
 
-        // FM24's job codes (the low bits of a contract's job; the lowest bit set
-        // marks a player-coach's version of the job), with the text FM24's Staff
-        // table shows for them, read on 2026-10-26 from MK Dons' and Chelsea's.
+        // FM24's job codes (the low byte of a contract's job; the lowest bit set
+        // marks a player-coach's version of the job, and the high byte can carry
+        // more: 0xE26 for Orlando City's Chief Doctor), with the text FM24's Staff
+        // table shows for them, read on 2026-10-26 from MK Dons' and Chelsea's
+        // (Owner and President on 2026-10-27, from Inter Miami's on Windows/Proton).
         private static readonly Dictionary<int, string> Jobs = new Dictionary<int, string>
         {
             [0x02] = "Coach",
@@ -47,11 +49,13 @@ namespace RegenerateFM.Desktop.FM24.Memory
             [0x3C] = "Performance Analyst",
             [0x3E] = "Head Performance Analyst",
             [0x40] = "Head of Youth Development",
+            [0x42] = "Owner",
+            [0x46] = "President",
             [0x56] = "Loan Manager",
             [0x58] = "Technical Director",
         };
 
-        public static string JobTitle(int code) => Jobs.TryGetValue(code & ~1, out string job) ? job : null;
+        public static string JobTitle(int code) => Jobs.TryGetValue(code & 0xFE, out string job) ? job : null;
 
         // The person's ID if they are staff RegenerateFM can describe (a
         // player-coach included); NotAPlayerException for anyone else.
