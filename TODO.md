@@ -350,5 +350,8 @@
     Windows VM (1381x1062 points at 200%) got FM26's compact profile header
     ("16 y/o (3/26/2008)", "M/AM (C)", the nation in another box), which the
     plugin couldn't read: every player failed as an "incomplete profile".
-    It now reads both headers; the staff header and the list pages at small
-    sizes are still to check, and FM24's skin at small sizes.
+    It now reads both headers. On the Mac (2026-10-27, image stand-in) FM26
+    switches to them at 1024x768: a player's face there, a 26-face batch
+    covering both lists, a 16-face staff batch and, with Larger text, an
+    11-face one, all read right. 1024x768 is the smallest size FM26 offers.
+    Still to check: FM24's skin at small sizes.

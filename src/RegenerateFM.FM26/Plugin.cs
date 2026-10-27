@@ -100,6 +100,10 @@ namespace RegenerateFM.FM26
         // How long a staff list name has to open its profile before the batch
         // takes it as not a link.
         private static readonly TimeSpan StaffOpenWait = TimeSpan.FromSeconds(8);
+        // A click on a list that has only just come back (after Back) can be
+        // lost, so a name that hasn't opened is clicked again after this, twice.
+        private static readonly TimeSpan StaffClickAgain = TimeSpan.FromSeconds(2.5);
+        private const int StaffClicks = 3;
 
         public override void Load()
         {
