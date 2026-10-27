@@ -675,7 +675,7 @@ namespace RegenerateFM.FM26
                 catch (Exception error) { plugin.Log.LogWarning("Portrait menu setup failed: " + error.Message); }
                 try { plugin.CheckDialogPage(); }
                 catch (Exception error) { plugin.Log.LogWarning("Dialog check failed: " + error.Message); }
-                try { plugin.CheckSquadMenu(); plugin.PollSquadScan(); }
+                try { plugin.CheckSquadMenu(); plugin.CheckStaffMenu(); plugin.PollSquadScan(); }
                 catch (Exception error) { plugin.Log.LogWarning("Squad scan failed: " + error); plugin.CancelSquadScan(); }
                 try { plugin.PollSquadBatch(); }
                 catch (Exception error) { plugin.StopSquadBatch("Squad generation stopped: " + error.Message); }

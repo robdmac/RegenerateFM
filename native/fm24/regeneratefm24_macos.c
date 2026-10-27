@@ -29,12 +29,14 @@ typedef int BOOL;
 
 #define PROFILE_EVENT 0x464d4647u /* FMFG */
 #define SQUAD_EVENT   0x464d4653u /* FMFS */
+#define STAFF_EVENT   0x464d4654u /* FMFT */
 #define UPDATE_ITEM   0x464d4655u /* FMFU: the portrait popup's "Update face" row */
 #define IDLE_EVENT    0x49444c45u /* IDLE */
 #define SKIN_EVENT    0x47436853u /* GChS: change skin */
 #define STAGE_EVENT   0x6368736bu /* chsk: one queued stage of a skin change */
 #define DIALOG_YES    0x464d4459u /* FMDY: RegenerateFM dialog answered Yes or OK */
 #define DIALOG_NO     0x464d444eu /* FMDN: RegenerateFM dialog answered No */
+#define DIALOG_EXTRA  0x464d4458u /* FMDX: RegenerateFM dialog answered with its middle choice */
 #define MENU_OPEN     0x6d656f70u /* meop: a popup menu opened; posted to the popup button's parent */
 
 typedef int (*event_handler)(void *, unsigned int, void *);
@@ -357,7 +359,7 @@ static BOOL post_skin_reload(void *manager)
 }
 
 enum { DIALOG_NONE, DIALOG_REQUESTED, DIALOG_SHOWN, DIALOG_ANSWER_YES, DIALOG_ANSWER_NO, DIALOG_FAILED,
-       DIALOG_CLOSED };
+       DIALOG_CLOSED, DIALOG_ANSWER_EXTRA };
 static int dialog_state;
 
 static void set_state(int *state, int value) { __atomic_store_n(state, value, __ATOMIC_SEQ_CST); }
@@ -400,10 +402,11 @@ static void reload_tick(void *manager, unsigned int id)
    text, acte = the event code posted for Yes, noet = the code posted for No,
    widt, heig) given to the dialog function with its owner and the UI
    manager. Kind 1 is a Yes/No question, kind 2 an OK message (No hidden, Yes
-   relabelled OK), kind 3 squad progress (one "Stop after this face" button). */
+   relabelled OK), kind 3 squad progress (one "Stop after this face" button),
+   kind 4 a choice of two answers and No (below). */
 static pthread_rwlock_t dialog_lock = PTHREAD_RWLOCK_INITIALIZER;
 static int dialog_kind;
-static char dialog_title[256], dialog_text[1024];
+static char dialog_title[256], dialog_text[1024], dialog_yes[96], dialog_extra[96];
 static unsigned long long dialog_shown_at;
 static void *dialog_object;
 
@@ -413,22 +416,29 @@ typedef void (*float_value_function)(void *, float);
 typedef void (*string_init_function)(void *, const char *, int);
 typedef void (*fourcc_function)(void *, unsigned int);
 
-static BOOL queue_dialog(int kind, const char *title, const char *text)
+static BOOL queue_choice(int kind, const char *title, const char *text, const char *yes, const char *extra)
 {
     if (!game_base) return FALSE;
     int state = get_state(&dialog_state);
     /* A dialog closed without an answer (for example by a skin reload) would
        otherwise block every later one; after ten minutes it is presumed gone. */
     if (state == DIALOG_REQUESTED ||
-        (state == DIALOG_SHOWN && dialog_kind == 1 && tick_ms() - dialog_shown_at < 600000))
+        (state == DIALOG_SHOWN && (dialog_kind == 1 || dialog_kind == 4) && tick_ms() - dialog_shown_at < 600000))
         return FALSE;
     pthread_rwlock_wrlock(&dialog_lock);
     dialog_kind = kind;
     snprintf(dialog_title, sizeof(dialog_title), "%s", title);
     snprintf(dialog_text, sizeof(dialog_text), "%s", text);
+    snprintf(dialog_yes, sizeof(dialog_yes), "%s", yes);
+    snprintf(dialog_extra, sizeof(dialog_extra), "%s", extra);
     pthread_rwlock_unlock(&dialog_lock);
     set_state(&dialog_state, DIALOG_REQUESTED);
     return TRUE;
+}
+
+static BOOL queue_dialog(int kind, const char *title, const char *text)
+{
+    return queue_choice(kind, title, text, "", "");
 }
 
 /* Records (dialog properties and widget updates) have their own init, set
@@ -463,9 +473,10 @@ static BOOL show_dialog(void *manager)
     pthread_rwlock_unlock(&dialog_lock);
     GAME_FUNCTION(fourcc_function, SQUAD_MENU_VALUE_FOURCC)(value, DIALOG_YES);
     set_record_value(record, SKIN_ID('a','c','t','e'), value);
-    GAME_FUNCTION(fourcc_function, SQUAD_MENU_VALUE_FOURCC)(value, DIALOG_NO);
+    /* A choice's No button becomes its middle answer (choice_buttons). */
+    GAME_FUNCTION(fourcc_function, SQUAD_MENU_VALUE_FOURCC)(value, dialog_kind == 4 ? DIALOG_EXTRA : DIALOG_NO);
     set_record_value(record, SKIN_ID('n','o','e','t'), value);
-    GAME_FUNCTION(float_value_function, DIALOG_VALUE_FLOAT)(value, 520.0f);
+    GAME_FUNCTION(float_value_function, DIALOG_VALUE_FLOAT)(value, dialog_kind == 4 ? 600.0f : 520.0f);
     set_record_value(record, SKIN_ID('w','i','d','t'), value);
     GAME_FUNCTION(float_value_function, DIALOG_VALUE_FLOAT)(value, 250.0f);
     set_record_value(record, SKIN_ID('h','e','i','g'), value);
@@ -546,7 +557,38 @@ static BOOL make_ok_dialog(void *manager, const char *label)
     return TRUE;
 }
 
+/* An open choice: Yes and No relabelled with its two answers (No posts
+   DIALOG_EXTRA), and FM24's hidden Cancel button shown as No. FM24 closes
+   the dialog on Cancel without an event for RegenerateFM, so dialog_tick
+   counts a choice that disappears as No. */
+static BOOL choice_buttons(void *manager)
+{
+    if (get_state(&dialog_state) != DIALOG_SHOWN || !dialog_object) return FALSE;
+    unsigned char *dialog = find_widget(manager, 0, 0, dialog_object);
+    unsigned char *yes = dialog ? find_widget_under(manager, dialog, SKIN_ID('y','e','s',' '), 0, NULL) : NULL;
+    unsigned char *no = dialog ? find_widget_under(manager, dialog, SKIN_ID('n','o',' ',' '), 0, NULL) : NULL;
+    unsigned char *cancel = dialog ? find_widget_under(manager, dialog, SKIN_ID('c','a','n','c'), 0, NULL) : NULL;
+    if (!yes || !no || !cancel) return FALSE;
+    unsigned char record[256] __attribute__((aligned(16))) = {0};
+    unsigned char value[64] __attribute__((aligned(16))) = {0};
+    pthread_rwlock_rdlock(&dialog_lock);
+    GAME_FUNCTION(value_function, DIALOG_RECORD_INIT)(record);
+    set_text(record, SKIN_ID('t','e','x','t'), dialog_yes);
+    apply_record(yes, record);
+    GAME_FUNCTION(value_function, DIALOG_RECORD_INIT)(record);
+    set_text(record, SKIN_ID('t','e','x','t'), dialog_extra);
+    apply_record(no, record);
+    pthread_rwlock_unlock(&dialog_lock);
+    GAME_FUNCTION(value_function, DIALOG_RECORD_INIT)(record);
+    GAME_FUNCTION(bool_function, RELOAD_VALUE_BOOL)(value, 0);
+    set_record_value(record, SKIN_ID('h','i','d','n'), value);
+    set_text(record, SKIN_ID('t','e','x','t'), "No");
+    apply_record(cancel, record);
+    return TRUE;
+}
+
 static int ok_dialog_tries;
+static unsigned long long choice_checked_at;
 
 static BOOL apply_progress(void *manager)
 {
@@ -572,12 +614,30 @@ static BOOL apply_progress(void *manager)
 static BOOL dialog_tick(void *manager, unsigned int id)
 {
     int state = get_state(&dialog_state);
-    if (id == DIALOG_YES || id == DIALOG_NO) {
+    if (id == DIALOG_YES || id == DIALOG_NO || id == DIALOG_EXTRA) {
         if (state == DIALOG_SHOWN) {
-            set_state(&dialog_state, id == DIALOG_YES ? DIALOG_ANSWER_YES : DIALOG_ANSWER_NO);
-            log_line(id == DIALOG_YES ? "REGENERATEFM24_DIALOG_YES" : "REGENERATEFM24_DIALOG_NO");
+            set_state(&dialog_state, id == DIALOG_YES ? DIALOG_ANSWER_YES : id == DIALOG_EXTRA ? DIALOG_ANSWER_EXTRA : DIALOG_ANSWER_NO);
+            log_line(id == DIALOG_YES ? "REGENERATEFM24_DIALOG_YES" : id == DIALOG_EXTRA ? "REGENERATEFM24_DIALOG_EXTRA"
+                                                                                  : "REGENERATEFM24_DIALOG_NO");
         }
         return TRUE;
+    }
+    if (state == DIALOG_SHOWN && dialog_kind == 4 && id == IDLE_EVENT) {
+        if (ok_dialog_tries > 0) {
+            if (choice_buttons(manager)) {
+                ok_dialog_tries = 0;
+                log_line("REGENERATEFM24_DIALOG_CHOICE_BUTTONS");
+            } else if (!--ok_dialog_tries) {
+                log_line("REGENERATEFM24_DIALOG_CHOICE_BUTTONS_NOT_FOUND");
+            }
+        } else if (tick_ms() - choice_checked_at >= 250) {
+            choice_checked_at = tick_ms();
+            if (!find_widget(manager, 0, 0, dialog_object)) {
+                set_state(&dialog_state, DIALOG_ANSWER_NO);
+                log_line("REGENERATEFM24_DIALOG_CANCELLED");
+            }
+        }
+        return FALSE;
     }
     int reload = get_state(&reload_state);
     if (get_state(&progress_state) == PROGRESS_REQUESTED && id == IDLE_EVENT && reload != RELOAD_RUNNING) {
@@ -625,8 +685,8 @@ static void popup_opened(void *manager, void *event);
 
 static int native_event(void *object, unsigned int id, void *event)
 {
-    if (id != PROFILE_EVENT && id != SQUAD_EVENT && id != UPDATE_ITEM) {
-        if ((id == DIALOG_YES || id == DIALOG_NO) && dialog_tick(object, id)) return 1;
+    if (id != PROFILE_EVENT && id != SQUAD_EVENT && id != STAFF_EVENT && id != UPDATE_ITEM) {
+        if ((id == DIALOG_YES || id == DIALOG_NO || id == DIALOG_EXTRA) && dialog_tick(object, id)) return 1;
         if (id == MENU_OPEN) popup_opened(object, event);
         int result = original_event(object, id, event);
         if (id == IDLE_EVENT || id == SKIN_EVENT || id == STAGE_EVENT) reload_tick(object, id);
@@ -852,7 +912,10 @@ static BOOL tab_button(unsigned char *object)
 
 /* A team's tab menu whose rows include its Squad view (TeSq), or another
    club's Players tab (All Players, Capl; see regeneratefm24.c): RegenerateFM
-   appends "Generate missing squad faces…" (FMFS) unless it has it already. */
+   appends "Generate missing squad faces…" (FMFS) unless it has it already.
+   A Staff screen's tab menu (your club's Overview, Memb, or another club's
+   Staff tab, tcST) lists its All view (tcsp) and gets "Generate missing staff
+   faces…" (FMFT). */
 static void add_squad_rows(unsigned char **children, int count)
 {
     unsigned char *root, *rows[MAX_POPUP_ROWS];
@@ -861,17 +924,19 @@ static void add_squad_rows(unsigned char **children, int count)
         if (!tab_button(children[i]) || !read_game(children[i] + WIDGET_ID, &skin_id, sizeof(skin_id)))
             continue;
         int rows_count = popup_rows(children[i], skin_id, &root, rows);
-        BOOL squad = FALSE, present = FALSE;
+        BOOL squad = FALSE, staff = FALSE, present = FALSE;
         for (int j = 0; j < rows_count; ++j) {
             unsigned int id = item_fourcc(rows[j], SKIN_ID('i','d',' ',' '));
             /* Its Squad view, or (another club's Players tab, whose rows are its
                teams) All Players. */
             squad |= id == SKIN_ID('T','e','S','q') || id == SKIN_ID('C','a','p','l');
-            present |= id == SQUAD_EVENT;
+            staff |= id == SKIN_ID('t','c','s','p');
+            present |= id == SQUAD_EVENT || id == STAFF_EVENT;
         }
-        if (squad && !present && rows_count < MAX_POPUP_ROWS) {
-            add_menu_row(root, SQUAD_EVENT, "Generate missing squad faces\xe2\x80\xa6");
-            log_line("REGENERATEFM24_TEAM_MENU_ADDED");
+        if ((squad || staff) && !present && rows_count < MAX_POPUP_ROWS) {
+            if (squad) add_menu_row(root, SQUAD_EVENT, "Generate missing squad faces\xe2\x80\xa6");
+            else add_menu_row(root, STAFF_EVENT, "Generate missing staff faces\xe2\x80\xa6");
+            log_line(squad ? "REGENERATEFM24_TEAM_MENU_ADDED" : "REGENERATEFM24_STAFF_MENU_ADDED");
         }
     }
 }
@@ -997,7 +1062,7 @@ static void *bridge_worker(void *unused)
                 continue;
             }
         } else {
-            log_line("REGENERATEFM24_SQUAD_CLICK");
+            log_line(id == STAFF_EVENT ? "REGENERATEFM24_STAFF_CLICK" : "REGENERATEFM24_SQUAD_CLICK");
         }
         if (socket_fd < 0) socket_fd = open_bridge();
         if (socket_fd < 0) {
@@ -1009,7 +1074,7 @@ static void *bridge_worker(void *unused)
         char packet[320];
         int count = snprintf(packet, sizeof(packet), "REGENERATEFM24 5 %llu %d %s %lld %s %s",
                              (unsigned long long)bridge_instance, serial,
-                             id == SQUAD_EVENT ? "squad" : item == UPDATE_ITEM ? "update" : "profile",
+                             id == SQUAD_EVENT ? "squad" : id == STAFF_EVENT ? "staff" : item == UPDATE_ITEM ? "update" : "profile",
                              click_ms, who, bridge_token);
         int result = exchange(socket_fd, packet, count, serial);
         if (result == REPLY_ACCEPTED) { log_line("REGENERATEFM24_CLICK_ACCEPTED"); continue; }
@@ -1116,6 +1181,7 @@ static void *reload_listener(void *unused)
     log_line("REGENERATEFM24_RELOAD_READY");
     long long last = 0, last_dialog = 0, last_progress = 0, last_key = 0;
     static char packet[4096], title_b64[400], text_b64[1500], title[256], text[1024];
+    static char yes_b64[200], more_b64[200], yes_label[96], more_label[96];
     for (;;) {
         char token[160], kind[16], extra;
         long long serial;
@@ -1127,14 +1193,22 @@ static void *reload_listener(void *unused)
         const char *status;
         char reply[64];
         int count;
-        if (sscanf(packet, "REGENERATEFM24D 1 %lld %159s %15s %399s %1499s %c", &serial, token, kind,
-                   title_b64, text_b64, &extra) == 5) {
-            if (serial <= 0 || strcmp(token, bridge_token) || (strcmp(kind, "confirm") && strcmp(kind, "message") && strcmp(kind, "progress")) ||
+        /* Version 2 is a choice: a question whose Yes and No carry the two
+           base64 answer labels, and a No beside them (choice_buttons). */
+        BOOL choice = sscanf(packet, "REGENERATEFM24D 2 %lld %159s %15s %399s %1499s %199s %199s %c", &serial, token, kind,
+                             title_b64, text_b64, yes_b64, more_b64, &extra) == 7;
+        if (choice || sscanf(packet, "REGENERATEFM24D 1 %lld %159s %15s %399s %1499s %c", &serial, token, kind,
+                             title_b64, text_b64, &extra) == 5) {
+            if (serial <= 0 || strcmp(token, bridge_token) ||
+                (choice ? strcmp(kind, "choice") || !base64_text(yes_b64, yes_label, sizeof(yes_label)) ||
+                          !base64_text(more_b64, more_label, sizeof(more_label))
+                        : strcmp(kind, "confirm") && strcmp(kind, "message") && strcmp(kind, "progress")) ||
                 !base64_text(title_b64, title, sizeof(title)) || !base64_text(text_b64, text, sizeof(text)))
                 continue;
             int state = get_state(&dialog_state);
             if (serial > last_dialog) {
-                if (!queue_dialog(!strcmp(kind, "confirm") ? 1 : !strcmp(kind, "progress") ? 3 : 2, title, text)) {
+                if (!(choice ? queue_choice(4, title, text, yes_label, more_label)
+                             : queue_dialog(!strcmp(kind, "confirm") ? 1 : !strcmp(kind, "progress") ? 3 : 2, title, text))) {
                     status = "busy";
                 } else {
                     last_dialog = serial;
@@ -1143,7 +1217,7 @@ static void *reload_listener(void *unused)
                 }
             } else if (serial == last_dialog) {
                 status = state == DIALOG_SHOWN ? "shown" : state == DIALOG_ANSWER_YES ? "yes" :
-                         state == DIALOG_ANSWER_NO ? "no" : state == DIALOG_FAILED ? "failed" :
+                         state == DIALOG_ANSWER_NO ? "no" : state == DIALOG_ANSWER_EXTRA ? "extra" : state == DIALOG_FAILED ? "failed" :
                          state == DIALOG_CLOSED ? "closed" : "queued";
             } else {
                 continue;

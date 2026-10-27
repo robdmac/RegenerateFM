@@ -22,6 +22,7 @@ namespace RegenerateFM.Desktop.FM24.Bridge
     {
         public const int MaxTitle = 250;
         public const int MaxText = 1000;
+        public const int MaxLabel = 90;
 
         private static long Serial() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
@@ -70,6 +71,12 @@ namespace RegenerateFM.Desktop.FM24.Bridge
             Encoding.ASCII.GetBytes("REGENERATEFM24D 1 " + serial + " " + token + " " + kind + " " +
                                     Encode(title, MaxTitle, "dialog") + " " + Encode(text, MaxText, "dialog"));
 
+        // A choice: version 2 of the dialog request, with its two answers' labels.
+        private static byte[] ChoicePacket(long serial, string token, string title, string text, string yes, string extra) =>
+            Encoding.ASCII.GetBytes("REGENERATEFM24D 2 " + serial + " " + token + " choice " +
+                                    Encode(title, MaxTitle, "dialog") + " " + Encode(text, MaxText, "dialog") + " " +
+                                    Encode(yes, MaxLabel, "button") + " " + Encode(extra, MaxLabel, "button"));
+
         // Shows a dialog in FM24 and returns "yes", "no" or "shown". "confirm"
         // (Yes/No) waits for the answer, up to ``timeout`` seconds (forever when
         // null); "message" (OK) returns "shown" once it is on screen.
@@ -80,7 +87,22 @@ namespace RegenerateFM.Desktop.FM24.Bridge
             if (kind != "confirm" && kind != "message" && kind != "progress")
                 throw new ArgumentException("Unknown FM24 dialog kind.");
             long number = serial ?? Serial();
-            var packet = DialogPacket(number, token, kind, title, text);
+            return Await(port, number, kind, DialogPacket(number, token, kind, title, text), timeout);
+        }
+
+        // Asks a question in FM24 with two answers and No: "yes" for the first
+        // answer (``yes``, the button labelled so), "extra" for the second and
+        // "no", waiting up to ``timeout`` seconds (forever when null).
+        // DialogUnavailableException when FM24 cannot show it.
+        public static string ShowChoice(int port, string token, string title, string text, string yes, string extra,
+                                        double? timeout = null, long? serial = null)
+        {
+            long number = serial ?? Serial();
+            return Await(port, number, "choice", ChoicePacket(number, token, title, text, yes, extra), timeout);
+        }
+
+        private static string Await(int port, long number, string kind, byte[] packet, double? timeout)
+        {
             string prefix = "REGENERATEFM24D " + number + " ";
             bool replied = false, shown = false;
             var clock = Stopwatch.StartNew();
@@ -101,11 +123,11 @@ namespace RegenerateFM.Desktop.FM24.Bridge
                 string status = reply.Substring(prefix.Length);
                 if (status == "busy" || status == "failed")
                     throw new DialogUnavailableException("FM24 could not show the dialog (" + status + ").");
-                if (status == "yes" || status == "no")
+                if (status == "yes" || status == "no" || (kind == "choice" && status == "extra"))
                     return status;
                 if (status == "shown")
                 {
-                    if (kind != "confirm")
+                    if (kind != "confirm" && kind != "choice")
                         return status;
                     shown = true;
                 }

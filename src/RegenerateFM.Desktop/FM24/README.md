@@ -3,8 +3,9 @@
 RegenerateFM for FM24 works inside the game through the [native DLL](../../../native/fm24/README.md), which is pinned to the tested FM24 24.4.2 executable on Steam/Proton.
 - A player or staff profile's **Overview** tab menu ends with **Generate new face** and **Update face**, with any skin. With the optional RegenerateFM skin, clicking the portrait gives FM24's own popup with the same two items.
 - The Squad screen's **Overview** menu ends with **Generate missing squad faces…**. A reserve or youth team's tab menu in the Development Center (and another club's Players menu) ends with it too.
+- The Staff screen's **Overview** menu (another club's **Staff** menu) ends with **Generate missing staff faces…**.
 
-The companion, `regeneratefm-fm24` (this folder: `src/RegenerateFM.Desktop`), reads everything from FM24's memory: the open profile, the biography FM24 is showing, and every Squad row. It makes the image request with the generator FM26's plugin uses (`src/RegenerateFM.Core`), writes a versioned portrait and reloads the skin inside the game. Progress, the squad confirmation, results and errors appear in FM24's own dialogs. There is no X11 code, no screenshots or OCR, and no browser.
+The companion, `regeneratefm-fm24` (this folder: `src/RegenerateFM.Desktop`), reads everything from FM24's memory: the open profile, the biography FM24 is showing, every Squad row, and a club's staff and players. It makes the image request with the generator FM26's plugin uses (`src/RegenerateFM.Core`), writes a versioned portrait and reloads the skin inside the game. Progress, the squad confirmation, results and errors appear in FM24's own dialogs. There is no X11 code, no screenshots or OCR, and no browser.
 
 Versioned filenames matter: FM24 kept showing the old portrait when the same filename was overwritten.
 
@@ -107,7 +108,10 @@ The packaged companion runs whenever FM24 does. From source, leave the companion
   - It reads every row from memory, including rows FM24 hasn't drawn, and asks in an FM24 dialog before any request. The dialog names the team most of the players play for.
   - Players FM24 lists as **Scouting Required** with no age or ability (players of leagues it hasn't fully loaded, such as Inter Miami II's 11 of 23 and all of the IMCF Academy on the test save) are left out and counted in the dialog: FM24 keeps only a brief record for them, without the age, nationality or attributes a prompt needs.
   - Player-coaches are left out and counted too: FM24 keeps their player details outside the record the list reads, so make theirs from their own profile. A list with no players RegenerateFM can read (a Development Center overview that lists staff) says so and makes no request.
+  - If some of the club's staff have no face either, the dialog has three buttons: **Generate N faces** for the squad, **Include staff: N faces** for the squad and the staff, and **No**.
   - It then generates and reloads one face at a time. Choose **Stop after this face** to end after the current one.
+- **Generate missing staff faces…:** on your club's **Staff** screen, choose it from the **Overview** menu; for another club, from its **Staff** menu. It makes faces for everyone contracted to the club's teams as staff (board, coaches, medical and recruitment staff, the Under 18s' staff; player-coaches too), with the job FM24 lists for them, and offers **Include players: N faces** in the same way for the club's players (its youth teams' and those out on loan included). Your own manager is left out.
+  - The club's people come from FM24's person table (everyone at the club, in about 0.3 s on the Mac), so the staff list needn't be open.
 
 If FM24 can't show one of its dialogs, the message goes to the companion's log instead, and an unanswerable squad confirmation counts as Cancel.
 
@@ -117,6 +121,7 @@ To see the prompt with **no image API request or portrait write**, start the com
 
 Live checks on one Steam/Proton installation and save:
 - **Previews:** Generate, Update face and the squad command, run with every X11 entry point set to fail. No X11 calls were made.
+- **Staff (Mac, 2026-10-26, preview mode):** MK Dons' 30 staff (jobs from Chairperson to Sports Scientist, the Under 18s' too) and, with **Include players**, its 20 players without a face: 50 prompts. The squad command offering the 30 staff, and Chelsea's staff (86, every job named). The three-button dialog's answers, and No (FM24's Cancel), on the Mac. Women are described as women (Sue Dawson, a director; Caitlin O'Reilly, a physio) from a flag in their record.
 - **Billed single face:** a Generate through the portrait popup (Gabriel Pec, LA Galaxy); with the C# companion, a Generate (Lucas Meek, Inter Miami II) and an Update from FM24's bundled photo (Ryan Sailor).
 - **Billed squad batch:** two LA Galaxy faces, with Stop ending the run after the second face; with the C# companion and a stand-in image API, an Inter Miami II batch with Stop.
 

@@ -180,14 +180,19 @@ namespace RegenerateFM.Desktop.FM24.Memory
 
         // The start of FM24's vector of person pointers, indexed by handle (the
         // slot TableRecord finds with this handle's person), or null.
-        public static long? PeopleVector(GameProcess game, int handle)
+        public static long? PeopleVector(GameProcess game, int handle) => PeopleRange(game, handle)?.Begin;
+
+        // That vector's start and its number of entries, or null.
+        public static (long Begin, int Count)? PeopleRange(GameProcess game, int handle)
         {
             if (TableRecord(game, handle) == null)
                 return null;
             try
             {
                 long database = game.U64(game.ImageBase + game.Layout.PersonTableGlobal);
-                return game.U64(database + (game.PersonTableSlot ?? game.Layout.PersonTableSlot));
+                long slot = database + (game.PersonTableSlot ?? game.Layout.PersonTableSlot);
+                long begin = game.U64(slot), end = game.U64(slot + 8);
+                return (begin, (int)((end - begin) / 8));
             }
             catch (Exception error) when (People.Unreadable(error))
             {
@@ -297,7 +302,8 @@ namespace RegenerateFM.Desktop.FM24.Memory
 
         // The open screen's object reference: the sidebar menu's, which FM24
         // keeps after a skin reload, else the object browser's (exactly one).
-        public static uint ScreenReference(GameProcess game, long manager, Dictionary<int, List<long>> widgets)
+        // Without ``person``, the sidebar's reference to any kind of object.
+        public static uint ScreenReference(GameProcess game, long manager, Dictionary<int, List<long>> widgets, bool person = true)
         {
             long image = game.ImageBase;
             var sidebars = new List<long>();
@@ -308,6 +314,8 @@ namespace RegenerateFM.Desktop.FM24.Memory
             if (sidebars.Count == 1)
             {
                 uint reference = game.U32(sidebars[0] + game.Layout.SidebarReference);
+                if (!person && reference != 0)
+                    return reference;
                 try
                 {
                     Handle(reference);

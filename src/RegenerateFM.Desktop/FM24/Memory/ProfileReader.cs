@@ -21,9 +21,13 @@ namespace RegenerateFM.Desktop.FM24.Memory
     // before it can be used in a prompt. Nothing here writes to the game.
     public static class ProfileReader
     {
-        // FM24's database has only men: women's football arrived in FM26. The
-        // prompt gives facial hair only to a person said to be a man.
-        public const string Gender = "male";
+        // FM24 has no women's football, but its staff include women (directors,
+        // physios, scouts). A flag in the record says so; the prompt gives
+        // facial hair only to a person said to be a man.
+        public const int Female = 0x10;
+
+        public static string Gender(GameProcess game, long record) =>
+            (game.Read(record + game.Layout.PersonFlags, 1)[0] & Female) != 0 ? "female" : "male";
         // What the prompt calls a player with no club (a plain shirt).
         public const string FreeAgent = "Free agent";
 
@@ -420,6 +424,61 @@ namespace RegenerateFM.Desktop.FM24.Memory
             return TeamName(game, game.Pointer(contract + 0x10));
         }
 
+        // The club details (db::CLUB) of the team holding the person's contract,
+        // which all of a club's teams share.
+        public static long ContractClub(GameProcess game, long record)
+        {
+            long contract = game.Pointer(record + game.Layout.Contract);
+            if (contract == 0)
+                throw new NoContractException();
+            if (game.Pointer(contract + 8) != record - 12)
+                throw new MemoryUnavailableException("FM24 contract points to another person.");
+            long team = game.Pointer(contract + 0x10);
+            if (!Is(game, team, game.Layout.TeamVtable))
+                throw new MemoryUnavailableException("Invalid FM24 club object.");
+            long details = game.Pointer(team + 0x30);
+            if (!Is(game, details, game.Layout.ClubVtable))
+                throw new MemoryUnavailableException("FM24 club details do not match the club.");
+            return details;
+        }
+
+        // The staff member's job, from the code in their contract, or null for a
+        // code RegenerateFM doesn't know.
+        public static string ContractJob(GameProcess game, long record)
+        {
+            long contract = game.Pointer(record + game.Layout.Contract);
+            if (contract == 0 || game.Pointer(contract + 8) != record - 12)
+                return null;
+            return StaffReader.JobTitle(game.U16(contract + game.Layout.ContractJob));
+        }
+
+        // Prompt fields for a staff member read by record, as a list shows them:
+        // ``name`` and ``job`` as listed, the club holding their contract.
+        public static ProfileSnapshot StaffListProfile(GameProcess game, long record, string name, string job, DateTime today)
+        {
+            var raw = game.Read(record, 0x40);
+            uint number = BinaryPrimitives.ReadUInt32LittleEndian(raw);
+            if (!raw.AsSpan(0, 8).SequenceEqual(People.IdTwice(number)) || People.PersonKind(game, record, raw[16]) != "staff")
+                throw new MemoryUnavailableException("Not a validated FM24 staff record.");
+            DateTime birth;
+            try
+            {
+                birth = People.RecordDates(game, record, raw).Birth;
+            }
+            catch (InvalidDataException)
+            {
+                throw new MemoryUnavailableException("Invalid FM24 birth date.");
+            }
+            int age = today.Year - birth.Year - ((today.Month, today.Day).CompareTo((birth.Month, birth.Day)) < 0 ? 1 : 0);
+            if (age < 16 || age > 100)
+                throw new MemoryUnavailableException("Invalid FM24 staff age.");
+            return new ProfileSnapshot
+            {
+                Type = "staff", Gender = Gender(game, record), Name = name, Age = age, Nationality = Nation(game, record),
+                JobTitle = job ?? StaffReader.UnknownJob, Club = Club(game, record),
+            };
+        }
+
         // The club a player plays for now, so a loaned player wears the loan
         // club's kit. A player's record holds it: the loan club while on loan,
         // otherwise the contract club. Staff records leave it empty.
@@ -558,15 +617,15 @@ namespace RegenerateFM.Desktop.FM24.Memory
                 if (jobs.Count != 1 || jobs.First().Length == 0)
                     throw new MemoryUnavailableException("Could not verify the FM24 staff job title.");
                 if (identityOnly)
-                    return new ProfileSnapshot { Type = "staff", Gender = Gender, Name = identity.Name, Age = age, Club = club };
+                    return new ProfileSnapshot { Type = "staff", Gender = Gender(game, record), Name = identity.Name, Age = age, Club = club };
                 return new ProfileSnapshot
                 {
-                    Type = "staff", Gender = Gender, Name = identity.Name, Age = age, Nationality = nation,
+                    Type = "staff", Gender = Gender(game, record), Name = identity.Name, Age = age, Nationality = nation,
                     JobTitle = jobs.First(), Club = club,
                 };
             }
             if (identityOnly)
-                return new ProfileSnapshot { Type = "player", Gender = Gender, Name = identity.Name, Age = age, Club = playing };
+                return new ProfileSnapshot { Type = "player", Gender = Gender(game, record), Name = identity.Name, Age = age, Club = playing };
             var raw = game.Read(record + game.Layout.Attributes, 54);
             int heightCm = game.U16(record + game.Layout.Height);
             string rated = Position(game, record);
@@ -579,7 +638,7 @@ namespace RegenerateFM.Desktop.FM24.Memory
                 throw new MemoryUnavailableException("FM24 position ratings and title disagree.");
             var profile = new ProfileSnapshot
             {
-                Type = "player", Gender = Gender, Name = identity.Name, Age = age, Nationality = nation,
+                Type = "player", Gender = Gender(game, record), Name = identity.Name, Age = age, Nationality = nation,
                 Position = position, Club = playing, Height = Height(heightCm),
                 Physical = Attributes(raw, Physical), Mental = Attributes(raw, Mental),
             };
@@ -672,7 +731,7 @@ namespace RegenerateFM.Desktop.FM24.Memory
             string position = Position(game, record);
             var profile = new ProfileSnapshot
             {
-                Type = "player", Gender = Gender, Name = name, Age = age, Nationality = Nation(game, record),
+                Type = "player", Gender = Gender(game, record), Name = name, Age = age, Nationality = Nation(game, record),
                 Position = position, Club = PlayingClub(game, record, club), Height = Height(heightCm),
                 Physical = Attributes(ratings, Physical), Mental = Attributes(ratings, Mental),
             };

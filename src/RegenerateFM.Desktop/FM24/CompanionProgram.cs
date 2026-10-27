@@ -185,6 +185,7 @@ namespace RegenerateFM.Desktop.FM24
             var squad = new SquadBatch(companion);
             listener.Generate = companion.Generate;
             listener.Squad = () => squad.Run();
+            listener.Staff = () => squad.RunStaff();
             listener.HasFace = companion.FaceExists;
             listener.Resolve = companion.ResolveReference;
             listener.KeyReady = companion.EnsureKey;

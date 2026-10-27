@@ -70,6 +70,8 @@ namespace RegenerateFM.Desktop.FM24.Bridge
         public Func<string, string, FaceResult> Generate;
         // The squad command.
         public Action Squad;
+        // The staff command, for the club the screen shows.
+        public Action Staff;
         // Whether the person shown in FM24's portrait popup has a face (for its Update face row).
         public Func<string, bool> HasFace;
         // A Mac object browser reference's person ID; ``wait`` false while a menu opens.
@@ -190,7 +192,7 @@ namespace RegenerateFM.Desktop.FM24.Bridge
             string magic = fields[0], version = fields[1], pid = fields[2], serial = fields[3], action = fields[4],
                    clicked = fields[5], person = fields[6], key = fields[7];
             if (magic != "REGENERATEFM24" || version != "5" || !IsDecimal(pid) || !IsDecimal(serial) || !IsDecimal(clicked) ||
-                !PersonField(person) || (action != "profile" && action != "update" && action != "squad") || !TokenMatches(key))
+                !PersonField(person) || (action != "profile" && action != "update" && action != "squad" && action != "staff") || !TokenMatches(key))
                 return;
             long sequence = long.Parse(serial, CultureInfo.InvariantCulture);
             _lastReply.TryGetValue(pid, out var previous);
@@ -253,10 +255,10 @@ namespace RegenerateFM.Desktop.FM24.Bridge
         {
             try
             {
-                if (action == "squad")
+                if (action == "squad" || action == "staff")
                 {
                     // Roster, portrait state and prompts come from game memory.
-                    Squad?.Invoke();
+                    (action == "squad" ? Squad : Staff)?.Invoke();
                     return;
                 }
                 // The companion reads the open profile from memory and refuses the

@@ -246,7 +246,7 @@ namespace RegenerateFM.Tests
             var logged = new List<string>();
             var companion = new Companion { ReloadPort = dll.Port, Token = new string('t', 43), Log = logged.Add };
             var squad = new SquadBatch(companion) { Confirm = (_, _, text, _, _) => { asked = text; return "no"; } };
-            Assert.False(squad.ConfirmBatch(2, 5));
+            Assert.Equal("no", squad.ConfirmBatch(2, 5));
             Assert.Contains("2 of 5 squad players have no portrait", asked);
             squad.ConfirmBatch(2, 5, skipped: 1);
             Assert.Contains("1 player was left out because FM24 hasn't loaded their names", asked);
@@ -257,13 +257,13 @@ namespace RegenerateFM.Tests
             Assert.Contains("2 of the 22 Reading players read have no portrait", asked);
             Assert.Contains("1 player-coach was left out; make their faces from their own profiles.", asked);
             Assert.Contains("2 rows that aren't players RegenerateFM can read were left out.", asked);
-            Assert.False(squad.ConfirmBatch(0, 23, brief: 11, team: "Inter Miami II"));
+            Assert.Equal("no", squad.ConfirmBatch(0, 23, brief: 11, team: "Inter Miami II"));
             Assert.Contains("All 12 Inter Miami II players read already have portraits.", notices[0]);
             squad.Confirm = (_, _, _, _, _) => "yes";
-            Assert.True(squad.ConfirmBatch(2, 5));
+            Assert.Equal("yes", squad.ConfirmBatch(2, 5));
             // An unavailable dialog counts as Cancel.
             squad.Confirm = (_, _, _, _, _) => throw new DialogUnavailableException("busy");
-            Assert.False(squad.ConfirmBatch(2, 5));
+            Assert.Equal("no", squad.ConfirmBatch(2, 5));
             Assert.Contains("no image request was made", logged.Last());
         }
     }

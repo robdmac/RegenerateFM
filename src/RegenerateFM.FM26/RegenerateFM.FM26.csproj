@@ -31,6 +31,7 @@
     <Reference Include="UnityEngine.CoreModule" HintPath="$(GameDir)/BepInEx/interop/UnityEngine.CoreModule.dll" Private="false" />
     <Reference Include="UnityEngine.IMGUIModule" HintPath="$(GameDir)/BepInEx/interop/UnityEngine.IMGUIModule.dll" Private="false" />
     <Reference Include="UnityEngine.TextRenderingModule" HintPath="$(GameDir)/BepInEx/interop/UnityEngine.TextRenderingModule.dll" Private="false" />
+    <Reference Include="UnityEngine.InputLegacyModule" HintPath="$(GameDir)/BepInEx/interop/UnityEngine.InputLegacyModule.dll" Private="false" />
     <Reference Include="UnityEngine.UIElementsModule" HintPath="$(GameDir)/BepInEx/interop/UnityEngine.UIElementsModule.dll" Private="false" />
   </ItemGroup>
 </Project>

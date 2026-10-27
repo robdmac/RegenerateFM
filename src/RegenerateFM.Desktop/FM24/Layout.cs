@@ -29,6 +29,8 @@ namespace RegenerateFM.Desktop.FM24
         public int Nation;               // pointer to the nationality's nation object
         public int PlayingClub;          // pointer to the club played for now
         public int Contract;             // pointer to the contract
+        public int ContractJob;          // the contract's u16 job code (StaffReader.JobTitle)
+        public int PersonFlags;          // a byte whose 0x10 bit marks a woman (ProfileReader.Gender)
         public int Pointer;              // the size of record and object pointers read
         // The person object's class, from its vtable 12 bytes before the record.
         // Player-coaches keep no player ratings or attributes in the record, so
@@ -72,6 +74,8 @@ namespace RegenerateFM.Desktop.FM24
             Nation = 0x64,
             PlayingClub = -0x154,
             Contract = 0xBC,
+            ContractJob = 0x1C,
+            PersonFlags = 0x0D,  // as on the Mac, not yet checked on Windows
             Pointer = 4,  // Wine keeps them below 4 GB
             // MSVC RTTI names.
             PersonVtables = new Dictionary<long, string>
@@ -112,6 +116,10 @@ namespace RegenerateFM.Desktop.FM24
             Nation = -0x10C,
             PlayingClub = -0x28C,
             Contract = -0xB4,
+            ContractJob = 0x1C,
+            // In a 2026-10-26 MK Dons save: set for 181 staff, every one a woman
+            // (Karren Brady, Emma Hayes, Sue Dawson), and none of 4,018 men.
+            PersonFlags = 0x0D,
             Pointer = 8,
             // Itanium RTTI names. As on Windows, player-coaches are made as staff.
             PersonVtables = new Dictionary<long, string>
