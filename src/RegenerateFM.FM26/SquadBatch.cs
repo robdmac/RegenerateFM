@@ -442,6 +442,21 @@ namespace RegenerateFM.FM26
                 Math.Min(maxY, currentY + Math.Max(60f, scan.List.contentViewport.layout.height * 0.35f)));
         }
 
+        // A narrow squad list shortens a name to its initial ("B. Cotter", at
+        // 1024x768); the profile header has it in full ("Barry Cotter").
+        private static bool SameName(string listed, string full)
+        {
+            if (string.Equals(listed, full, StringComparison.OrdinalIgnoreCase))
+                return true;
+            int dot = listed.IndexOf(". ", StringComparison.Ordinal);
+            if (dot < 1 || dot > 3 || full == null)
+                return false;
+            string rest = listed.Substring(dot + 2);
+            return full.Length > rest.Length + 2 &&
+                   full.StartsWith(listed.Substring(0, 1), StringComparison.OrdinalIgnoreCase) &&
+                   full.EndsWith(" " + rest, StringComparison.OrdinalIgnoreCase);
+        }
+
         private static SquadCandidate ReadSquadCandidate(VisualElement row)
         {
             var name = FirstText(FindNamed(row, "NameButton"));
@@ -891,8 +906,7 @@ namespace RegenerateFM.FM26
                 // arrive; under Rosetta 2 on macOS that took more than 10 s.
                 return;
             }
-            if (!string.Equals(profile.Name, target.Name, StringComparison.OrdinalIgnoreCase) ||
-                (target.Age > 0 && profile.Age != target.Age))
+            if (!SameName(target.Name, profile.Name) || (target.Age > 0 && profile.Age != target.Age))
             {
                 if (System.DateTime.UtcNow - batch.StageStartedUtc < ProfileBindTimeout)
                     return;
