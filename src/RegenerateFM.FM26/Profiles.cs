@@ -56,7 +56,7 @@ namespace RegenerateFM.FM26
                     profile.Name = value;
                     break;
                 }
-            profile.Position = FirstText(FindNamed(banner, "Frame 1000003901"));
+            profile.Position = FirstText(FindNamed(banner, "Frame 1000003901")) ?? CompactPosition(banner);
             profile.Club = FirstText(FindNamed(header, "PlayingTeam"));
             profile.Gender = HeaderGender(header, playerId);
             profile.Relatives = HeaderRelatives(header, playerId);
@@ -69,7 +69,7 @@ namespace RegenerateFM.FM26
             if (string.IsNullOrWhiteSpace(profile.Club) &&
                 FirstText(FindNamed(header, "Frame 1000003767")) is string contract && Prompts.NoClub(contract))
                 profile.Club = contract.Trim();
-            profile.Nationality = FirstText(FindNamed(header, "Frame 1000003766"));
+            profile.Nationality = FirstText(FindNamed(header, "Frame 1000003766")) ?? CompactNation(header);
             foreach (var value in TextValues(banner))
             {
                 var match = AgePattern.Match(value);
@@ -134,11 +134,14 @@ namespace RegenerateFM.FM26
                 string.IsNullOrWhiteSpace(profile.Club) || string.IsNullOrWhiteSpace(profile.Nationality) ||
                 string.IsNullOrWhiteSpace(profile.Height) || profile.Age < 14 ||
                 profile.Technical.Count + profile.Mental.Count + profile.Goalkeeping.Count < 6)
+            {
+                Instance?.Log.LogWarning("Player header, for diagnosis: " + DescribeTexts(header));
                 throw new InvalidOperationException("Incomplete profile (no API request): " +
                     "name=" + profile.Name + ", age=" + profile.Age + ", nationality=" + profile.Nationality +
                     ", position=" + profile.Position + ", club=" + profile.Club + ", height=" + profile.Height +
                     ", physical=" + profile.Physical.Count + ", technical=" + profile.Technical.Count +
                     ", mental=" + profile.Mental.Count + ", goalkeeping=" + profile.Goalkeeping.Count + ".");
+            }
             profile.BiographyHeadline = CaptureBiographyHeadline(root);
             return profile;
         }
@@ -180,6 +183,46 @@ namespace RegenerateFM.FM26
                        "attributes are unknown. Scout them first, and once most are known, RegenerateFM can make " +
                        "their face. No image was requested.") { }
         }
+
+        // FM26 shows a compact profile header on a smaller screen (1381 points
+        // wide at 200% scaling, on Windows): its position is abbreviated ("M/AM
+        // (C)") and its nation is in another box ("USA").
+        private static readonly Dictionary<string, string> ShortPositions = new Dictionary<string, string>
+        {
+            ["GK"] = "Goalkeeper", ["D"] = "Defender", ["WB"] = "Wing-Back", ["DM"] = "Defensive Midfielder",
+            ["M"] = "Midfielder", ["AM"] = "Attacking Midfielder", ["ST"] = "Striker",
+        };
+
+        private static readonly Dictionary<char, string> ShortSides = new Dictionary<char, string>
+        {
+            ['R'] = "Right", ['L'] = "Left", ['C'] = "Centre",
+        };
+
+        private static string CompactPosition(VisualElement banner)
+        {
+            foreach (var value in TextValues(FindNamed(banner, "Frame 1000003800")))
+                if (ShortPositionPattern.IsMatch(value))
+                    return ExpandPosition(value);
+            return null;
+        }
+
+        // "M/AM (C)" as the full-size header writes it: "Midfielder (Centre), Attacking Midfielder (Centre)".
+        private static string ExpandPosition(string value)
+        {
+            var parts = new List<string>();
+            foreach (var group in value.Split(new[] { ", " }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                int open = group.IndexOf(" (", StringComparison.Ordinal);
+                string roles = open < 0 ? group : group.Substring(0, open);
+                string sides = open < 0 ? "" : string.Join(", ", group.Substring(open + 2).TrimEnd(')').Select(side => ShortSides[side]));
+                foreach (var role in roles.Split('/'))
+                    parts.Add(ShortPositions[role] + (sides.Length > 0 ? " (" + sides + ")" : ""));
+            }
+            return string.Join(", ", parts);
+        }
+
+        private static string CompactNation(VisualElement header) =>
+            FirstText(FindNamed(FindNamed(header, "Frame 1000003900"), "not-null"));
 
         private static ProfileSnapshot CaptureStaff(long personId, out VisualElement picture, out VisualElement root)
         {
@@ -226,20 +269,27 @@ namespace RegenerateFM.FM26
                     profile.JobTitle = bannerTexts[nameIndex + 1];
             }
             profile.JobTitle = FirstText(FindNamed(banner, "Frame 1000003901")) ?? profile.JobTitle;
-            // A staff header has no PlayingTeam: the club is the contract box's first text.
+            // A staff header has no PlayingTeam: the club is the contract box's
+            // first text (in the compact header, its ClubVisible text).
             var contract = FindNamed(header, "Frame 1000003767");
-            profile.Club = FirstText(FindNamed(header, "PlayingTeam")) ?? FirstText(contract);
+            var compact = FindNamed(header, "report-non-player-banner-min") is VisualElement min && min.worldBound.width > 0;
+            var club = FirstText(FindNamed(contract, "ClubVisible"));
+            profile.Club = FirstText(FindNamed(header, "PlayingTeam")) ?? club ?? (compact ? null : FirstText(contract));
             // The text under the name is the job ticked in Preferred Jobs (a Head
             // Performance Analyst can show Recruitment Analyst); the contract box
             // has the job at the club.
-            profile.JobTitle = FirstText(FindNamed(contract, "Frame 1000003768")) ?? profile.JobTitle;
-            // Its nation is shown twice, as a code by the age ("ENG") and in full ("England").
+            profile.JobTitle = FirstText(FindNamed(contract, "Frame 1000003768")) ??
+                               FirstText(FindNamed(contract, "Frame 1000003771")) ?? profile.JobTitle;
+            // Its nation is shown twice, as a code by the age ("ENG") and in full
+            // ("England"); the compact header has only the code.
             foreach (var nation in NamedElements(header, "Frame 1000003766"))
             {
                 var name = FirstText(nation);
                 if (!string.IsNullOrWhiteSpace(name) && (profile.Nationality == null || name.Length > profile.Nationality.Length))
                     profile.Nationality = name;
             }
+            if (compact)
+                profile.Nationality ??= FirstText(FindNamed(header, "NationCell_12px--unpacked"));
             foreach (var value in bannerTexts)
             {
                 var match = AgePattern.Match(value);
@@ -249,14 +299,17 @@ namespace RegenerateFM.FM26
                     break;
                 }
             }
-            if (string.IsNullOrWhiteSpace(profile.Nationality))
+            if (string.IsNullOrWhiteSpace(profile.Nationality) && !compact)
             {
                 var ageIndex = bannerTexts.FindIndex(value => AgePattern.IsMatch(value));
                 if (ageIndex > 0)
                     profile.Nationality = bannerTexts[ageIndex - 1];
             }
             if (string.IsNullOrWhiteSpace(profile.Name) || string.IsNullOrWhiteSpace(profile.JobTitle) ||
-                string.IsNullOrWhiteSpace(profile.Nationality) || profile.Age < 14 || profile.Age > 100 || picture == null)
+                string.IsNullOrWhiteSpace(profile.Nationality) || profile.Age < 14 || profile.Age > 100 || picture == null ||
+                // The compact header fills its boxes one by one: a club's staff
+                // member waits for the club.
+                compact && FindNamed(contract, "HasTeam") != null && profile.Club == null)
             {
                 Instance?.Log.LogWarning("Staff header, for diagnosis: " + DescribeTexts(banner));
                 throw new InvalidOperationException("Incomplete staff profile (no API request): name=" + profile.Name +

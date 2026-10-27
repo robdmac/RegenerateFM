@@ -103,6 +103,8 @@ namespace RegenerateFM.FM26
             public int NeedsScouting;
             // Staff whose names don't open a profile (an owner, for one).
             public readonly List<string> Unopened = new List<string>();
+            // Clicks on the current staff member's name so far.
+            public int StaffClicked;
             public System.DateTime NextStepUtc;
             public ListKind Kind => Queue[Index].Kind;
         }
@@ -738,6 +740,7 @@ namespace RegenerateFM.FM26
                     {
                         var kind = batch.Kind;
                         batch.Index++;
+                        batch.StaffClicked = 0;
                         if (batch.Index >= batch.Queue.Count)
                             StopSquadBatch("Finished: " + Faces(batch.Completed) + " generated." + ScoutingNote(batch));
                         else if (batch.Kind != kind)
@@ -806,7 +809,9 @@ namespace RegenerateFM.FM26
                     }
                     SetBatchStage(batch, SquadStage.AwaitProfile);
                     PointerClick(name);
-                    Log.LogInfo("Opened missing member of staff " + target.Name + " from the staff list");
+                    batch.StaffClicked++;
+                    Log.LogInfo("Opened missing member of staff " + target.Name + " from the staff list" +
+                                (batch.StaffClicked > 1 ? " (click " + batch.StaffClicked + ")" : ""));
                     return;
                 }
                 var button = FindNamed(row, "NameButton")?.TryCast<Button>();
@@ -853,6 +858,12 @@ namespace RegenerateFM.FM26
             {
                 // Not every name on the staff list is a link: clicking an owner's
                 // only selects the row.
+                if (target.Kind == ListKind.Staff && StaffScroll(CurrentRoot()) != null &&
+                    batch.StaffClicked < StaffClicks && System.DateTime.UtcNow - batch.StageStartedUtc > StaffClickAgain)
+                {
+                    SetBatchStage(batch, SquadStage.FindPlayer);
+                    return;
+                }
                 if (target.Kind == ListKind.Staff && StaffScroll(CurrentRoot()) != null &&
                     System.DateTime.UtcNow - batch.StageStartedUtc > StaffOpenWait)
                 {
