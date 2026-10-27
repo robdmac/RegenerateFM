@@ -203,7 +203,7 @@ namespace RegenerateFM.FM26
             {
                 if ((element.name ?? "").IndexOf("FrameActions", StringComparison.OrdinalIgnoreCase) >= 0)
                     namedAction = true;
-                if (element.worldBound.width < 250 && TextValues(element).Exists(value => value == "Actions"))
+                if (element.worldBound.width < 250 && TextValues(element).Exists(value => IsLabel(value, "Actions", ActionsLabel)))
                     staffAction = true;
                 if (element == header)
                     return namedAction;

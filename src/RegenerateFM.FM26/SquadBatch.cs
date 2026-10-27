@@ -132,6 +132,8 @@ namespace RegenerateFM.FM26
             var menuList = menuItem;
             while (menuList != null && menuList.name != "View")
                 menuList = menuList.parent;
+            // In another language: the dropdown that opens under SquadButton.
+            menuList ??= SquadDropdownList(root);
             if (menuList == null || menuList.worldBound.width < 100)
             {
                 // A closed dropdown is the usual case; only odd matches are logged.
@@ -325,6 +327,11 @@ namespace RegenerateFM.FM26
                     return expected;
             }
             var texts = TextValues(table.parent);
+            // In another language: the count under the team's name ("Kadergröße: 23"),
+            // its only number.
+            if (texts.Count > 1 && Regex.Matches(texts[1], @"\d+") is var numbers && numbers.Count == 1 &&
+                int.TryParse(numbers[0].Value, out int shown))
+                return shown;
             Log.LogWarning("Squad player count was not found near the table; texts: " +
                 string.Join(" | ", texts.GetRange(0, Math.Min(40, texts.Count))));
             return 0;
@@ -981,13 +988,16 @@ namespace RegenerateFM.FM26
             var nav = FindText(root, "First Team");
             while (nav != null && FindText(nav, "Overview") == null)
                 nav = nav.parent;
+            var firstTeam = nav == null ? null : FindText(nav, "First Team");
+            if (nav == null)
+                (nav, firstTeam) = SquadTabs(root);
             if (nav == null)
                 return;
             // English clubs label youth tabs by age ("Under 21s" for "Arsenal U21s").
             var age = Regex.Match(batch.ReturnTab ?? "", @"\bU(\d{2})s?$");
             var label = FindText(nav, batch.ReturnTab) ??
                         (age.Success ? FindText(nav, "Under " + age.Groups[1].Value + "s") : null) ??
-                        FindText(nav, "First Team");
+                        firstTeam;
             var button = label;
             while (button != null && button.TryCast<Button>() == null)
                 button = button.parent;
@@ -1024,7 +1034,7 @@ namespace RegenerateFM.FM26
                             " after " + batch.Queue[batch.Index].Name);
                 return;
             }
-            var label = FindText(CurrentRoot(), "Squad");
+            var label = FindText(CurrentRoot(), "Squad") ?? FindNamed(FindNamed(CurrentRoot(), "SquadButton"), "text");
             var button = label;
             while (button != null && button.TryCast<Button>() == null)
                 button = button.parent;

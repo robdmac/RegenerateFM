@@ -206,12 +206,12 @@ namespace RegenerateFM.FM26
                 return "no page is shown";
             if (kind == ListKind.Staff)
             {
-                if (top.name == "StaffReportCard" && FindText(top, "Staff") is VisualElement title)
+                if (top.name == "StaffReportCard" && FindLabel(top, "Staff", StaffTitle) is VisualElement title)
                 {
                     PointerClick(title);
                     return "opened the Staff Report's staff";
                 }
-                if (top.name == "ClubAllStaffTool" && FindText(top, "All Staff") is VisualElement tab && ClickButtonAbove(tab))
+                if (top.name == "ClubAllStaffTool" && FindLabel(top, "All Staff", AllStaffTab) is VisualElement tab && ClickButtonAbove(tab))
                     return "opened the All Staff tab";
                 // The Staff tile is ClubStaff, or at some clubs (Barnsley's)
                 // ClubAllStaffAI, a carousel whose shown page has the title.

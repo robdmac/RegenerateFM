@@ -79,6 +79,8 @@ namespace RegenerateFM.FM26
                     break;
                 }
             }
+            if (profile.Age == 0)
+                profile.Age = BoundAge(banner, out _);
             var attributes = FindNamed(root, "PlayerAttributesBlock");
             if (attributes == null || attributes.worldBound.width < 500)
                 throw new InvalidOperationException("The player Overview attribute panel is not visible.");
@@ -90,13 +92,17 @@ namespace RegenerateFM.FM26
                         profile.Position = value;
                         break;
                     }
+            // In another language the compact header's abbreviations are kept as shown.
+            if (string.IsNullOrWhiteSpace(profile.Position))
+                profile.Position = FirstText(FindNamed(banner, "Frame 1000003800"));
             for (int i = 0; i + 1 < texts.Count; i++)
-                if (texts[i] == "Height")
+                if (IsLabel(texts[i], "Height", HeightLabel))
                 {
                     profile.Height = texts[i + 1];
                     break;
                 }
             int shown = 0, unknown = 0;
+            List<(VisualElement Heading, string Section)> headings = null;
             foreach (var row in NamedElements(attributes, "attributes_row"))
             {
                 if (row.worldBound.width < 40 || row.worldBound.height < 10)
@@ -124,7 +130,17 @@ namespace RegenerateFM.FM26
                 else if (GoalkeepingNames.Contains(stat))
                     profile.Goalkeeping[stat] = number;
                 else if (!stat.Contains("Rating"))
-                    profile.Technical[stat] = number;
+                {
+                    // In another language the attribute is put under its column's heading.
+                    headings ??= AttributeHeadings(attributes);
+                    switch (AttributeSection(row, headings))
+                    {
+                        case "Physical": profile.Physical[stat] = number; break;
+                        case "Mental": profile.Mental[stat] = number; break;
+                        case "Goalkeeping": profile.Goalkeeping[stat] = number; break;
+                        default: profile.Technical[stat] = number; break;
+                    }
+                }
             }
             // Half or more not scouted is too little to describe them; otherwise the
             // known attributes are used.
@@ -299,9 +315,12 @@ namespace RegenerateFM.FM26
                     break;
                 }
             }
+            string ageText = null;
+            if (profile.Age == 0)
+                profile.Age = BoundAge(banner, out ageText);
             if (string.IsNullOrWhiteSpace(profile.Nationality) && !compact)
             {
-                var ageIndex = bannerTexts.FindIndex(value => AgePattern.IsMatch(value));
+                var ageIndex = bannerTexts.FindIndex(value => AgePattern.IsMatch(value) || value == ageText);
                 if (ageIndex > 0)
                     profile.Nationality = bannerTexts[ageIndex - 1];
             }
