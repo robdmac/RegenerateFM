@@ -213,7 +213,10 @@ namespace RegenerateFM.FM26
                 }
                 if (top.name == "ClubAllStaffTool" && FindText(top, "All Staff") is VisualElement tab && ClickButtonAbove(tab))
                     return "opened the All Staff tab";
-                if (top.name == "ClubSite" && FindNamed(FindNamed(top, "ClubStaff"), "title-text-alt") is VisualElement staff)
+                // The Staff tile is ClubStaff, or at some clubs (Barnsley's)
+                // ClubAllStaffAI, a carousel whose shown page has the title.
+                if (top.name == "ClubSite" && (FindNamed(FindNamed(top, "ClubStaff"), "title-text-alt") ??
+                                               FindNamed(FindNamed(top, "ClubAllStaffAI"), "title-text")) is VisualElement staff)
                 {
                     PointerClick(staff);
                     return "opened Club Site's Staff";

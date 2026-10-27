@@ -113,15 +113,29 @@ this one name the Python files of the time.
 - [ ] Windows: the companion's double-click setup and terminal key prompt,
   FM24 starting it, a face and a squad batch; FM26's plugin (copied by hand:
   delete `BepInEx/plugins/RegenerateFMHotReload` first).
-- [ ] FM26 staff faces on Windows/Proton (checked on the Mac, 2026-10-26, with
-  the image stand-in): **Generate faces…** on an All Staff list, each tick box
-  (counting the other list through Club Site), and a batch covering both.
-- [ ] FM24 staff faces on Windows/Proton (checked on the Mac, 2026-10-26): the
-  DLL's **Generate missing staff faces…** in the Staff screen's Overview
-  menu, the three-button choice (each answer, and No closing it), and the
-  Windows layout's guesses: a contract's job at +0x1C, a club object's index
-  at +8, the screen's club reference (type 3), and the record's woman flag
-  (0x10 in byte +0x0D: Karren Brady's prompt says she is a woman).
+- [x] FM26 staff faces on Windows/Proton (checked on the Mac, 2026-10-26, with
+  the image stand-in; on Linux/Proton 2026-10-27, also with the stand-in):
+  **Generate faces…** on MK Dons' All Staff list (25 faces, the 4 board
+  members skipped), each tick box (counting the other list through Club
+  Site), Stop, and a Barnsley batch covering both (4 players, then the staff
+  list: 19 faces, 8 board members skipped). Two fixes came from it: a staff
+  face now gives the job in the profile's contract box (Head Performance
+  Analyst), not the preferred job under the name (Recruitment Analyst); and
+  Club Site's Staff tile is also found when FM26 shows it as a carousel
+  (ClubAllStaffAI, at Barnsley), where the tick box had found no staff.
+- [x] FM24 staff faces on Windows/Proton (checked on the Mac, 2026-10-26; on
+  Linux/Proton 2026-10-27 with the DLL built from this source and the image
+  stand-in): the DLL's **Generate missing staff faces…** in the Staff
+  screen's Overview menu (Inter Miami: 29 of 31 staff and 11 of 40 players,
+  read in 1.2 s) and another club's Staff menu (Orlando City's 18), the
+  three-button choice (No, which closed it; Include players, 40 faces;
+  Generate 8 faces from Orlando City's Players menu, which offered its 18
+  staff), and the Windows layout's guesses, all right: a contract's job at
+  +0x1C (read with gdb as well: Technical Director 0x58, Director 0x06), a
+  club object's index at +8, the screen's club reference (type 3), and the
+  woman flag (only Meghan Cameron, a director, is described as a woman). It
+  found three jobs the table lacked: Owner (0x42), President (0x46), and a
+  Chief Doctor whose code has a high byte (0xE26); all are now named.
 - [ ] macOS: `dotnet publish -r osx-arm64`, `macos/make_installer.py` (the
   companion is signed with the allow-jit entitlement), the installer's FM24
   and FM26 install, update from the Python build and uninstall, the companion
