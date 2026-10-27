@@ -52,8 +52,8 @@ MACOS_NATIVE = {"BepInEx/core/libfunchook.dylib": "libfunchook.dylib",
                 "BepInEx/core/Il2CppInterop.Runtime.dll": "Il2CppInterop.Runtime.dll",
                 "BepInEx/core/Il2CppInterop.Common.dll": "Il2CppInterop.Common.dll"}
 # Tracked files left out of the release's source folder: the README's
-# recording, the to-do list and historical research.
-NOT_PUBLIC = ("docs/", "TODO.md", "native/fm24/research/")
+# recording and historical research.
+NOT_PUBLIC = ("docs/", "native/fm24/research/")
 
 
 def git_files() -> list[str]:
