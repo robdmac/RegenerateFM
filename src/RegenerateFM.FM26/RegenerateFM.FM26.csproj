@@ -14,6 +14,7 @@
   </Target>
   <ItemGroup>
     <Compile Include="../RegenerateFM.Core/**/*.cs" Exclude="../RegenerateFM.Core/obj/**;../RegenerateFM.Core/bin/**" LinkBase="Core" />
+    <EmbeddedResource Include="../RegenerateFM.Core/Translations/*.json" LogicalName="Translations/%(Filename)%(Extension)" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="BepInEx.Core" HintPath="$(GameDir)/BepInEx/core/BepInEx.Core.dll" Private="false" />

@@ -24,6 +24,22 @@ namespace RegenerateFM.FM26
                           PhysicalHeading = 4905, GoalkeepingHeading = 4909;
 
         private static readonly Dictionary<int, string> GameTexts = new Dictionary<int, string>();
+        private bool _languageUnreadable;
+
+        // RegenerateFM's own text follows FM26's interface language (Text).
+        internal void SyncLanguage()
+        {
+            try
+            {
+                Text.Language = TranslationManager.CurrentLanguage;
+            }
+            catch (Exception error)
+            {
+                if (!_languageUnreadable)
+                    Log.LogWarning("FM26's language could not be read: " + error.Message);
+                _languageUnreadable = true;
+            }
+        }
 
         // FM26's text for a label ID in the player's language, or null.
         internal static string GameText(int id)
@@ -42,6 +58,21 @@ namespace RegenerateFM.FM26
             }
             GameTexts[id] = text;
             return text;
+        }
+
+        // RegenerateFM's elements, with their text written right to left in
+        // Arabic: UI Toolkit's advanced text generator joins and orders its
+        // letters, as FM26 does for its own text. Applied to every element, as
+        // the generator style isn't inherited.
+        internal static VisualElement Directed(VisualElement element)
+        {
+            if (element == null || !Text.RightToLeft)
+                return element;
+            element.languageDirection = LanguageDirection.RTL;
+            element.style.unityTextGenerator = UnityEngine.TextGeneratorType.Advanced;
+            for (int i = 0; i < element.hierarchy.childCount; i++)
+                Directed(element.hierarchy.ElementAt(i));
+            return element;
         }
 
         // Whether a label's text is this English one or FM26's text for its ID.

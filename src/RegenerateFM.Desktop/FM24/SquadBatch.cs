@@ -51,7 +51,11 @@ namespace RegenerateFM.Desktop.FM24
         private void Notify(string text) =>
             Dll.Notify(_companion.ReloadPort != 0 ? _companion.ReloadPort : (int?)null, _companion.Token, text, Terminal);
 
-        private static string Count(int count, string one, string many) => count + " " + (count == 1 ? one : many);
+        // "Preview faces for the 3 missing players?"
+        private string ForMissing(int count, bool players) =>
+            _companion.PreviewOnly
+                ? players ? Text.T("Preview faces for the {0} missing players?", count) : Text.T("Preview faces for the {0} missing staff?", count)
+                : players ? Text.T("Generate faces for the {0} missing players?", count) : Text.T("Generate faces for the {0} missing staff?", count);
 
         // Asks in FM24's own dialog before any request. Without an answer from
         // FM24, nothing is generated: "yes" makes the list's ``missing`` faces,
@@ -64,34 +68,47 @@ namespace RegenerateFM.Desktop.FM24
         public string ConfirmBatch(int missing, int total, int skipped = 0, int brief = 0, int coaches = 0, int others = 0, string team = "",
                                    int otherMissing = 0, int otherTotal = 0, bool staff = false)
         {
-            string one = staff ? "member of staff" : "player", many = staff ? "members of staff" : "players";
-            string note = skipped == 0 ? ""
-                : staff ? " " + Count(skipped, one + " was", many + " were") + " left out because RegenerateFM couldn't read their names."
-                : " " + Count(skipped, one + " was", many + " were") + " left out because FM24 hasn't loaded their names; " +
-                  "scroll the list to them and run it again to include them.";
+            string note = "";
+            if (skipped > 0)
+                note += " " + (staff
+                    ? skipped == 1 ? Text.T("{0} member of staff was left out because RegenerateFM couldn't read their names.", skipped)
+                                   : Text.T("{0} members of staff were left out because RegenerateFM couldn't read their names.", skipped)
+                    : skipped == 1 ? Text.T("{0} player was left out because FM24 hasn't loaded their names; scroll the list to them and run it again to include them.", skipped)
+                                   : Text.T("{0} players were left out because FM24 hasn't loaded their names; scroll the list to them and run it again to include them.", skipped));
             if (brief > 0)
-                note += " " + Count(brief, "player", "players") + " FM24 lists without an age or ability (Scouting Required) " +
-                        (brief == 1 ? "was" : "were") + " left out; FM24 keeps too little about them to describe a face.";
+                note += " " + (brief == 1
+                    ? Text.T("{0} player FM24 lists without an age or ability (Scouting Required) was left out; FM24 keeps too little about them to describe a face.", brief)
+                    : Text.T("{0} players FM24 lists without an age or ability (Scouting Required) were left out; FM24 keeps too little about them to describe a face.", brief));
             if (coaches > 0)
-                note += " " + Count(coaches, "player-coach was", "player-coaches were") +
-                        (otherTotal > 0 ? " left out here and counted with the staff." : " left out; make their faces from their own profiles.");
+                note += " " + (otherTotal > 0
+                    ? coaches == 1 ? Text.T("{0} player-coach was left out here and counted with the staff.", coaches)
+                                   : Text.T("{0} player-coaches were left out here and counted with the staff.", coaches)
+                    : coaches == 1 ? Text.T("{0} player-coach was left out; make their faces from their own profiles.", coaches)
+                                   : Text.T("{0} player-coaches were left out; make their faces from their own profiles.", coaches));
             if (others > 0)
-                note += " " + Count(others, "row that isn", "rows that aren") + "'t " + (staff ? "staff" : others == 1 ? "a player" : "players") +
-                        " RegenerateFM can read " + (others == 1 ? "was" : "were") + " left out.";
+                note += " " + (staff
+                    ? others == 1 ? Text.T("{0} row that isn't staff RegenerateFM can read was left out.", others)
+                                  : Text.T("{0} rows that aren't staff RegenerateFM can read were left out.", others)
+                    : others == 1 ? Text.T("{0} row that isn't a player RegenerateFM can read was left out.", others)
+                                  : Text.T("{0} rows that aren't players RegenerateFM can read were left out.", others));
             int leftOut = skipped + brief + coaches + others;
-            string listed = (!string.IsNullOrEmpty(team) ? team + " " : staff ? "" : "squad ") + (staff ? "staff" : "players");
-            string other = staff ? "players" : "staff";
-            string otherText = otherMissing > 0 ? " " + otherMissing + " of the club's " + otherTotal + " " + other + " have none either." : "";
+            string listed = string.IsNullOrEmpty(team) ? staff ? Text.T("staff") : Text.T("squad players")
+                          : staff ? Text.T("{0} staff", team) : Text.T("{0} players", team);
+            // The club's other people: its players for the staff, its staff for a squad.
+            string otherText = otherMissing <= 0 ? ""
+                : " " + (staff ? Text.T("{0} of the club's {1} players have none either.", otherMissing, otherTotal)
+                               : Text.T("{0} of the club's {1} staff have none either.", otherMissing, otherTotal));
             if (missing == 0 && otherMissing == 0)
             {
-                string all = leftOut > 0 ? "All " + (total - leftOut) + " " + listed + " read already have portraits."
-                                         : "All " + total + " " + listed + " already have portraits.";
-                Notify(all + (otherTotal > 0 ? " So do the club's " + otherTotal + " " + other + "." : "") + note);
+                string all = leftOut > 0 ? Text.T("All {0} {1} read already have portraits.", total - leftOut, listed)
+                                         : Text.T("All {0} {1} already have portraits.", total, listed);
+                string also = otherTotal <= 0 ? ""
+                    : " " + (staff ? Text.T("So do the club's {0} players.", otherTotal) : Text.T("So do the club's {0} staff.", otherTotal));
+                Notify(all + also + note);
                 return "no";
             }
-            string action = _companion.PreviewOnly ? "Preview faces" : "Generate faces";
-            string verb = _companion.PreviewOnly ? "Preview " : "Generate ";
-            string bill = _companion.PreviewOnly ? "No API requests will be made in preview mode." : "Each face makes one billed API request.";
+            string title = _companion.PreviewOnly ? Text.T("Preview faces?") : Text.T("Generate faces?");
+            string bill = _companion.PreviewOnly ? Text.T("No API requests will be made in preview mode.") : Text.T("Each face makes one billed API request.");
             if (_companion.ReloadPort == 0)
             {
                 Terminal("The " + (staff ? "staff" : "squad") + " command needs the FM24 native DLL; no image request was made.");
@@ -99,23 +116,29 @@ namespace RegenerateFM.Desktop.FM24
             }
             try
             {
-                var confirm = Confirm ?? ((kind, title, text, _, timeout) => Dll.ShowDialog(_companion.ReloadPort, _companion.Token, kind, title, text, timeout));
-                var choose = Choose ?? ((title, text, yes, extra, timeout) => Dll.ShowChoice(_companion.ReloadPort, _companion.Token, title, text, yes, extra, timeout));
+                var confirm = Confirm ?? ((kind, heading, text, _, timeout) => Dll.ShowDialog(_companion.ReloadPort, _companion.Token, kind, heading, text, timeout));
+                var choose = Choose ?? ((heading, text, yesLabel, extraLabel, timeout) => Dll.ShowChoice(_companion.ReloadPort, _companion.Token, heading, text, yesLabel, extraLabel, timeout));
                 if (missing == 0)
                 {
                     // Only the club's other people are missing faces.
-                    string none = "All " + (total - leftOut) + " " + listed + (leftOut > 0 ? " read" : "") + " already have portraits, but " +
-                                  otherMissing + " of the club's " + otherTotal + " " + other + " have none.";
-                    return confirm("confirm", action + "?", none + " " + action + " for the " + otherMissing + " missing " + other + "? " + bill + note,
+                    string none = leftOut > 0
+                        ? staff ? Text.T("All {0} {1} read already have portraits, but {2} of the club's {3} players have none.", total - leftOut, listed, otherMissing, otherTotal)
+                                : Text.T("All {0} {1} read already have portraits, but {2} of the club's {3} staff have none.", total - leftOut, listed, otherMissing, otherTotal)
+                        : staff ? Text.T("All {0} {1} already have portraits, but {2} of the club's {3} players have none.", total - leftOut, listed, otherMissing, otherTotal)
+                                : Text.T("All {0} {1} already have portraits, but {2} of the club's {3} staff have none.", total - leftOut, listed, otherMissing, otherTotal);
+                    return confirm("confirm", title, none + " " + ForMissing(otherMissing, players: staff) + " " + bill + note,
                                    null, 600) == "yes" ? "extra" : "no";
                 }
-                string counted = leftOut == 0 ? missing + " of " + total + " " + listed + " have no portrait."
-                                              : missing + " of the " + (total - leftOut) + " " + listed + " read have no portrait.";
+                string counted = leftOut == 0 ? Text.T("{0} of {1} {2} have no portrait.", missing, total, listed)
+                                              : Text.T("{0} of the {1} {2} read have no portrait.", missing, total - leftOut, listed);
                 if (otherMissing == 0)
-                    return confirm("confirm", action + "?", counted + " " + action + " for the " + missing + " missing " + (staff ? "staff" : "players") + "? " +
+                    return confirm("confirm", title, counted + " " + ForMissing(missing, players: !staff) + " " +
                                    bill + note, null, 600) == "yes" ? "yes" : "no";
-                string answer = choose(action + "?", counted + otherText + " " + bill + note, verb + missing + (missing == 1 ? " face" : " faces"),
-                                       "Include " + other + ": " + (missing + otherMissing) + " faces", 600);
+                string yes = _companion.PreviewOnly
+                    ? missing == 1 ? Text.T("Preview {0} face", missing) : Text.T("Preview {0} faces", missing)
+                    : missing == 1 ? Text.T("Generate {0} face", missing) : Text.T("Generate {0} faces", missing);
+                string extra = staff ? Text.T("Include players: {0} faces", missing + otherMissing) : Text.T("Include staff: {0} faces", missing + otherMissing);
+                string answer = choose(title, counted + otherText + " " + bill + note, yes, extra, 600);
                 return answer == "yes" || answer == "extra" ? answer : "no";
             }
             catch (TimeoutException)
@@ -139,6 +162,9 @@ namespace RegenerateFM.Desktop.FM24
             else
                 Notify(text);
         }
+
+        private static string Stopped(bool staff, string reason) =>
+            staff ? Text.T("Staff faces stopped: {0}", reason) : Text.T("Squad faces stopped: {0}", reason);
 
         // The squad command: reads the roster, portrait state and every prompt
         // from FM24's memory, then generates without opening any profile.
@@ -203,13 +229,17 @@ namespace RegenerateFM.Desktop.FM24
                     _companion.Log("No OpenAI key was saved; no image request was made.");
                     return;
                 }
-                string action = _companion.PreviewOnly ? "Previewing" : "Generating";
+                string Working(string name, int at) =>
+                    _companion.PreviewOnly ? Text.T("Previewing {0} ({1}/{2})", name, at, queue.Count) : Text.T("Generating {0} ({1}/{2})", name, at, queue.Count);
                 if (_companion.ReloadPort == 0)
                     throw new InvalidOperationException("the " + list + " command needs the FM24 native DLL");
-                string faces = queue.All(row => row.Staff) ? "staff faces" : queue.Any(row => row.Staff) ? "faces" : "squad faces";
-                string first = action + " " + queue[0].Name + " (1/" + queue.Count + ")";
+                // Staff faces only, players' only, or both.
+                int kind = queue.All(row => row.Staff) ? 0 : queue.Any(row => row.Staff) ? 1 : 2;
+                string first = Working(queue[0].Name, 1);
                 dialog = StartProgress != null ? StartProgress(first)
-                                               : new Dll.Progress(_companion.ReloadPort, _companion.Token, "RegenerateFM " + faces, first);
+                    : new Dll.Progress(_companion.ReloadPort, _companion.Token,
+                                       kind == 0 ? Text.T("RegenerateFM staff faces") : kind == 1 ? Text.T("RegenerateFM faces") : Text.T("RegenerateFM squad faces"),
+                                       first);
                 int completed = 0;
                 for (int index = 0; index < queue.Count; index++)
                 {
@@ -217,28 +247,34 @@ namespace RegenerateFM.Desktop.FM24
                     if (dialog.Stopped.IsSet)
                     {
                         _companion.Log("FM24 " + list + " batch stopped after " + completed + " faces.");
-                        Finish(dialog, "Stopped after " + completed + " of " + queue.Count + " " + faces + ".");
+                        Finish(dialog, kind == 0 ? Text.T("Stopped after {0} of {1} staff faces.", completed, queue.Count)
+                                       : kind == 1 ? Text.T("Stopped after {0} of {1} faces.", completed, queue.Count)
+                                       : Text.T("Stopped after {0} of {1} squad faces.", completed, queue.Count));
                         dialog = null;
                         return;
                     }
-                    dialog.Update(action + " " + row.Name + " (" + (index + 1) + "/" + queue.Count + ")");
+                    dialog.Update(Working(row.Name, index + 1));
                     // Read again just before the request: the record must still be this person.
                     var profile = Profile(row);
                     var result = (Generate ?? _companion.GenerateForProfile)(row.PersonId, profile);
                     _companion.Log(result.Describe());
                     if (!result.Ok || result.PlayerId != row.PersonId)
-                        throw new InvalidOperationException("Generation stopped at " + row.Name + ": " + (result.Error ?? "person mismatch"));
+                        throw new InvalidOperationException(Text.T("Generation stopped at {0}: {1}", row.Name, result.Error ?? Text.T("person mismatch")));
                     if (!_companion.PreviewOnly && !result.Refreshed)
-                        throw new InvalidOperationException("Generation stopped after saving " + row.Name + ": " + (result.Warning ?? "FM24 reload failed"));
+                        throw new InvalidOperationException(Text.T("Generation stopped after saving {0}: {1}", row.Name, result.Warning ?? Text.T("FM24 reload failed")));
                     completed++;
-                    dialog.Update("Loaded " + row.Name + " (" + completed + "/" + queue.Count + ")");
+                    dialog.Update(Text.T("Loaded {0} ({1}/{2})", row.Name, completed, queue.Count));
                     _companion.Log("FM24 " + list + " batch: " + completed + "/" + queue.Count + " " + row.Name);
                     // A short gap to stop before the next billed request.
                     if (index + 1 < queue.Count && !_companion.PreviewOnly)
                         for (int i = 0; i < 10 && !dialog.Stopped.IsSet; i++)
                             Thread.Sleep(Gap);
                 }
-                Finish(dialog, (_companion.PreviewOnly ? "Previewed " : "Generated ") + completed + " " + faces + ".");
+                Finish(dialog, _companion.PreviewOnly
+                    ? kind == 0 ? Text.T("Previewed {0} staff faces.", completed) : kind == 1 ? Text.T("Previewed {0} faces.", completed)
+                                : Text.T("Previewed {0} squad faces.", completed)
+                    : kind == 0 ? Text.T("Generated {0} staff faces.", completed) : kind == 1 ? Text.T("Generated {0} faces.", completed)
+                                : Text.T("Generated {0} squad faces.", completed));
                 dialog = null;
             }
             catch (Exception error) when (error is InvalidOperationException || error is MemoryUnavailableException ||
@@ -248,7 +284,7 @@ namespace RegenerateFM.Desktop.FM24
                 _companion.Log("FM24 " + list + " batch stopped: " + error.Message);
                 // Nothing was started on a screen without the list, so it says just that.
                 bool wrongScreen = error.Message == SquadReader.NotASquad || error.Message == StaffReader.NotAClub;
-                Finish(dialog, wrongScreen ? error.Message : (staff ? "Staff" : "Squad") + " faces stopped: " + error.Message);
+                Finish(dialog, wrongScreen ? error.Message : Stopped(staff, error.Message));
                 dialog = null;
             }
             catch (Exception error) when (dialog != null)
@@ -256,7 +292,7 @@ namespace RegenerateFM.Desktop.FM24
                 // Anything else still ends the progress dialog (so Stop isn't left
                 // doing nothing), which then says all the player needs.
                 _companion.Log("FM24 " + list + " batch failed: " + error);
-                Finish(dialog, (staff ? "Staff" : "Squad") + " faces stopped: " + error.Message);
+                Finish(dialog, Stopped(staff, error.Message));
                 dialog = null;
             }
             finally

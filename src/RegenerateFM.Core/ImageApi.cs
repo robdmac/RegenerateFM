@@ -35,8 +35,8 @@ namespace RegenerateFM
         private static readonly HttpClient Client = NewClient(TimeSpan.FromSeconds(180));
 
         // What CheckKey says when OpenAI, or the credits service, refuses the key.
-        public const string KeyRejected = "OpenAI didn't accept this key. Check that you copied all of it.";
-        public const string SignedOut = "This RegenerateFM sign-in isn't valid any more. Choose Buy credits / Sign in.";
+        public static string KeyRejected => Text.T("OpenAI didn't accept this key. Check that you copied all of it.");
+        public static string SignedOut => Text.T("This RegenerateFM sign-in isn't valid any more. Choose Buy credits / Sign in.");
 
         // Cloudflare, in front of the credits service, turns away some programs'
         // default user agents, so every request names RegenerateFM.
@@ -52,9 +52,9 @@ namespace RegenerateFM
             if (string.IsNullOrWhiteSpace(settings.ApiKey))
                 throw new MissingApiKeyException();
             if (Array.IndexOf(Qualities, settings.Quality) < 0)
-                throw new ArgumentException("Quality in " + Settings.FileName + " must be low, medium, high, xhigh, max, or auto.");
+                throw new ArgumentException(Text.T("Quality in {0} must be low, medium, high, xhigh, max, or auto.", Settings.FileName));
             if (string.IsNullOrWhiteSpace(settings.Model))
-                throw new ArgumentException("Model in " + Settings.FileName + " is empty.");
+                throw new ArgumentException(Text.T("Model in {0} is empty.", Settings.FileName));
         }
 
         // Asks OpenAI whether the key works, with a free request that lists
@@ -79,12 +79,12 @@ namespace RegenerateFM
                             return Credits.IsToken(key)
                                 ? SignedOut
                                 : KeyRejected;
-                        return "OpenAI couldn't check the key (HTTP " + (int)response.StatusCode + "). Try again.";
+                        return Text.T("OpenAI couldn't check the key (HTTP {0}). Try again.", (int)response.StatusCode);
                     }
                 }
                 catch (Exception error) when (error is HttpRequestException || error is TaskCanceledException)
                 {
-                    return "Could not reach OpenAI to check the key: " + error.Message.Replace(key, "[REDACTED]");
+                    return Text.T("Could not reach OpenAI to check the key: {0}", error.Message.Replace(key, "[REDACTED]"));
                 }
             }
         }
@@ -146,7 +146,7 @@ namespace RegenerateFM
                 }
                 catch (Exception error) when (error is HttpRequestException || error is TaskCanceledException)
                 {
-                    throw new InvalidOperationException("Could not reach the OpenAI image API: " + error.Message.Replace(key, "[REDACTED]"));
+                    throw new InvalidOperationException(Text.T("Could not reach the OpenAI image API: {0}", error.Message.Replace(key, "[REDACTED]")));
                 }
                 using (response)
                 {
@@ -165,7 +165,7 @@ namespace RegenerateFM
                         // RegenerateFM credits' messages are written for the player already.
                         string message = Credits.IsToken(key)
                             ? detail.Replace(key, "[REDACTED]")
-                            : "OpenAI image API returned HTTP " + (int)response.StatusCode + ": " + detail.Replace(key, "[REDACTED]");
+                            : Text.T("OpenAI image API returned HTTP {0}: {1}", (int)response.StatusCode, detail.Replace(key, "[REDACTED]"));
                         if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
                             throw new ApiKeyRejectedException(message);
                         if ((int)response.StatusCode == 402)
@@ -222,7 +222,7 @@ namespace RegenerateFM
 
     public sealed class MissingApiKeyException : ArgumentException
     {
-        public MissingApiKeyException() : base("No OpenAI API key is saved yet.") { }
+        public MissingApiKeyException() : base(Text.T("No OpenAI API key is saved yet.")) { }
     }
 
     public sealed class ApiKeyRejectedException : InvalidOperationException

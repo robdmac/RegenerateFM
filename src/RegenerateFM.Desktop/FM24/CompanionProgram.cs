@@ -61,6 +61,25 @@ namespace RegenerateFM.Desktop.FM24
             Environment.Exit(0);
         }
 
+        // FM24's library shows its menu rows and buttons in the labels the
+        // companion sends, English until then: sent once it listens, and again
+        // when FM24's language changes.
+        private static void KeepLabels(int port, string token)
+        {
+            string sent = null;
+            for (;;)
+            {
+                string language = Fm24Language.Read() ?? "english";
+                if (language != sent)
+                {
+                    Text.Language = language;
+                    if (Dll.SendLabels(port, token, timeout: 30))
+                        sent = language;
+                }
+                Thread.Sleep(3000);
+            }
+        }
+
         private static string DefaultGraphicsDir(string game, Fm24Setup setup)
         {
             if (OperatingSystem.IsMacOS())
@@ -168,6 +187,8 @@ namespace RegenerateFM.Desktop.FM24
             };
             if (!preview && !OperatingSystem.IsMacOS() && startedBy == null)
                 companion.AskForKeyInTerminal();
+            // The terminal's key prompt above stays English; what FM24 shows is in its language.
+            Fm24Language.Apply();
             Listener listener;
             try
             {
@@ -189,8 +210,11 @@ namespace RegenerateFM.Desktop.FM24
             listener.HasFace = companion.FaceExists;
             listener.Resolve = companion.ResolveReference;
             listener.KeyReady = companion.EnsureKey;
+            listener.ReadLanguage = Fm24Language.Apply;
             listener.Notify = text => Dll.Notify(companion.ReloadPort, token, text, message => Console.WriteLine("RegenerateFM: " + message));
             listener.Run();
+            if (token != null)
+                new Thread(() => KeepLabels(companion.ReloadPort, token)) { IsBackground = true, Name = "FM24 labels" }.Start();
             // Index the portraits now, so the first popup's face check is quick
             // (the game archive only if FM24 is already running).
             Quietly(() =>

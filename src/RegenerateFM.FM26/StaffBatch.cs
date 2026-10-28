@@ -17,11 +17,7 @@ namespace RegenerateFM.FM26
 
         private static ListKind Other(ListKind kind) => kind == ListKind.Staff ? ListKind.Players : ListKind.Staff;
 
-        // The other list a confirmation can include: Club Site's squad tile opens
-        // the first team.
-        private static string OtherList(ListKind kind) => kind == ListKind.Staff ? "the club's staff" : "the first team's players";
-
-        private VisualElement _staffMenuButton;
+        private Button _staffMenuButton;
 
         // The page on top: FM26 keeps a screen (Menu), the report opened from it
         // (Report) and a card over that (Card) laid out at once, one above the
@@ -118,11 +114,16 @@ namespace RegenerateFM.FM26
                 return;
             }
             if (_staffMenuButton != null && _staffMenuButton.parent == block)
+            {
+                string label = Text.T("Generate faces…");
+                if (_staffMenuButton.text != label)
+                    _staffMenuButton.text = label;
                 return;
+            }
             RemoveStaffMenuButton();
             var button = new Button((Il2CppSystem.Action)(System.Action)(() => StartSquadScan(ListKind.Staff)))
             {
-                name = "regeneratefm-staff-command", text = "Generate faces…", focusable = false
+                name = "regeneratefm-staff-command", text = Text.T("Generate faces…"), focusable = false
             };
             button.style.position = Position.Absolute;
             button.style.top = 13;
@@ -132,7 +133,7 @@ namespace RegenerateFM.FM26
             button.style.backgroundColor = new Color(0.18f, 0.13f, 0.24f, 1f);
             button.style.paddingLeft = 12;
             button.style.paddingRight = 12;
-            block.Add(button);
+            block.Add(Directed(button));
             _staffMenuButton = button;
             Log.LogInfo("RegenerateFM staff command added to the All Staff table");
         }

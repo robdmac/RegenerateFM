@@ -27,10 +27,8 @@ namespace RegenerateFM
     {
         public const string Prefix = "rfm_";
         public const string DefaultServiceUrl = "https://credits.regenerate.fm";
-        public const string BuyText =
-            "Buy RegenerateFM credits: one credit makes or updates one face. Packs go from 75 credits for " +
-            "£2 / €2.50 / $2.50 to 1000 for £20 / €24 / $24. You sign in with your email in your browser; " +
-            "there's nothing to paste.";
+        public static string BuyText =>
+            Text.T("Buy RegenerateFM credits: one credit makes or updates one face. Packs go from 75 credits for £2 / €2.50 / $2.50 to 1000 for £20 / €24 / $24. You sign in with your email in your browser; there's nothing to paste.");
 
         public static bool IsToken(string key) => key != null && key.StartsWith(Prefix, StringComparison.Ordinal);
 
@@ -67,7 +65,7 @@ namespace RegenerateFM
             }
             catch (Exception error) when (error is HttpRequestException || error is TaskCanceledException)
             {
-                throw new InvalidOperationException("Couldn't reach RegenerateFM credits: " + error.Message);
+                throw new InvalidOperationException(Text.T("Couldn't reach RegenerateFM credits: {0}", error.Message));
             }
         }
 
@@ -77,7 +75,7 @@ namespace RegenerateFM
             {
                 string body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                 if (!response.IsSuccessStatusCode)
-                    throw new InvalidOperationException("RegenerateFM credits couldn't start a sign-in (HTTP " + (int)response.StatusCode + ").");
+                    throw new InvalidOperationException(Text.T("RegenerateFM credits couldn't start a sign-in (HTTP {0}).", (int)response.StatusCode));
                 SignIn signIn;
                 try
                 {
@@ -102,12 +100,12 @@ namespace RegenerateFM
                     throw new InvalidOperationException(Unexpected);
                 // Only the service's own pages are opened in the browser.
                 if (signIn.Link == null || !signIn.Link.StartsWith(serviceUrl.TrimEnd('/') + "/", StringComparison.Ordinal))
-                    throw new InvalidOperationException("RegenerateFM credits returned an unexpected sign-in link.");
+                    throw new InvalidOperationException(Text.T("RegenerateFM credits returned an unexpected sign-in link."));
                 return signIn;
             }
         }
 
-        private const string Unexpected = "RegenerateFM credits sent an unexpected answer.";
+        private static string Unexpected => Text.T("RegenerateFM credits sent an unexpected answer.");
 
         // An answer that isn't the JSON the service sends.
         private static bool Malformed(Exception error) =>
@@ -137,7 +135,7 @@ namespace RegenerateFM
                     return new Poll { Status = "expired" };
                 string body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                 if (!response.IsSuccessStatusCode)
-                    throw new InvalidOperationException("RegenerateFM credits answered HTTP " + (int)response.StatusCode + ".");
+                    throw new InvalidOperationException(Text.T("RegenerateFM credits answered HTTP {0}.", (int)response.StatusCode));
                 Poll poll;
                 try
                 {

@@ -27,8 +27,9 @@ namespace RegenerateFM.Desktop.FM24
         // closing it, or Companion.CreditsChoice for Buy credits / Sign in
         // (shown when ``credits``). ``text`` may have line breaks; ``link`` is
         // opened by Get a key….
-        public static string Ask(string text, string title = "RegenerateFM: credits or OpenAI key", string link = null, bool credits = false)
+        public static string Ask(string text, string title = null, string link = null, bool credits = false)
         {
+            title ??= Text.T("RegenerateFM: credits or OpenAI key");
             if (!OperatingSystem.IsWindows())
                 throw new IOException("The key dialog is a Windows dialog.");
             string result = null;
@@ -98,16 +99,16 @@ namespace RegenerateFM.Desktop.FM24
                 }
                 Add("STATIC", text.Replace("\n", "\r\n"), 0, 16, 14, Width - 48, 250, 0);
                 IntPtr edit = Add("EDIT", "", TabStop | Password | AutoHorizontalScroll, 16, 272, Width - 48, 24, EditId, ExClientEdge);
-                Add("BUTTON", "Save key", TabStop | DefaultPushButton, Width - 288, 312, 120, 30, IdOk);
-                Add("BUTTON", "Cancel", TabStop, Width - 160, 312, 112, 30, IdCancel);
+                Add("BUTTON", Text.T("Save key"), TabStop | DefaultPushButton, Width - 288, 312, 120, 30, IdOk);
+                Add("BUTTON", Text.T("Cancel"), TabStop, Width - 160, 312, 112, 30, IdCancel);
                 int x = 16;
                 if (credits)
                 {
-                    Add("BUTTON", "Buy credits / Sign in", TabStop, x, 312, 160, 30, IdCredits);
+                    Add("BUTTON", Text.T("Buy credits / Sign in"), TabStop, x, 312, 160, 30, IdCredits);
                     x += 168;
                 }
                 if (link != null)
-                    Add("BUTTON", "Get a key…", TabStop, x, 312, 110, 30, IdGetKey);
+                    Add("BUTTON", Text.T("Get a key…"), TabStop, x, 312, 110, 30, IdGetKey);
                 ShowWindow(dialog, 5);  // SW_SHOW
                 SetForegroundWindow(dialog);
                 SetFocus(edit);

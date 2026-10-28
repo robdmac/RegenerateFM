@@ -62,7 +62,7 @@ namespace RegenerateFM.FM26
         private VisualElement _portraitDismissLayer;
         private SquadScan _squadScan;
         private VisualElement _squadDialog;
-        private VisualElement _squadMenuButton;
+        private Button _squadMenuButton;
         private VisualElement _squadMenuList;
         private SquadBatch _squadBatch;
         private int _graphicsLoadSerial;
@@ -157,7 +157,7 @@ namespace RegenerateFM.FM26
             }
             catch (Exception error) when (error is IOException || error is UnauthorizedAccessException)
             {
-                throw new ArgumentException("Could not read " + Settings.DefaultPath + ": " + error.Message);
+                throw new ArgumentException(Text.T("Could not read {0}: {1}", Settings.DefaultPath, error.Message));
             }
         }
     }

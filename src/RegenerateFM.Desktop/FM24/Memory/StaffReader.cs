@@ -13,9 +13,8 @@ namespace RegenerateFM.Desktop.FM24.Memory
     public static class StaffReader
     {
         public const string UnknownJob = "member of staff";
-        public const string NotAClub =
-            "Generate missing staff faces works on a club's Staff screen, and RegenerateFM couldn't tell which club this " +
-            "screen shows. Open the club's Staff screen and choose it from its menu there.";
+        public static string NotAClub =>
+            Text.T("Generate missing staff faces works on a club's Staff screen, and RegenerateFM couldn't tell which club this screen shows. Open the club's Staff screen and choose it from its menu there.");
         // FM24 refers to a club (its db::CLUB details) as 3 << 24 | its index in
         // the database's vector of clubs; the object keeps its index at +8.
         private const int ClubType = 3;
@@ -301,7 +300,7 @@ namespace RegenerateFM.Desktop.FM24.Memory
             long club = ScreenClub(game);
             people = ClubPeople(game, club);
             if (people.Staff.Count == 0)
-                throw new MemoryUnavailableException("RegenerateFM found no staff it can read at this club.");
+                throw new MemoryUnavailableException(Text.T("RegenerateFM found no staff it can read at this club."));
             var (indexed, today) = SquadReader.Catalogue(game, people.Staff.Select(row => row.Record).ToList());
             return new SquadState
             {

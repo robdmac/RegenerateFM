@@ -39,7 +39,7 @@ namespace RegenerateFM.FM26
             catch (Exception error)
             {
                 Log.LogWarning("Could not read the saved OpenAI key: " + error.Message);
-                ShowKeyDialog("RegenerateFM couldn't read the saved key. Paste it again.", next);
+                ShowKeyDialog(Text.T("RegenerateFM couldn't read the saved key. Paste it again."), next);
                 return false;
             }
             ShowKeyDialog(null, next);
@@ -73,21 +73,20 @@ namespace RegenerateFM.FM26
                 dialog.Add(label);
                 return label;
             };
-            text("RegenerateFM: paying for faces", 18);
+            text(Text.T("RegenerateFM: paying for faces"), 18);
             if (problem != null)
                 text(problem, 14).style.color = new Color(1f, 0.82f, 0.45f, 1f);
             text(Credits.BuyText, 14);
             var buy = new Button((Il2CppSystem.Action)(System.Action)(() => BuyCredits()))
-            { text = "Buy credits / Sign in", focusable = false };
+            { text = Text.T("Buy credits / Sign in"), focusable = false };
             buy.style.height = 34;
             buy.style.marginBottom = 14;
             buy.style.color = Color.white;
             buy.style.backgroundColor = new Color(0.38f, 0.10f, 0.60f, 1f);
             dialog.Add(buy);
-            text("Or use your own OpenAI API key. Each face is then one billed request on your OpenAI account, " +
-                 "usually a few cents or less.", 13);
+            text(Text.T("Or use your own OpenAI API key. Each face is then one billed request on your OpenAI account, usually a few cents or less."), 13);
             var open = new Button((Il2CppSystem.Action)(System.Action)(() => Application.OpenURL(KeyStore.KeysPage)))
-            { text = "Get a key at platform.openai.com/api-keys", focusable = false };
+            { text = Text.T("Get a key at platform.openai.com/api-keys"), focusable = false };
             open.style.height = 30;
             open.style.marginBottom = 10;
             dialog.Add(open);
@@ -102,8 +101,8 @@ namespace RegenerateFM.FM26
                     field.value = clip;
                 if (_keyStatus != null)
                     _keyStatus.text = clip.Length > 0
-                        ? "Pasted " + clip.Length + " characters. Choose Save key."
-                        : "The clipboard is empty. Copy your key, then choose Paste.";
+                        ? Text.T("Pasted {0} characters. Choose Save key.", clip.Length)
+                        : Text.T("The clipboard is empty. Copy your key, then choose Paste.");
             };
             field.RegisterCallback(DelegateSupport.ConvertDelegate<EventCallback<KeyDownEvent>>(
                 new Action<KeyDownEvent>(key =>
@@ -118,7 +117,7 @@ namespace RegenerateFM.FM26
             field.style.width = 312;
             field.style.flexShrink = 0;
             var pasteButton = new Button((Il2CppSystem.Action)(System.Action)(() => paste()))
-            { text = "Paste", focusable = false };
+            { text = Text.T("Paste"), focusable = false };
             pasteButton.style.height = 30;
             pasteButton.style.width = 70;
             pasteButton.style.marginLeft = 6;
@@ -128,14 +127,14 @@ namespace RegenerateFM.FM26
             entry.Add(field);
             entry.Add(pasteButton);
             dialog.Add(entry);
-            _keyStatus = text("Paste or type the key (it starts with sk-), then choose Save key.", 13);
+            _keyStatus = text(Text.T("Paste or type the key (it starts with sk-), then choose Save key."), 13);
             _keyStatus.style.marginTop = 6;
             var buttons = new VisualElement();
             buttons.style.flexDirection = FlexDirection.Row;
             buttons.style.justifyContent = Justify.FlexEnd;
-            var cancel = new Button((Il2CppSystem.Action)(System.Action)(() => CloseKeyDialog())) { text = "Cancel", focusable = false };
+            var cancel = new Button((Il2CppSystem.Action)(System.Action)(() => CloseKeyDialog())) { text = Text.T("Cancel"), focusable = false };
             var save = new Button((Il2CppSystem.Action)(System.Action)(() => SaveKey(field.value)))
-            { text = "Save key", focusable = false };
+            { text = Text.T("Save key"), focusable = false };
             save.style.color = Color.white;
             save.style.backgroundColor = new Color(0.38f, 0.10f, 0.60f, 1f);
             foreach (var button in new[] { cancel, save })
@@ -145,11 +144,12 @@ namespace RegenerateFM.FM26
                 buttons.Add(button);
             }
             dialog.Add(buttons);
-            text("The key is kept on this computer only, " +
-                 (OperatingSystem.IsWindows() ? "encrypted for your Windows user" : "readable only by your user account") + ", in " +
-                 Path.GetDirectoryName(KeyStore.DefaultPath) + ". Delete that folder to forget it.", 12);
+            string keyFolder = Path.GetDirectoryName(KeyStore.DefaultPath);
+            text(OperatingSystem.IsWindows()
+                ? Text.T("The key is kept on this computer only, encrypted for your Windows user, in {0}. Delete that folder to forget it.", keyFolder)
+                : Text.T("The key is kept on this computer only, readable only by your user account, in {0}. Delete that folder to forget it.", keyFolder), 12);
             var questions = new Button((Il2CppSystem.Action)(System.Action)(() => ShowKeyFaq(dialog)))
-            { text = "Questions: why it costs money, and which option is cheaper", focusable = false };
+            { text = Text.T("Questions: why it costs money, and which option is cheaper"), focusable = false };
             questions.style.height = 26;
             questions.style.marginTop = 4;
             questions.style.fontSize = 12;
@@ -160,7 +160,7 @@ namespace RegenerateFM.FM26
             questions.style.borderLeftWidth = 0;
             questions.style.borderRightWidth = 0;
             dialog.Add(questions);
-            root.Add(dialog);
+            root.Add(Directed(dialog));
             _keyDialog = dialog;
             _keyField = field;
             _afterKeySaved = next;
@@ -191,7 +191,7 @@ namespace RegenerateFM.FM26
                 _keyStatus.text = error.Message;
                 return;
             }
-            _keyStatus.text = Credits.IsToken(key) ? "Checking the RegenerateFM sign-in…" : "Checking the key with OpenAI (this is free)…";
+            _keyStatus.text = Credits.IsToken(key) ? Text.T("Checking the RegenerateFM sign-in…") : Text.T("Checking the key with OpenAI (this is free)…");
             _keyChecking = key;
             _keyCheck = ImageApi.CheckKey(settings, key);
         }
@@ -211,7 +211,7 @@ namespace RegenerateFM.FM26
             }
             catch (Exception error)
             {
-                problem = "Could not check the key: " + error.Message;
+                problem = Text.T("Could not check the key: {0}", error.Message);
             }
             if (_keyDialog == null || _keyDialog.parent == null)
                 return;
@@ -226,7 +226,7 @@ namespace RegenerateFM.FM26
             }
             catch (Exception error)
             {
-                _keyStatus.text = "Could not save the key: " + error.Message;
+                _keyStatus.text = Text.T("Could not save the key: {0}", error.Message);
                 Log.LogError("Could not save the OpenAI key: " + error);
                 return;
             }
@@ -246,26 +246,20 @@ namespace RegenerateFM.FM26
         // The key dialog's questions (the same as the credits pages' FAQ, in
         // regeneratefm-server/src/pages.ts), shown in place of the dialog's
         // controls until Back. A question's link opens in the browser.
-        private static readonly (string Question, string Answer, string LinkText, string Link)[] KeyFaq =
+        private static (string Question, string Answer, string LinkText, string Link)[] KeyFaq() => new[]
         {
-            ("Why does making a face cost money?",
-             "Each face is drawn by OpenAI's image model, and OpenAI charges for every image it makes. RegenerateFM doesn't run " +
-             "its own AI, so every face is one paid request to OpenAI, whether you use credits or your own key.", null, null),
-            ("Which is cheaper, credits or my own OpenAI API key?",
-             "Your own key. You then pay OpenAI's price for each image directly, which at RegenerateFM's default quality is " +
-             "about 1.2p (1.6 US cents) a face. Credits cost 2p to 2.7p each (2.4 to 3.3 cents in euros or dollars), " +
-             "but you don't need an OpenAI account, billing set up with OpenAI, or a key to copy into the game.",
-             "OpenAI's API pricing", "https://openai.com/api/pricing/"),
-            ("Why do credits cost more than OpenAI's own price?",
-             "Credits pay for more than the image: VAT or sales tax, the card payment (each payment has a fixed fee, which " +
-             "is why small packs cost more per credit), Stripe handling tax, fraud and refunds for every sale, the service " +
-             "that signs you in and passes each request on to OpenAI, and the credit we give back when an image fails.",
+            (Text.T("Why does making a face cost money?"),
+             Text.T("Each face is drawn by OpenAI's image model, and OpenAI charges for every image it makes. RegenerateFM doesn't run its own AI, so every face is one paid request to OpenAI, whether you use credits or your own key."),
+             (string)null, (string)null),
+            (Text.T("Which is cheaper, credits or my own OpenAI API key?"),
+             Text.T("Your own key. You then pay OpenAI's price for each image directly, which at RegenerateFM's default quality is about 1.2p (1.6 US cents) a face. Credits cost 2p to 2.7p each (2.4 to 3.3 cents in euros or dollars), but you don't need an OpenAI account, billing set up with OpenAI, or a key to copy into the game."),
+             Text.T("OpenAI's API pricing"), "https://openai.com/api/pricing/"),
+            (Text.T("Why do credits cost more than OpenAI's own price?"),
+             Text.T("Credits pay for more than the image: VAT or sales tax, the card payment (each payment has a fixed fee, which is why small packs cost more per credit), Stripe handling tax, fraud and refunds for every sale, the service that signs you in and passes each request on to OpenAI, and the credit we give back when an image fails."),
              null, null),
-            ("Can I use my ChatGPT Plus or Pro subscription instead?",
-             "Not yet. A ChatGPT subscription and OpenAI's API are separate products. OpenAI has started letting some apps " +
-             "use a ChatGPT plan through \u201cSign in with ChatGPT\u201d, but it's a preview, and image generation is one " +
-             "of the things it doesn't support yet. If OpenAI adds it, RegenerateFM will offer it.",
-             "OpenAI: Sign in with ChatGPT limitations",
+            (Text.T("Can I use my ChatGPT Plus or Pro subscription instead?"),
+             Text.T("Not yet. A ChatGPT subscription and OpenAI's API are separate products. OpenAI has started letting some apps use a ChatGPT plan through \u201cSign in with ChatGPT\u201d, but it's a preview, and image generation is one of the things it doesn't support yet. If OpenAI adds it, RegenerateFM will offer it."),
+             Text.T("OpenAI: Sign in with ChatGPT limitations"),
              "https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations"),
         };
 
@@ -296,8 +290,8 @@ namespace RegenerateFM.FM26
                 faq.Add(label);
                 return label;
             };
-            add("Questions", 18, true);
-            foreach (var item in KeyFaq)
+            add(Text.T("Questions"), 18, true);
+            foreach (var item in KeyFaq())
             {
                 add(item.Question, 14, true).style.marginTop = 8;
                 add(item.Answer, 13, false);
@@ -319,7 +313,7 @@ namespace RegenerateFM.FM26
                 foreach (var child in hidden)
                     child.style.display = StyleKeyword.Null;
             }))
-            { text = "Back", focusable = false };
+            { text = Text.T("Back"), focusable = false };
             back.style.height = 32;
             back.style.marginTop = 10;
             faq.Add(back);
@@ -331,11 +325,11 @@ namespace RegenerateFM.FM26
             string key = null;
             try { key = KeyStore.Load(KeyStore.DefaultPath); } catch (Exception) { }
             if (result.OutOfCredits)
-                ShowKeyDialog("You've used all your RegenerateFM credits. Buy more to carry on.", null, signedIn: Credits.IsToken(key));
+                ShowKeyDialog(Text.T("You've used all your RegenerateFM credits. Buy more to carry on."), null, signedIn: Credits.IsToken(key));
             else if (result.KeyRejected)
                 ShowKeyDialog(Credits.IsToken(key)
-                    ? "Your RegenerateFM sign-in isn't valid any more. Sign in again."
-                    : "OpenAI didn't accept the saved key. Paste a new one.", null);
+                    ? Text.T("Your RegenerateFM sign-in isn't valid any more. Sign in again.")
+                    : Text.T("OpenAI didn't accept the saved key. Paste a new one."), null);
         }
 
         // Buy credits / Sign in: a signed-in game opens the credits page in the
@@ -358,10 +352,10 @@ namespace RegenerateFM.FM26
             if (_keyDialogSignedIn)
             {
                 Application.OpenURL(service + "/link");
-                _keyStatus.text = "The credits page is open in your browser. Your new credits work as soon as you've paid.";
+                _keyStatus.text = Text.T("The credits page is open in your browser. Your new credits work as soon as you've paid.");
                 return;
             }
-            _keyStatus.text = "Opening your browser…";
+            _keyStatus.text = Text.T("Opening your browser…");
             _creditsService = service;
             _creditsStart = Credits.Start(service);
         }
@@ -380,14 +374,13 @@ namespace RegenerateFM.FM26
                 {
                     Log.LogWarning("RegenerateFM credits sign-in didn't start: " + error.Message);
                     if (_keyStatus != null)
-                        _keyStatus.text = "RegenerateFM credits can't be reached right now. Try again in a moment.";
+                        _keyStatus.text = Text.T("RegenerateFM credits can't be reached right now. Try again in a moment.");
                     return;
                 }
                 Application.OpenURL(_creditsSignIn.Link);
                 _creditsNextPollUtc = System.DateTime.UtcNow.AddSeconds(_creditsSignIn.Interval);
                 if (_keyStatus != null)
-                    _keyStatus.text = "In your browser, sign in and confirm the code " + _creditsSignIn.UserCode +
-                                      ". RegenerateFM is waiting…";
+                    _keyStatus.text = Text.T("In your browser, sign in and confirm the code {0}. RegenerateFM is waiting…", _creditsSignIn.UserCode);
             }
             var signIn = _creditsSignIn;
             if (signIn == null)
@@ -396,7 +389,7 @@ namespace RegenerateFM.FM26
             {
                 // Closed, or the code expired: stop waiting.
                 if (_keyStatus != null && System.DateTime.UtcNow > signIn.ExpiresUtc)
-                    _keyStatus.text = "The sign-in expired. Choose Buy credits / Sign in again.";
+                    _keyStatus.text = Text.T("The sign-in expired. Choose Buy credits / Sign in again.");
                 _creditsSignIn = null;
                 _creditsPoll = null;
                 return;
@@ -424,7 +417,7 @@ namespace RegenerateFM.FM26
             if (poll.Status == "expired")
             {
                 _creditsSignIn = null;
-                _keyStatus.text = "The sign-in expired. Choose Buy credits / Sign in again.";
+                _keyStatus.text = Text.T("The sign-in expired. Choose Buy credits / Sign in again.");
                 return;
             }
             if (poll.Status != "approved")
@@ -436,7 +429,7 @@ namespace RegenerateFM.FM26
             }
             catch (Exception error)
             {
-                _keyStatus.text = "Could not save the sign-in: " + error.Message;
+                _keyStatus.text = Text.T("Could not save the sign-in: {0}", error.Message);
                 Log.LogError("Could not save the RegenerateFM credits token: " + error);
                 return;
             }
@@ -444,8 +437,7 @@ namespace RegenerateFM.FM26
             if (poll.Credits == 0)
             {
                 // Signed in but nothing bought yet: keep the dialog so the player can buy.
-                _keyStatus.text = "Signed in as " + poll.Email + ". You have no credits yet: choose a pack in your browser, " +
-                                  "then choose the face again.";
+                _keyStatus.text = Text.T("Signed in as {0}. You have no credits yet: choose a pack in your browser, then choose the face again.", poll.Email);
                 _keyDialogSignedIn = true;
                 return;
             }
@@ -523,7 +515,7 @@ namespace RegenerateFM.FM26
             button.style.marginTop = 12;
             button.style.height = 32;
             dialog.Add(button);
-            root.Add(dialog);
+            root.Add(Directed(dialog));
             _squadDialog = dialog;
             _dialogPage = DialogPage(root);
             _dialogPageMisses = 0;

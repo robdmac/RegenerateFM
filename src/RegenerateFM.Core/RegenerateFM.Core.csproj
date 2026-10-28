@@ -7,4 +7,7 @@
     <RootNamespace>RegenerateFM</RootNamespace>
     <CheckEolTargetFramework>false</CheckEolTargetFramework>
   </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Translations/*.json" LogicalName="Translations/%(Filename)%(Extension)" />
+  </ItemGroup>
 </Project>

@@ -241,13 +241,13 @@ namespace RegenerateFM.Desktop.FM24.Memory
             if (candidates.Count == 1)
                 return candidates[0];
             if (candidates.Count > 0)
-                throw new MemoryUnavailableException("More than one FM24 is running. Quit the others and try again.");
+                throw new MemoryUnavailableException(Text.T("More than one FM24 is running. Quit the others and try again."));
             if (unreadable.Count > 0 && OperatingSystem.IsMacOS())
-                throw new MemoryUnavailableException("RegenerateFM can't read FM24: its library in the game isn't answering. " +
-                                                     "Quit FM24 and start it again from Steam, then try again.");
+                throw new MemoryUnavailableException(
+                    Text.T("RegenerateFM can't read FM24: its library in the game isn't answering. Quit FM24 and start it again from Steam, then try again."));
             if (unreadable.Count > 0)
-                throw new MemoryUnavailableException("RegenerateFM can't read the running FM24 (" + unreadable[0].Message + ").");
-            throw new MemoryUnavailableException("FM24 isn't running. Start it, open the profile and try again.");
+                throw new MemoryUnavailableException(Text.T("RegenerateFM can't read the running FM24 ({0}).", unreadable[0].Message));
+            throw new MemoryUnavailableException(Text.T("FM24 isn't running. Start it, open the profile and try again."));
         }
 
         // The unique canonical record address and validated identity for an ID

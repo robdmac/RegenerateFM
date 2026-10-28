@@ -107,9 +107,9 @@ namespace RegenerateFM.FM26
             menu.style.borderLeftColor = Color.gray;
             menu.style.borderRightColor = Color.gray;
             bool hasFace = HasFace(picture);
-            menu.Add(PortraitMenuItem("regeneratefm-portrait-generate", "Generate new face", personId, false, true));
-            menu.Add(PortraitMenuItem("regeneratefm-portrait-update", "Update face", personId, true, hasFace));
-            root.Add(menu);
+            menu.Add(PortraitMenuItem("regeneratefm-portrait-generate", Text.T("Generate new face"), personId, false, true));
+            menu.Add(PortraitMenuItem("regeneratefm-portrait-update", Text.T("Update face"), personId, true, hasFace));
+            root.Add(Directed(menu));
             _portraitDismissLayer = dismissLayer;
             _portraitMenu = menu;
             _portraitMenuPersonId = personId;
@@ -139,7 +139,7 @@ namespace RegenerateFM.FM26
             item.style.paddingLeft = 10;
             item.SetEnabled(enabled);
             if (!enabled)
-                item.tooltip = "No face to update yet";
+                item.tooltip = Text.T("No face to update yet");
             return item;
         }
 

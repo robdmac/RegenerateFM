@@ -53,7 +53,7 @@ namespace RegenerateFM.Desktop.FM24.Bridge
             catch (SocketException error) when (error.SocketErrorCode == SocketError.ConnectionRefused ||
                                                  error.SocketErrorCode == SocketError.ConnectionReset)
             {
-                throw new DialogUnavailableException("The FM24 native DLL is not listening.");
+                throw new DialogUnavailableException(Text.T("The FM24 native DLL is not listening."));
             }
         }
 
@@ -244,13 +244,117 @@ namespace RegenerateFM.Desktop.FM24.Bridge
                 if (status == "done")
                     return;
                 if (status == "failed")
-                    throw new InvalidOperationException("FM24 could not reload its skin in game");
+                    throw new InvalidOperationException(Text.T("FM24 could not reload its skin in game"));
                 if (status == "busy")
-                    throw new InvalidOperationException("FM24 is already reloading its skin");
+                    throw new InvalidOperationException(Text.T("FM24 is already reloading its skin"));
                 Thread.Sleep(250);
             }
-            throw new TimeoutException(answered ? "FM24 did not finish reloading its skin"
-                                                : "The FM24 native DLL did not answer the reload request");
+            throw new TimeoutException(answered ? Text.T("FM24 did not finish reloading its skin")
+                                                : Text.T("The FM24 native DLL did not answer the reload request"));
+        }
+
+        // RegenerateFM's own text in FM24 (its menu rows, dialog buttons, the
+        // messages the library shows by itself and the Mac key prompt), in
+        // Text.Language. The order is the library's LABEL_ enum
+        // (regeneratefm24.c, regeneratefm24_macos.c); English must stay exactly
+        // the library's defaults. "{0}"/"{1}" in the last one are the pasted
+        // key's length and its last four characters, which the Mac prompt fills.
+        public static string[] Labels() => new[]
+        {
+            Text.T("Generate missing squad faces…"),
+            Text.T("Generate missing staff faces…"),
+            Text.T("Generate new face"),
+            Text.T("Update face"),
+            Text.T("No"),
+            Text.T("OK"),
+            Text.T("Stop after this face"),
+            Text.T("RegenerateFM could not tell which menu item was chosen, so nothing was generated. Choose it again."),
+            Text.T("RegenerateFM could not start its network bridge. Restart FM24 and check regeneratefm24.log."),
+            Text.T("RegenerateFM could not open its local connection. Restart FM24 and check regeneratefm24.log."),
+            Text.T("RegenerateFM is already processing a request. Please wait for it to finish."),
+            Text.T("RegenerateFM received this click too late to be sure which screen was open, so nothing was generated. Choose the menu item again."),
+            Text.T("RegenerateFM: credits or your OpenAI API key"),
+            Text.T("Save key"),
+            Text.T("Cancel"),
+            Text.T("Get a key…"),
+            Text.T("Buy credits / Sign in"),
+            Text.T("{0} characters, ending …{1}"),
+        };
+
+        // What the library takes: a label up to 511 UTF-8 bytes, and all of them
+        // (newline-separated, before base64) up to 2849.
+        public const int MaxLabelBytes = 500;
+        public const int MaxLabelsBytes = 2800;
+
+        // "REGENERATEFM24L 1 <serial> <token> <base64 of the labels joined by
+        // newlines>". A label that is too long goes empty, which the library
+        // shows in English; so do the longest ones while all of them are.
+        internal static byte[] LabelsPacket(long serial, string token, string[] labels)
+        {
+            var data = new byte[labels.Length][];
+            for (int i = 0; i < labels.Length; i++)
+            {
+                data[i] = Encoding.UTF8.GetBytes(Collapse(labels[i]));
+                if (data[i].Length > MaxLabelBytes || Array.IndexOf(data[i], (byte)0) >= 0)
+                    data[i] = Array.Empty<byte>();
+            }
+            while (true)
+            {
+                int total = labels.Length - 1, longest = 0;
+                for (int i = 0; i < data.Length; i++)
+                {
+                    total += data[i].Length;
+                    if (data[i].Length > data[longest].Length)
+                        longest = i;
+                }
+                if (total <= MaxLabelsBytes || data[longest].Length == 0)
+                    break;
+                data[longest] = Array.Empty<byte>();
+            }
+            var joined = new System.IO.MemoryStream();
+            for (int i = 0; i < data.Length; i++)
+            {
+                if (i > 0)
+                    joined.WriteByte((byte)'\n');
+                joined.Write(data[i], 0, data[i].Length);
+            }
+            return Encoding.ASCII.GetBytes("REGENERATEFM24L 1 " + serial + " " + token + " " + Convert.ToBase64String(joined.ToArray()));
+        }
+
+        // Sends Labels() to FM24's library: true once it has taken them, false
+        // if it didn't answer within ``timeout`` seconds (not running yet, or a
+        // library from before translations, which keeps its English). Call it
+        // whenever Text.Language changes and once FM24's library is up.
+        public static bool SendLabels(int port, string token, double timeout = 5, long? serial = null)
+        {
+            long number = serial ?? Serial();
+            var packet = LabelsPacket(number, token, Labels());
+            string expected = "REGENERATEFM24L " + number + " done";
+            var clock = Stopwatch.StartNew();
+            try
+            {
+                using var client = Connect(port);
+                while (clock.Elapsed.TotalSeconds < timeout)
+                {
+                    string reply;
+                    try
+                    {
+                        reply = Exchange(client, packet);
+                    }
+                    catch (DialogUnavailableException)
+                    {
+                        // Nothing listening yet; FM24 may be starting.
+                        Thread.Sleep(500);
+                        continue;
+                    }
+                    if (reply == expected)
+                        return true;
+                }
+            }
+            catch (SocketException)
+            {
+            }
+            return false;
         }
 
         // Text in an FM24 OK dialog, or ``fallback(text)`` if FM24 can't show it.

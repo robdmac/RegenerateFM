@@ -6,6 +6,9 @@
 
 typedef void (*key_answer_function)(const char *key);
 
+/* The prompt's text in FM24's language (regeneratefm24_macos.c's LABEL_KEY_*). */
+enum { TITLE, SAVE, CANCEL, GET, CREDITS, PASTED, LABELS };
+
 static NSString *const KEYS_PAGE = @"https://platform.openai.com/api-keys";
 /* The answer for Buy credits / Sign in, which the companion handles (companion.CREDITS_CHOICE). */
 static const char *const CREDITS_CHOICE = "regeneratefm:credits";
@@ -24,15 +27,15 @@ static SEL edit_action(NSEvent *event)
 
 /* Main thread. "Get a key…" opens OpenAI's key page and asks again; "Buy
    credits / Sign in" answers CREDITS_CHOICE. */
-static void show_prompt(NSString *text, key_answer_function answer)
+static void show_prompt(NSString *text, NSArray<NSString *> *labels, key_answer_function answer)
 {
     NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"RegenerateFM: credits or your OpenAI API key";
+    alert.messageText = labels[TITLE];
     alert.informativeText = text;
-    [alert addButtonWithTitle:@"Save key"];
-    [alert addButtonWithTitle:@"Cancel"];
-    [alert addButtonWithTitle:@"Get a key…"];
-    [alert addButtonWithTitle:@"Buy credits / Sign in"];
+    [alert addButtonWithTitle:labels[SAVE]];
+    [alert addButtonWithTitle:labels[CANCEL]];
+    [alert addButtonWithTitle:labels[GET]];
+    [alert addButtonWithTitle:labels[CREDITS]];
     /* A key is longer than the field, which shows only its last dots, so the
        line below says how much was pasted and how it ends. */
     NSView *accessory = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 380, 46)];
@@ -54,9 +57,11 @@ static void show_prompt(NSString *text, key_answer_function answer)
         addObserverForName:NSControlTextDidChangeNotification object:field queue:nil usingBlock:^(NSNotification *note) {
             (void)note;
             NSString *key = [field.stringValue stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+            /* {0} the key's length, {1} its last four characters. */
             pasted.stringValue = key.length < 8 ? @"" :
-                [NSString stringWithFormat:@"%lu characters, ending …%@", (unsigned long)key.length,
-                                           [key substringFromIndex:key.length - 4]];
+                [[labels[PASTED] stringByReplacingOccurrencesOfString:@"{0}"
+                                                           withString:[NSString stringWithFormat:@"%lu", (unsigned long)key.length]]
+                    stringByReplacingOccurrencesOfString:@"{1}" withString:[key substringFromIndex:key.length - 4]];
         }];
     /* The field can take focus only once the alert is laid out. */
     [alert layout];
@@ -77,7 +82,7 @@ static void show_prompt(NSString *text, key_answer_function answer)
         }
         if (response == NSAlertThirdButtonReturn) {
             [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:KEYS_PAGE]];
-            show_prompt(text, answer);
+            show_prompt(text, labels, answer);
             return;
         }
         answer(response == NSAlertFirstButtonReturn ? field.stringValue.UTF8String : NULL);
@@ -95,9 +100,20 @@ static void show_prompt(NSString *text, key_answer_function answer)
 }
 
 /* Any thread: shows the prompt on the main thread; answer gets the typed
-   text, or NULL for Cancel, also on the main thread. */
-void regeneratefm_key_prompt(const char *text, key_answer_function answer)
+   text, or NULL for Cancel, also on the main thread. labels (LABELS of them,
+   UTF-8) are copied before this returns; one that isn't valid UTF-8 is
+   replaced by its English. */
+void regeneratefm_key_prompt(const char *text, const char *const *labels, key_answer_function answer)
 {
+    static NSString *const english[LABELS] = {
+        @"RegenerateFM: credits or your OpenAI API key", @"Save key", @"Cancel", @"Get a key…",
+        @"Buy credits / Sign in", @"{0} characters, ending …{1}",
+    };
+    NSMutableArray<NSString *> *shown_labels = [NSMutableArray arrayWithCapacity:LABELS];
+    for (int i = 0; i < LABELS; ++i) {
+        NSString *label = labels && labels[i] ? [NSString stringWithUTF8String:labels[i]] : nil;
+        [shown_labels addObject:label.length ? label : english[i]];
+    }
     NSString *shown = [NSString stringWithUTF8String:text] ?: @"";
-    dispatch_async(dispatch_get_main_queue(), ^{ show_prompt(shown, answer); });
+    dispatch_async(dispatch_get_main_queue(), ^{ show_prompt(shown, shown_labels, answer); });
 }

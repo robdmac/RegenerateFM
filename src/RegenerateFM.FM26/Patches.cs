@@ -102,8 +102,8 @@ namespace RegenerateFM.FM26
                 check = menu.schedule.Execute((Il2CppSystem.Action)(System.Action)(() =>
                 {
                     var now = System.DateTime.UtcNow;
-                    generate = generate ?? MenuRow(menu, "Generate face");
-                    update = update ?? MenuRow(menu, "Update face");
+                    generate = generate ?? MenuRow(menu, Text.T("Generate face"));
+                    update = update ?? MenuRow(menu, Text.T("Update face"));
                     if (generate == null || update == null || generate.parent != update.parent)
                     {
                         if (now - opened > MenuSettle + MenuSettle)
@@ -175,9 +175,9 @@ namespace RegenerateFM.FM26
                 if (header == null || !IsActionTarget(context.Target, header))
                     return;
                 long? personId = HeaderId(header, out long shownId) ? shownId : (long?)null;
-                context.Description.AddItem(parent, "Generate face",
+                context.Description.AddItem(parent, Text.T("Generate face"),
                     (Il2CppSystem.Action)(System.Action)(() => Instance.GenerateOpenProfile(personId, false)));
-                var update = context.Description.AddItem(parent, "Update face",
+                var update = context.Description.AddItem(parent, Text.T("Update face"),
                     (Il2CppSystem.Action)(System.Action)(() => Instance.GenerateOpenProfile(personId, true)));
                 // Updating needs a face to start from: a generated one or the game's photo.
                 // While the picture is still loading, leave it enabled; the click checks again.

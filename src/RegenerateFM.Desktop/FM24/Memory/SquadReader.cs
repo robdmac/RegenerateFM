@@ -98,10 +98,8 @@ namespace RegenerateFM.Desktop.FM24.Memory
         public static readonly int RowIdKey = Widgets.SkinId("id  ");
         public static readonly int HeaderRowId = Widgets.SkinId("HROW");
         public const int PersonRow = 0x01000000;
-        public const string NotASquad =
-            "Generate missing squad faces works on a team's player list, and the list on this screen has no " +
-            "players RegenerateFM can read. Open the team's Squad screen (for a reserve or youth team, its tab " +
-            "in the Development Center) and choose it from that menu.";
+        public static string NotASquad =>
+            Text.T("Generate missing squad faces works on a team's player list, and the list on this screen has no players RegenerateFM can read. Open the team's Squad screen (for a reserve or youth team, its tab in the Development Center) and choose it from that menu.");
         private static readonly byte[] PersonPicture = Encoding.ASCII.GetBytes("graphics/pictures/person/");
         private static readonly Regex Portrait = new Regex(@"\G(?:r-)?([1-9][0-9]{0,9})/portrait", RegexOptions.Compiled);
         private static readonly byte[] NoPicture = Encoding.ASCII.GetBytes("graphics/pictures/person/none/male/player/portrait");
@@ -303,7 +301,7 @@ namespace RegenerateFM.Desktop.FM24.Memory
                 // screen can't make the first team's Squad command ambiguous.
                 var found = tables[NameCellId].Count > 0 ? tables[NameCellId] : tables[ListCellId];
                 if (found.Count == 0)
-                    throw new MemoryUnavailableException("No squad player list is open; open the team's Squad view and try again.");
+                    throw new MemoryUnavailableException(Text.T("No squad player list is open; open the team's Squad view and try again."));
                 if (found.Count != 1)
                     throw new MemoryUnavailableException("Expected one open FM24 Squad table; found " + found.Count + ".");
                 var (tableWidget, drawn) = found.First();
@@ -351,9 +349,9 @@ namespace RegenerateFM.Desktop.FM24.Memory
                     // The squad menu is also offered on screens with another kind of
                     // list (a Development Center team's overview can list staff).
                     throw new MemoryUnavailableException(
-                        state.Brief.Count > 0 ? "FM24 keeps only brief records for the players shown (no age or ability), so RegenerateFM can't describe them."
+                        state.Brief.Count > 0 ? Text.T("FM24 keeps only brief records for the players shown (no age or ability), so RegenerateFM can't describe them.")
                         : state.Coaches > 0 || state.Others > 0 ? NotASquad
-                        : "The open FM24 Squad table has no players.");
+                        : Text.T("The open FM24 Squad table has no players."));
                 }
                 state.Today = catalogue ? Today(game, dates, state.Rows.Select(row => row.Record)) : DateTime.MinValue;
             }

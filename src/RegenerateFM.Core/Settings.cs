@@ -126,7 +126,7 @@ namespace RegenerateFM
                 (uri.Scheme == "https" && uri.Host.Length > 0 ||
                  uri.Scheme == "http" && (uri.Host == "127.0.0.1" || uri.Host == "localhost" || uri.Host == "[::1]")))
                 return url;
-            throw new ArgumentException(name + " in " + FileName + " must be an https address, or http on this computer (127.0.0.1).");
+            throw new ArgumentException(Text.T("{0} in {1} must be an https address, or http on this computer (127.0.0.1).", name, FileName));
         }
     }
 }

@@ -37,13 +37,13 @@ namespace RegenerateFM.FM26
             if (_pending != null || _squadBatch != null)
             {
                 Log.LogWarning("A portrait request is already in progress");
-                ShowBusyNotice("Face generation is already in progress");
+                ShowBusyNotice(Text.T("Face generation is already in progress"));
                 return;
             }
             if (WaitingForGraphics)
             {
                 Log.LogWarning("A portrait is still loading into FM26; wait for graphics refresh before generating again");
-                ShowBusyNotice("Waiting for the previous face to load");
+                ShowBusyNotice(Text.T("Waiting for the previous face to load"));
                 return;
             }
             if (!personId.HasValue)
@@ -70,7 +70,7 @@ namespace RegenerateFM.FM26
                 if (update)
                 {
                     if (!HasFace(picture))
-                        throw new InvalidOperationException("This person has no face to update yet. Use Generate face instead.");
+                        throw new InvalidOperationException(Text.T("This person has no face to update yet. Use Generate face instead."));
                     reference = CaptureReferencePng(picture);
                     newgenFace = IsNewgenPortrait(picture);
                 }
@@ -130,7 +130,7 @@ namespace RegenerateFM.FM26
                 }
                 _scoutingRetry = null;
                 Log.LogInfo(error.Message);
-                ShowDialog(error.Message, "Close", () => CancelSquadScan());
+                ShowDialog(error.Message, Text.T("Close"), () => CancelSquadScan());
             }
             catch (Exception error)
             {
@@ -163,7 +163,7 @@ namespace RegenerateFM.FM26
                 if (System.DateTime.UtcNow - pending.StartedUtc < GenerationTimeout)
                     return;
                 _pending = null;
-                ShowError(pending.Overlay, pending.Message, "Portrait request timed out. Try again.");
+                ShowError(pending.Overlay, pending.Message, Text.T("Portrait request timed out. Try again."));
                 Log.LogError("Face generation timed out; request lock released");
                 return;
             }
@@ -180,13 +180,13 @@ namespace RegenerateFM.FM26
                 }
                 Log.LogInfo("Portrait saved to " + result.GraphicsDir);
                 if (pending.Message != null)
-                    pending.Message.text = "Loading face…";
+                    pending.Message.text = Text.T("Loading face…");
                 _refreshOverlay = pending.Overlay;
                 _refreshMessage = pending.Message;
                 if (!Refresh())
                 {
                     ShowError(pending.Overlay, pending.Message,
-                        "Portrait saved, but game refresh failed. Restart FM26 to load it.");
+                        Text.T("Portrait saved, but game refresh failed. Restart FM26 to load it."));
                     _refreshOverlay = null;
                     _refreshMessage = null;
                 }
@@ -224,7 +224,7 @@ namespace RegenerateFM.FM26
                 label.style.whiteSpace = WhiteSpace.Normal;
                 label.style.width = Length.Percent(95);
                 notice.Add(label);
-                picture.Add(notice);
+                picture.Add(Directed(notice));
                 notice.schedule.Execute((Il2CppSystem.Action)(System.Action)(() =>
                 {
                     if (notice.parent != null)
@@ -271,7 +271,7 @@ namespace RegenerateFM.FM26
             if (header == null || !HeaderId(header, out long personId))
             {
                 Log.LogWarning("The profile's ID could not be read yet; no image request was made");
-                ShowBusyNotice("The profile is still loading. Choose it again.");
+                ShowBusyNotice(Text.T("The profile is still loading. Choose it again."));
                 return;
             }
             if (expected.HasValue && expected.Value != personId)
@@ -347,7 +347,7 @@ namespace RegenerateFM.FM26
         private static VisualElement BuildOverlay(VisualElement picture, out Label message)
         {
             if (picture == null)
-                throw new InvalidOperationException("FM26 player picture was not found.");
+                throw new InvalidOperationException(Text.T("FM26 player picture was not found."));
             var previous = picture.Q<VisualElement>("regeneratefm-generating-overlay");
             if (previous != null)
                 previous.RemoveFromHierarchy();
@@ -360,7 +360,7 @@ namespace RegenerateFM.FM26
             overlay.style.backgroundColor = new Color(0f, 0f, 0f, 0.72f);
             overlay.style.justifyContent = Justify.Center;
             overlay.style.alignItems = Align.Center;
-            message = new Label("Generating ◐") { pickingMode = PickingMode.Ignore };
+            message = new Label(Text.T("Generating {0}", "◐")) { pickingMode = PickingMode.Ignore };
             message.style.color = Color.white;
             message.style.fontSize = 14;
             message.style.unityTextAlign = TextAnchor.MiddleCenter;
@@ -373,19 +373,19 @@ namespace RegenerateFM.FM26
             var label = message;
             overlay.schedule.Execute((Il2CppSystem.Action)(System.Action)(() =>
             {
-                if (overlay.parent != null && !label.text.StartsWith("Face generation failed") &&
-                    !label.text.StartsWith("Portrait saved") && label.text != "Loading face…")
-                    label.text = "Generating " + frames[frame++ % frames.Length];
+                if (overlay.parent != null && !label.text.StartsWith(Text.T("Face generation failed")) &&
+                    !label.text.StartsWith("Portrait saved") && label.text != Text.T("Loading face…"))
+                    label.text = Text.T("Generating {0}", frames[frame++ % frames.Length]);
             })).Every(180);
-            return overlay;
+            return Directed(overlay);
         }
 
         private static void ShowError(VisualElement overlay, Label message, string error)
         {
             if (overlay == null || message == null)
                 return;
-            message.text = "Face generation failed";
-            overlay.tooltip = error ?? "Unknown error";
+            message.text = Text.T("Face generation failed");
+            overlay.tooltip = error ?? Text.T("Unknown error");
             overlay.style.backgroundColor = new Color(0.4f, 0f, 0f, 0.82f);
         }
 
@@ -488,7 +488,7 @@ namespace RegenerateFM.FM26
                 return;
             WaitingForGraphics = false;
             ShowError(_refreshOverlay, _refreshMessage,
-                "Portrait saved, but graphics reload timed out. Restart FM26 to load it.");
+                Text.T("Portrait saved, but graphics reload timed out. Restart FM26 to load it."));
             _refreshOverlay = null;
             _refreshMessage = null;
             Log.LogWarning("RegenerateFM graphics reload timed out after 30 seconds; refresh lock released");
@@ -510,7 +510,7 @@ namespace RegenerateFM.FM26
             catch (Exception error)
             {
                 ShowError(_refreshOverlay, _refreshMessage,
-                    "Portrait saved, but panel refresh failed. Restart FM26 to load it.");
+                    Text.T("Portrait saved, but panel refresh failed. Restart FM26 to load it."));
                 Log.LogError("Graphics loaded, but panel refresh failed: " + error);
             }
             finally
