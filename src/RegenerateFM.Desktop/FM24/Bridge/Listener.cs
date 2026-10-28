@@ -78,6 +78,8 @@ namespace RegenerateFM.Desktop.FM24.Bridge
         public Func<uint, bool, string> Resolve;
         // Asks for a missing key first (the Mac's prompt in FM24); false if the player cancels.
         public Func<bool> KeyReady;
+        // Sets Text.Language from FM24's before a command's messages (unset in tests).
+        public Action ReadLanguage;
         public Action<string> Notify = text => Console.WriteLine("RegenerateFM: " + text);
         public Action<string> Log = text => Console.WriteLine(text);
         public Func<double> Clock = () => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0;
@@ -239,7 +241,7 @@ namespace RegenerateFM.Desktop.FM24.Bridge
             catch (Exception error) when (error is OutOfMemoryException || error is ThreadStateException || error is InvalidOperationException)
             {
                 Release();
-                string message = "Could not start the FM24 face request worker: " + error.Message + "; no image request was made.";
+                string message = Text.T("Could not start the FM24 face request worker: {0}; no image request was made.", error.Message);
                 Log(message);
                 Notify(message);
             }
@@ -255,6 +257,7 @@ namespace RegenerateFM.Desktop.FM24.Bridge
         {
             try
             {
+                ReadLanguage?.Invoke();
                 if (action == "squad" || action == "staff")
                 {
                     // Roster, portrait state and prompts come from game memory.
@@ -264,7 +267,7 @@ namespace RegenerateFM.Desktop.FM24.Bridge
                 // The companion reads the open profile from memory and refuses the
                 // request unless it is still this person.
                 if (bound == null)
-                    throw new InvalidOperationException("FM24 did not report which person's menu was chosen; no image request was made.");
+                    throw new InvalidOperationException(Text.T("FM24 did not report which person's menu was chosen; no image request was made."));
                 // FM24 for macOS asks for a missing key first, before the request.
                 if (KeyReady != null && !KeyReady())
                 {
@@ -274,7 +277,7 @@ namespace RegenerateFM.Desktop.FM24.Bridge
                 if (bound.StartsWith("r", StringComparison.Ordinal))
                 {
                     if (Resolve == null)
-                        throw new InvalidOperationException("Enable screen IDs in FM24's preferences; no image request was made.");
+                        throw new InvalidOperationException(Text.T("Enable screen IDs in FM24's preferences; no image request was made."));
                     bound = Resolve(uint.Parse(bound.Substring(1), CultureInfo.InvariantCulture), true);
                 }
                 var result = Generate(bound, action == "update" ? "update" : "generate");
@@ -284,9 +287,9 @@ namespace RegenerateFM.Desktop.FM24.Bridge
                     // Already in FM24's progress dialog.
                 }
                 else if (!result.Ok && !result.Cancelled)
-                    Notify(result.Error ?? "RegenerateFM could not generate this portrait.");
+                    Notify(result.Error ?? Text.T("RegenerateFM could not generate this portrait."));
                 else if (result.Ok && !result.Preview && !result.Refreshed)
-                    Notify(result.Warning ?? "The portrait was saved, but FM24 did not reload it.");
+                    Notify(result.Warning ?? Text.T("The portrait was saved, but FM24 did not reload it."));
             }
             catch (Exception error)
             {
@@ -315,6 +318,7 @@ namespace RegenerateFM.Desktop.FM24.Bridge
             var clock = Stopwatch.StartNew();
             try
             {
+                ReadLanguage?.Invoke();
                 if (person.StartsWith("r", StringComparison.Ordinal))
                 {
                     if (Resolve == null)

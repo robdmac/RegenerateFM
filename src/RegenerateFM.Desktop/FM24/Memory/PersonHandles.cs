@@ -254,7 +254,7 @@ namespace RegenerateFM.Desktop.FM24.Memory
         // Thrown without ``wait`` while the index is still being built.
         public sealed class StillIndexingException : InvalidOperationException
         {
-            public StillIndexingException() : base("RegenerateFM is still indexing FM24's people.") { }
+            public StillIndexingException() : base(Text.T("RegenerateFM is still indexing FM24's people.")) { }
         }
 
         // The person ID and record address for a person reference.

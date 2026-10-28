@@ -63,15 +63,85 @@ static void log_line(const char *text)
 
 static BOOL queue_dialog(int kind, const char *title, const char *text);
 
-/* Worker threads only. FM24 shows the message in its own dialog when the UI
-   thread can take it; otherwise (another dialog pending, or the dialog
-   functions unusable) a Windows message box is used. */
-static void show_message(const WCHAR *text)
+/* RegenerateFM's own text in FM24's interface language, which the companion
+   sends (REGENERATEFM24L, below) since only it knows the translations. Until
+   then, or for a label it leaves empty, the English default is used, so an
+   older companion still works. The same order as regeneratefm24_macos.c; the
+   key prompt's labels are only used on macOS. Written by the request thread,
+   read on FM24's UI thread and the bridge worker, always copied out under
+   label_lock. */
+enum { LABEL_SQUAD, LABEL_STAFF, LABEL_GENERATE, LABEL_UPDATE, LABEL_NO, LABEL_OK, LABEL_STOP,
+       LABEL_UNKNOWN_ITEM, LABEL_NO_NETWORK, LABEL_NO_SOCKET, LABEL_BUSY, LABEL_STALE,
+       LABEL_KEY_TITLE, LABEL_KEY_SAVE, LABEL_KEY_CANCEL, LABEL_KEY_GET, LABEL_KEY_CREDITS, LABEL_KEY_PASTED,
+       LABEL_COUNT };
+#define LABEL_SIZE 512
+static const char *const label_defaults[LABEL_COUNT] = {
+    [LABEL_SQUAD] = "Generate missing squad faces\xe2\x80\xa6",
+    [LABEL_STAFF] = "Generate missing staff faces\xe2\x80\xa6",
+    [LABEL_GENERATE] = "Generate new face",
+    [LABEL_UPDATE] = "Update face",
+    [LABEL_NO] = "No",
+    [LABEL_OK] = "OK",
+    [LABEL_STOP] = "Stop after this face",
+    [LABEL_UNKNOWN_ITEM] = "RegenerateFM could not tell which menu item was chosen, so nothing was generated. "
+                           "Choose it again.",
+    [LABEL_NO_NETWORK] = "RegenerateFM could not start its network bridge. Restart FM24 and check regeneratefm24.log.",
+    [LABEL_NO_SOCKET] = "RegenerateFM could not open its local connection. Restart FM24 and check regeneratefm24.log.",
+    [LABEL_BUSY] = "RegenerateFM is already processing a request. Please wait for it to finish.",
+    [LABEL_STALE] = "RegenerateFM received this click too late to be sure which screen was open, "
+                    "so nothing was generated. Choose the menu item again.",
+    [LABEL_KEY_TITLE] = "RegenerateFM: credits or your OpenAI API key",
+    [LABEL_KEY_SAVE] = "Save key",
+    [LABEL_KEY_CANCEL] = "Cancel",
+    [LABEL_KEY_GET] = "Get a key\xe2\x80\xa6",
+    [LABEL_KEY_CREDITS] = "Buy credits / Sign in",
+    [LABEL_KEY_PASTED] = "{0} characters, ending \xe2\x80\xa6{1}",
+};
+static SRWLOCK label_lock = SRWLOCK_INIT;
+static char label_text[LABEL_COUNT][LABEL_SIZE];
+
+/* The label in FM24's language, copied into out. */
+static const char *label(int which, char *out, size_t size)
 {
-    char utf8[1024];
-    int count = WideCharToMultiByte(CP_UTF8, 0, text, -1, utf8, sizeof(utf8), NULL, NULL);
-    if (count > 0 && queue_dialog(2, "RegenerateFM", utf8)) return;
-    MessageBoxW(NULL, text, L"RegenerateFM", MB_OK | MB_ICONINFORMATION | MB_TOPMOST | MB_SETFOREGROUND);
+    AcquireSRWLockShared(&label_lock);
+    snprintf(out, size, "%s", label_text[which][0] ? label_text[which] : label_defaults[which]);
+    ReleaseSRWLockShared(&label_lock);
+    return out;
+}
+
+/* Sets every label from text, the labels in order separated by newlines;
+   a missing, empty or too long one goes back to English. */
+static void set_labels(const char *text)
+{
+    AcquireSRWLockExclusive(&label_lock);
+    for (int i = 0; i < LABEL_COUNT; ++i) {
+        size_t length = text ? strcspn(text, "\n") : 0;
+        if (length < LABEL_SIZE) {
+            memcpy(label_text[i], text ? text : "", length);
+            label_text[i][length] = 0;
+        } else {
+            label_text[i][0] = 0;
+        }
+        text = text && text[length] == '\n' ? text + length + 1 : NULL;
+    }
+    ReleaseSRWLockExclusive(&label_lock);
+}
+
+/* Worker threads only, text UTF-8. FM24 shows the message in its own dialog
+   when the UI thread can take it; otherwise (another dialog pending, or the
+   dialog functions unusable) a Windows message box is used. */
+static void show_message(const char *text)
+{
+    WCHAR wide[LABEL_SIZE * 2];
+    if (queue_dialog(2, "RegenerateFM", text)) return;
+    if (MultiByteToWideChar(CP_UTF8, 0, text, -1, wide, (int)(sizeof(wide) / sizeof(wide[0]))) <= 0) return;
+    MessageBoxW(NULL, wide, L"RegenerateFM", MB_OK | MB_ICONINFORMATION | MB_TOPMOST | MB_SETFOREGROUND);
+}
+
+static void show_label(int which)
+{
+    char text[LABEL_SIZE];
+    show_message(label(which, text, sizeof(text)));
 }
 
 static BOOL sibling_path(WCHAR *path, const WCHAR *name)
@@ -601,7 +671,8 @@ static BOOL choice_buttons(void *manager)
     GAME_FUNCTION(bool_function, RELOAD_VALUE_BOOL_RVA)(value, 0);
     GAME_FUNCTION(set_function, RELOAD_EVENT_SET_RVA)(record, SKIN_ID('h','i','d','n'), value);
     GAME_FUNCTION(value_function, RELOAD_VALUE_FREE_RVA)(value);
-    set_text(record, SKIN_ID('t','e','x','t'), "No");
+    char no_label[LABEL_SIZE];
+    set_text(record, SKIN_ID('t','e','x','t'), label(LABEL_NO, no_label, sizeof(no_label)));
     GAME_FUNCTION(apply_function, DIALOG_APPLY_PROPERTIES_RVA)(cancel + WIDGET_PART, record);
     GAME_FUNCTION(value_function, RELOAD_EVENT_FREE_RVA)(record);
     return TRUE;
@@ -614,7 +685,8 @@ static BOOL make_ok_dialog(void *manager, const char *label);
 static BOOL apply_progress(void *manager)
 {
     if (progress_target == 3) {
-        if (!make_ok_dialog(manager, "OK")) return FALSE;
+        char ok[LABEL_SIZE];
+        if (!make_ok_dialog(manager, label(LABEL_OK, ok, sizeof(ok)))) return FALSE;
         /* Now an OK message: a pending relabel must not bring back "Stop after this face". */
         dialog_kind = 2;
         ok_dialog_tries = 0;
@@ -670,7 +742,8 @@ static BOOL dialog_tick(void *manager, unsigned int id)
         log_line(applied ? "REGENERATEFM24_PROGRESS_SET" : "REGENERATEFM24_PROGRESS_NOT_SET");
     }
     if (state == DIALOG_SHOWN && dialog_kind != 1 && ok_dialog_tries > 0 && id == IDLE_EVENT) {
-        if (make_ok_dialog(manager, dialog_kind == 3 ? "Stop after this face" : "OK")) {
+        char button[LABEL_SIZE];
+        if (make_ok_dialog(manager, label(dialog_kind == 3 ? LABEL_STOP : LABEL_OK, button, sizeof(button)))) {
             ok_dialog_tries = 0;
             log_line("REGENERATEFM24_DIALOG_OK_BUTTON");
         } else if (!--ok_dialog_tries) {
@@ -816,7 +889,8 @@ static void add_squad_item(void *provider, void **builder, void *context)
     unsigned char text[16] __attribute__((aligned(16))) = {0};
     unsigned char command[64] __attribute__((aligned(16))) = {0};
     void *item = NULL;
-    GAME_FUNCTION(string_init_function, SQUAD_MENU_STRING_INIT_RVA)(text, "Generate missing squad faces\xe2\x80\xa6", -1);
+    char label_utf8[LABEL_SIZE];
+    GAME_FUNCTION(string_init_function, SQUAD_MENU_STRING_INIT_RVA)(text, label(LABEL_SQUAD, label_utf8, sizeof(label_utf8)), -1);
     GAME_FUNCTION(item_new_function, SQUAD_MENU_ITEM_NEW_RVA)(*builder, &item, text, SQUAD_EVENT,
                                                              SKIN_ID('E','N','O','N'), SKIN_ID('N','U','L','L'));
     GAME_FUNCTION(value_function, SQUAD_MENU_STRING_FREE_RVA)(text);
@@ -1047,8 +1121,9 @@ static void add_squad_rows(unsigned char **children, int count)
             present |= id == SQUAD_EVENT || id == STAFF_EVENT;
         }
         if ((squad || staff) && !present && rows_count < MAX_POPUP_ROWS) {
-            if (squad) add_menu_row(root, SQUAD_EVENT, "Generate missing squad faces\xe2\x80\xa6");
-            else add_menu_row(root, STAFF_EVENT, "Generate missing staff faces\xe2\x80\xa6");
+            char text[LABEL_SIZE];
+            if (squad) add_menu_row(root, SQUAD_EVENT, label(LABEL_SQUAD, text, sizeof(text)));
+            else add_menu_row(root, STAFF_EVENT, label(LABEL_STAFF, text, sizeof(text)));
             log_line(squad ? "REGENERATEFM24_TEAM_MENU_ADDED" : "REGENERATEFM24_STAFF_MENU_ADDED");
         }
     }
@@ -1084,13 +1159,22 @@ static void popup_opened(void *manager, void *event)
         for (int i = 0; i < count; ++i)
             if (item_fourcc(rows[i], SKIN_ID('i','d',' ',' ')) == PROFILE_EVENT) present = TRUE;
         if (!present) {
-            add_menu_row(root, PROFILE_EVENT, "Generate new face");
-            add_menu_row(root, UPDATE_ITEM, "Update face");
+            char text[LABEL_SIZE];
+            add_menu_row(root, PROFILE_EVENT, label(LABEL_GENERATE, text, sizeof(text)));
+            add_menu_row(root, UPDATE_ITEM, label(LABEL_UPDATE, text, sizeof(text)));
             if ((count = popup_rows(popup, popup_id, &root, rows)) < 0) return;
         }
     }
-    for (int i = 0; i < count; ++i)
-        if (item_fourcc(rows[i], SKIN_ID('i','d',' ',' ')) == UPDATE_ITEM) update = rows[i];
+    char text[LABEL_SIZE];
+    for (int i = 0; i < count; ++i) {
+        unsigned int id = item_fourcc(rows[i], SKIN_ID('i','d',' ',' '));
+        /* The skin's portrait popup has its rows in English from setup; they
+           take FM24's language here, as the rows added above do. */
+        if (popup_id != SKIN_ID('P','p','r','f') && (id == PROFILE_EVENT || id == UPDATE_ITEM))
+            set_text(rows[i] + ITEM_PROPERTIES, SKIN_ID('t','e','x','t'),
+                     label(id == PROFILE_EVENT ? LABEL_GENERATE : LABEL_UPDATE, text, sizeof(text)));
+        if (id == UPDATE_ITEM) update = rows[i];
+    }
     if (!update) return;
     LARGE_INTEGER f, t0, t1, t2;
     QueryPerformanceFrequency(&f); QueryPerformanceCounter(&t0);
@@ -1171,21 +1255,20 @@ static DWORD WINAPI bridge_worker(LPVOID unused)
                      (long)read_ms, item == UPDATE_ITEM ? "update" : item == PROFILE_EVENT ? "generate" : "unknown");
             log_line(line);
             if (!item) {
-                show_message(L"RegenerateFM could not tell which menu item was chosen, so nothing was generated. "
-                             L"Choose it again.");
+                show_label(LABEL_UNKNOWN_ITEM);
                 continue;
             }
         } else {
             log_line(id == STAFF_EVENT ? "REGENERATEFM24_STAFF_CLICK" : "REGENERATEFM24_SQUAD_CLICK");
         }
         if (!network) {
-            show_message(L"RegenerateFM could not start its network bridge. Restart FM24 and check regeneratefm24.log.");
+            show_label(LABEL_NO_NETWORK);
             continue;
         }
         if (socket_fd == INVALID_SOCKET) socket_fd = open_bridge();
         if (socket_fd == INVALID_SOCKET) {
             log_line("REGENERATEFM24_BRIDGE_SOCKET_FAILED");
-            show_message(L"RegenerateFM could not open its local connection. Restart FM24 and check regeneratefm24.log.");
+            show_label(LABEL_NO_SOCKET);
             continue;
         }
         LONG serial = InterlockedIncrement(&sequence);
@@ -1198,13 +1281,12 @@ static DWORD WINAPI bridge_worker(LPVOID unused)
         if (result == REPLY_ACCEPTED) { log_line("REGENERATEFM24_CLICK_ACCEPTED"); continue; }
         if (result == REPLY_BUSY) {
             log_line("REGENERATEFM24_CLICK_BUSY");
-            show_message(L"RegenerateFM is already processing a request. Please wait for it to finish.");
+            show_label(LABEL_BUSY);
             continue;
         }
         if (result == REPLY_STALE) {
             log_line("REGENERATEFM24_CLICK_STALE");
-            show_message(L"RegenerateFM received this click too late to be sure which screen was open, "
-                         L"so nothing was generated. Choose the menu item again.");
+            show_label(LABEL_STALE);
             continue;
         }
         if (result == REPLY_SOCKET_ERROR) {
@@ -1214,9 +1296,10 @@ static DWORD WINAPI bridge_worker(LPVOID unused)
             socket_fd = INVALID_SOCKET;
         }
         log_line("REGENERATEFM24_COMPANION_UNAVAILABLE");
-        show_message(L"RegenerateFM's companion isn't running. FM24 starts it; restart FM24 to try again. "
-                     L"If you moved the RegenerateFM folder, run its setup again (regeneratefm-fm24.exe on Windows, "
-                     L"install-linux.sh on Linux). regeneratefm-fm24.log beside it says what went wrong.");
+        /* English: the companion that has the translations isn't there. */
+        show_message("RegenerateFM's companion isn't running. FM24 starts it; restart FM24 to try again. "
+                     "If you moved the RegenerateFM folder, run its setup again (regeneratefm-fm24.exe on Windows, "
+                     "install-linux.sh on Linux). regeneratefm-fm24.log beside it says what went wrong.");
     }
     if (socket_fd != INVALID_SOCKET) closesocket(socket_fd);
     if (network) WSACleanup();
@@ -1260,6 +1343,10 @@ static BOOL base64_text(const char *in, char *out, size_t size)
      progress text (base64 UTF-8; "-" clears it); "finish" also turns the open
      progress dialog into an OK message. The reply is queued, busy, done or
      failed.
+     "REGENERATEFM24L 1 <serial> <token> <labels>": RegenerateFM's own text in
+     FM24's language (set_labels): base64 UTF-8 of the labels in LABEL_ order,
+     separated by newlines. The reply "REGENERATEFM24L <serial> done" says
+     they were taken; an older serial is ignored.
    The companion repeats the same serial to poll and never starts a second
    reload or dialog that way. */
 static DWORD WINAPI reload_listener(LPVOID unused)
@@ -1280,8 +1367,9 @@ static DWORD WINAPI reload_listener(LPVOID unused)
         return 0;
     }
     log_line("REGENERATEFM24_RELOAD_READY");
-    long long last = 0, last_dialog = 0, last_progress = 0;
+    long long last = 0, last_dialog = 0, last_progress = 0, last_labels = 0;
     static char packet[4096], title_b64[400], text_b64[1500], title[256], text[1024];
+    static char labels_b64[3800], labels[2900];
     static char yes_b64[200], more_b64[200], yes_label[96], more_label[96];
     for (;;) {
         char token[160], kind[16], extra;
@@ -1322,6 +1410,19 @@ static DWORD WINAPI reload_listener(LPVOID unused)
                 continue;
             }
             count = snprintf(reply, sizeof(reply), "REGENERATEFM24D %lld %s", serial, status);
+            sendto(socket_fd, reply, count, 0, (struct sockaddr *)&peer, sizeof(peer));
+            continue;
+        }
+        if (sscanf(packet, "REGENERATEFM24L 1 %lld %159s %3799s %c", &serial, token, labels_b64, &extra) == 3) {
+            if (serial <= 0 || strcmp(token, bridge_token) || serial < last_labels ||
+                !base64_text(labels_b64, labels, sizeof(labels)))
+                continue;
+            if (serial > last_labels) {
+                last_labels = serial;
+                set_labels(labels);
+                log_line("REGENERATEFM24_LABELS_SET");
+            }
+            count = snprintf(reply, sizeof(reply), "REGENERATEFM24L %lld done", serial);
             sendto(socket_fd, reply, count, 0, (struct sockaddr *)&peer, sizeof(peer));
             continue;
         }

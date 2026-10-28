@@ -350,7 +350,7 @@ namespace RegenerateFM.Desktop.FM24
         // Thrown without ``wait`` while the game archive's index is being built.
         public sealed class StillIndexingException : InvalidOperationException
         {
-            public StillIndexingException() : base("FM24's bundled pictures are still being indexed.") { }
+            public StillIndexingException() : base(Text.T("FM24's bundled pictures are still being indexed.")) { }
         }
 
         // Whether the archive's index is built; if not, it is built in the background.

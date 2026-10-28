@@ -113,8 +113,7 @@ namespace RegenerateFM.Desktop.FM24.Memory
                         // EPERM: Yama (kernel.yama.ptrace_scope 1, Ubuntu's default) lets a
                         // program read only its own children's memory.
                         throw new IOException(errno == 1
-                            ? "Linux doesn't let this program read FM24's memory (kernel.yama.ptrace_scope). Use the companion " +
-                              "FM24 starts inside Proton, or allow it for this session with sudo sysctl kernel.yama.ptrace_scope=0"
+                            ? Text.T("Linux doesn't let this program read FM24's memory (kernel.yama.ptrace_scope). Use the companion FM24 starts inside Proton, or allow it for this session with sudo sysctl kernel.yama.ptrace_scope=0")
                             : "process_vm_readv failed (errno " + errno + ").");
                     }
                     return (int)count;

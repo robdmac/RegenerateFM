@@ -14,6 +14,7 @@
   </Target>
   <ItemGroup>
     <Compile Include="../RegenerateFM.Core/**/*.cs" Exclude="../RegenerateFM.Core/obj/**;../RegenerateFM.Core/bin/**" LinkBase="Core" />
+    <EmbeddedResource Include="../RegenerateFM.Core/Translations/*.json" LogicalName="Translations/%(Filename)%(Extension)" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="BepInEx.Core" HintPath="$(GameDir)/BepInEx/core/BepInEx.Core.dll" Private="false" />
@@ -27,6 +28,7 @@
     <Reference Include="FM.Match" HintPath="$(GameDir)/BepInEx/interop/FM.Match.dll" Private="false" />
     <Reference Include="SI.Anim" HintPath="$(GameDir)/BepInEx/interop/SI.Anim.dll" Private="false" />
     <Reference Include="SI.Match" HintPath="$(GameDir)/BepInEx/interop/SI.Match.dll" Private="false" />
+    <Reference Include="SI.VisualScripting" HintPath="$(GameDir)/BepInEx/interop/SI.VisualScripting.dll" Private="false" />
     <Reference Include="SI.UI" HintPath="$(GameDir)/BepInEx/interop/SI.UI.dll" Private="false" />
     <Reference Include="UnityEngine.CoreModule" HintPath="$(GameDir)/BepInEx/interop/UnityEngine.CoreModule.dll" Private="false" />
     <Reference Include="UnityEngine.IMGUIModule" HintPath="$(GameDir)/BepInEx/interop/UnityEngine.IMGUIModule.dll" Private="false" />

@@ -41,7 +41,7 @@ namespace RegenerateFM
                 var saved = CurrentPortrait(folder, personId);
                 var reference = saved ?? shownPng;
                 if (reference == null)
-                    throw new InvalidOperationException("This person has no face to update yet. Use Generate face instead.");
+                    throw new InvalidOperationException(Text.T("This person has no face to update yet. Use Generate face instead."));
                 string prompt = saved == null && shownNewgen ? Prompts.NewgenPrompt(profile, personId, folder) : Prompts.UpdatePrompt(profile);
                 png = await ImageApi.EditPng(settings, prompt, reference, cancel).ConfigureAwait(false);
             }

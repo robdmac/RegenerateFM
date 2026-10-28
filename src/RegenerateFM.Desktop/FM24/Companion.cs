@@ -38,7 +38,7 @@ namespace RegenerateFM.Desktop.FM24
 
         public bool Failed { get; private set; }
 
-        public void Loading() => Set("Loading…");
+        public void Loading() => Set(Text.T("Loading…"));
 
         private void Set(string text)
         {
@@ -55,7 +55,7 @@ namespace RegenerateFM.Desktop.FM24
         public bool Fail(string message)
         {
             Failed = true;
-            Set("Failed");
+            Set(Text.T("Failed"));
             return false;
         }
 
@@ -83,7 +83,7 @@ namespace RegenerateFM.Desktop.FM24
         {
             try
             {
-                Dll.SetProgress(_port, _token, "dialog", "Loading the new face…");
+                Dll.SetProgress(_port, _token, "dialog", Text.T("Loading the new face…"));
             }
             catch (Exception error) when (error is DialogUnavailableException || error is ArgumentException || error is SocketException)
             {
@@ -115,11 +115,11 @@ namespace RegenerateFM.Desktop.FM24
     // dialogs and reloads the skin.
     public sealed partial class Companion
     {
-        public const string NoKeySaved = "No OpenAI key was saved, so no image request was made.";
-        public const string MissingKey = "RegenerateFM has no OpenAI key or credits sign-in saved. Close and restart the companion to enter one.";
-        public const string RejectedKey = " Close the companion and start it again to enter a new key.";
+        public static string NoKeySaved => Text.T("No OpenAI key was saved, so no image request was made.");
+        public static string MissingKey => Text.T("RegenerateFM has no OpenAI key or credits sign-in saved. Close and restart the companion to enter one.");
+        public static string RejectedKey => " " + Text.T("Close the companion and start it again to enter a new key.");
         // On macOS and Windows FM24 (or the key window) asks for the key itself (EnsureKey).
-        public const string RejectedKeyInGame = " Choose the face command again to enter a new key.";
+        public static string RejectedKeyInGame => " " + Text.T("Choose the face command again to enter a new key.");
 
         private readonly object _lock = new object();
         private readonly object _keyLock = new object();
@@ -191,7 +191,7 @@ namespace RegenerateFM.Desktop.FM24
         {
             try
             {
-                return new PortraitProgress(ReloadPort, Token, mode == "update" ? "Updating…" : "Generating…");
+                return new PortraitProgress(ReloadPort, Token, mode == "update" ? Text.T("Updating…") : Text.T("Generating…"));
             }
             catch (Exception error) when (error is DialogUnavailableException || error is ArgumentException ||
                                           error is System.Net.Sockets.SocketException)
@@ -199,7 +199,7 @@ namespace RegenerateFM.Desktop.FM24
             }
             try
             {
-                return new DialogProgress(ReloadPort, Token, mode == "update" ? "Updating this face…" : "Generating a new face…");
+                return new DialogProgress(ReloadPort, Token, mode == "update" ? Text.T("Updating this face…") : Text.T("Generating a new face…"));
             }
             catch (Exception error) when (error is DialogUnavailableException || error is ArgumentException ||
                                           error is System.Net.Sockets.SocketException)
@@ -222,15 +222,15 @@ namespace RegenerateFM.Desktop.FM24
             }
             catch (MemoryUnavailableException error)
             {
-                throw new InvalidOperationException(error.Message + " No image request was made.");
+                throw new InvalidOperationException(Text.T("{0} No image request was made.", error.Message));
             }
             try
             {
                 var screen = ScreenReader.Read(game);
                 var (personId, profile) = ProfileReader.ReadOpenProfile(game, identityOnly, screen);
                 if (screen.PersonId != personId)
-                    throw new InvalidOperationException("The open FM24 screen shows " + screen.PersonId + ", not person " + personId +
-                                                        "; no image request was made.");
+                    throw new InvalidOperationException(Text.T("The open FM24 screen shows {0}, not person {1}; no image request was made.",
+                                                               screen.PersonId, personId));
                 string biography = screen.Biography;
                 if (!identityOnly && !string.IsNullOrEmpty(biography) &&
                     !biography.StartsWith("no biography is available", StringComparison.OrdinalIgnoreCase))
@@ -239,13 +239,13 @@ namespace RegenerateFM.Desktop.FM24
                 var again = ProfileReader.RereadProfile(game, personId, screen.Title, profile.Age, identityOnly, screen.Today);
                 if (!ScreenReader.Read(game).Equals(screen) || again.PersonId != personId ||
                     ProfileJson.Describe(again.Profile, withBiography: false) != ProfileJson.Describe(profile, withBiography: false))
-                    throw new InvalidOperationException("The open FM24 profile changed during capture; no image request was made.");
+                    throw new InvalidOperationException(Text.T("The open FM24 profile changed during capture; no image request was made."));
                 return (personId, profile);
             }
             catch (Exception error) when (error is MemoryUnavailableException || People.Unreadable(error))
             {
-                throw new InvalidOperationException("Could not read the open FM24 profile from game memory (" + error.Message +
-                                                    "); no image request was made.");
+                throw new InvalidOperationException(Text.T("Could not read the open FM24 profile from game memory ({0}); no image request was made.",
+                                                           error.Message));
             }
         }
 
@@ -302,7 +302,7 @@ namespace RegenerateFM.Desktop.FM24
             }
             catch (MemoryUnavailableException error)
             {
-                throw new InvalidOperationException(error.Message + " No image request was made.");
+                throw new InvalidOperationException(Text.T("{0} No image request was made.", error.Message));
             }
         }
 
@@ -343,7 +343,7 @@ namespace RegenerateFM.Desktop.FM24
             lock (_lock)
             {
                 if (_inFlight)
-                    return FaceResult.Failed("A portrait is already being generated.");
+                    return FaceResult.Failed(Text.T("A portrait is already being generated."));
                 _inFlight = true;
             }
             IFaceProgress progress = null;
@@ -357,16 +357,16 @@ namespace RegenerateFM.Desktop.FM24
                 var (playerId, profile) = ReadProfile(mode == "update");
                 Log("Read " + profile.Name + " (" + playerId + ") from FM24's memory in " + clock.Elapsed.TotalSeconds.ToString("0.0") + " s.");
                 if (expectedId != null && expectedId != playerId)
-                    throw new InvalidOperationException("The open FM24 profile is now person " + playerId + ", not the requested person " +
-                                                        expectedId + "; no image request was made.");
+                    throw new InvalidOperationException(Text.T("The open FM24 profile is now person {0}, not the requested person {1}; no image request was made.",
+                                                               playerId, expectedId));
                 byte[] reference = null;
                 string source = null, prompt;
                 if (mode == "update")
                 {
                     var found = FindExistingPortrait(playerId, GraphicsDir, GameFolder());
                     if (found == null)
-                        throw new InvalidOperationException(profile.Name + " has no face to update yet. Choose Generate new face instead; " +
-                                                            "no image request was made.");
+                        throw new InvalidOperationException(Text.T("{0} has no face to update yet. Choose Generate new face instead; no image request was made.",
+                                                                   profile.Name));
                     (reference, source) = found.Value;
                     prompt = Prompts.UpdatePrompt(profile);
                 }
@@ -407,7 +407,7 @@ namespace RegenerateFM.Desktop.FM24
             }
             catch (Exception error) when (Expected(error) || error is TimeoutException || error is System.Net.Sockets.SocketException)
             {
-                string warning = "Portrait saved, but FM24 reload failed: " + error.Message + ". Use Preferences > Reload Skin.";
+                string warning = Text.T("Portrait saved, but FM24 reload failed: {0}. Use Preferences > Reload Skin.", error.Message);
                 // "Shown": the progress dialog now says so; nothing else needs to.
                 return new FaceResult { Ok = true, PlayerId = playerId, Warning = warning, Shown = progress != null && progress.Fail(warning) };
             }
@@ -437,7 +437,7 @@ namespace RegenerateFM.Desktop.FM24
             lock (_lock)
             {
                 if (_inFlight)
-                    return FaceResult.Failed("A portrait is already being generated.");
+                    return FaceResult.Failed(Text.T("A portrait is already being generated."));
                 _inFlight = true;
             }
             try

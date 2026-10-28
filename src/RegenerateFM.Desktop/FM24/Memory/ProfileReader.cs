@@ -510,7 +510,9 @@ namespace RegenerateFM.Desktop.FM24.Memory
         {
             Dictionary<string, List<string>> titles;
             HashSet<int> ages;
-            if (screen != null && screen.Ages.Count > 0)
+            // In another language there are no "<n> years old" texts, but the
+            // in-game date gives the age.
+            if (screen != null && (screen.Ages.Count > 0 || screen.Today != null))
                 (titles, ages) = (new Dictionary<string, List<string>>(), new HashSet<int>(screen.Ages));
             else
                 (titles, ages) = ScanUi(game);
@@ -534,8 +536,9 @@ namespace RegenerateFM.Desktop.FM24.Memory
             if (people.Count != 1)
                 throw new MemoryUnavailableException("Expected one open FM24 person profile; found " + people.Count + ".");
             var person = people[0];
-            var matching = new HashSet<int>(ages);
-            matching.IntersectWith(PossibleAges(person.Identity, screen?.Today));
+            var matching = PossibleAges(person.Identity, screen?.Today);
+            if (ages.Count > 0 || screen?.Today == null)
+                matching.IntersectWith(ages);
             if (matching.Count != 1)
                 throw new MemoryUnavailableException("Could not verify the open FM24 person's age.");
             return (person.Id, Profile(game, person.Record, person.Identity, person.Names, matching.First(), identityOnly));
@@ -569,6 +572,8 @@ namespace RegenerateFM.Desktop.FM24.Memory
         internal static ProfileSnapshot Profile(GameProcess game, long record, PersonIdentity identity, List<string> names, int age,
                                                 bool identityOnly)
         {
+            // "Role - Club" in English, "Role – Club" in German.
+            names = names.Select(title => title.Replace(" \u2013 ", " - ")).ToList();
             string nation = Nation(game, record);
             string club;
             try
@@ -634,7 +639,9 @@ namespace RegenerateFM.Desktop.FM24.Memory
                 throw new MemoryUnavailableException("Could not verify the FM24 position title.");
             string position = roles.First();
             string family = rated.Split(" (")[0];
-            if (!position.Contains(family) && !(family == "Midfielder" && position.Contains("M (")))
+            // Another language's title names none of the English position families.
+            bool english = Positions.Any(name => position.Contains(name.Split(" (")[0]));
+            if (english && !position.Contains(family) && !(family == "Midfielder" && position.Contains("M (")))
                 throw new MemoryUnavailableException("FM24 position ratings and title disagree.");
             var profile = new ProfileSnapshot
             {

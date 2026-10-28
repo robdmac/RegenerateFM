@@ -132,6 +132,21 @@ namespace RegenerateFM.Tests
         }
 
         [Fact]
+        public void TheInGameDateComesFromItsGlobalInAnyLanguage()
+        {
+            foreach (var layout in new[] { Layout.MacOS, Layout.Windows })
+            {
+                long image = 0x140000000, holder = 0x40000;
+                var game = new FakeProcess(layout, image, zeros: true);
+                game.Q(image + layout.DateGlobal, holder).Put(holder + layout.DateOffset, new byte[] { 0x04, 0x01, 0xE7, 0x07 });
+                Assert.Equal(new DateTime(2023, 9, 17), ScreenReader.GameDate(game));
+                // An impossible day is no date, so the top bar's is read instead.
+                game.Put(holder + layout.DateOffset, new byte[] { 0x6F, 0x01, 0xE7, 0x07 });
+                Assert.Null(ScreenReader.GameDate(game));
+            }
+        }
+
+        [Fact]
         public void RatingOffsetsMatchTwoLiveProfiles()
         {
             // These bytes came from two FM24 24.4.2 game records. Expected values

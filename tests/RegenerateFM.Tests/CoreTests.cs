@@ -25,6 +25,39 @@ namespace RegenerateFM.Tests
         };
 
         [Fact]
+        public void EveryTranslationKeepsItsEnglishPlaceholders()
+        {
+            var assembly = typeof(Text).Assembly;
+            var files = assembly.GetManifestResourceNames().Where(name => name.StartsWith("Translations/")).ToList();
+            Assert.NotEmpty(files);
+            var placeholder = new Regex(@"\{(\d+)\}");
+            foreach (var file in files)
+            {
+                using var stream = assembly.GetManifestResourceStream(file);
+                using var document = JsonDocument.Parse(stream);
+                foreach (var entry in document.RootElement.EnumerateObject())
+                {
+                    string Holes(string text) => string.Join(",", placeholder.Matches(text).Select(match => match.Value).OrderBy(hole => hole));
+                    Assert.True(Holes(entry.Name) == Holes(entry.Value.GetString()), file + ": " + entry.Name + " → " + entry.Value);
+                    // Each one formats as the English does.
+                    string.Format(entry.Value.GetString(), Enumerable.Range(0, 9).Select(i => (object)i).ToArray());
+                }
+            }
+        }
+
+        [Fact]
+        public void TextFallsBackToEnglish()
+        {
+            Assert.Equal("Update face", Text.In("english (us)", "Update face"));
+            Assert.Equal("Not a key at all", Text.In("german", "Not a key at all"));
+            Assert.Equal("Not a key at all", Text.In("klingon", "Not a key at all"));
+            Assert.NotEqual("Update face", Text.In("german", "Update face"));
+            // A regional language uses its base language's text where it has none.
+            Assert.Equal(Text.In("spanish", "Update face"), Text.In("spanish (mexico)", "Update face"));
+            Assert.Equal("spanish-latam.json", Text.FileName("spanish (latam)"));
+        }
+
+        [Fact]
         public void PortraitsAreScaledToFmsSizeKeepingTransparency()
         {
             var fitted = ImageApi.FitPortrait(Pngs.Make(1024));

@@ -15,7 +15,7 @@ namespace RegenerateFM.Desktop.FM24
         // key): KeyWindow's, and key_prompt_macos.m's CREDITS_CHOICE.
         public const string CreditsChoice = "regeneratefm:credits";
         public const string KeyCost = "Each face is then one billed request on your OpenAI account, usually a few cents or less.";
-        public const string KeyWindowNotice = "Buy credits or paste your OpenAI key in the RegenerateFM: credits or OpenAI key window.";
+        public static string KeyWindowNotice => Text.T("Buy credits or paste your OpenAI key in the RegenerateFM: credits or OpenAI key window.");
 
         // Replaced by tests: the key window and the key check.
         public Func<string, string> AskInWindow = text => KeyWindow.Ask(text, link: KeyStore.KeysPage, credits: true);
@@ -30,13 +30,13 @@ namespace RegenerateFM.Desktop.FM24
         // asked for in RegenerateFM's key window.
         private bool AsksInWindow => OperatingSystem.IsWindows() && StartedByFm24 != null;
 
-        private string CreditsText => Credits.BuyText + " Choose Buy credits / Sign in.";
+        private string CreditsText => Credits.BuyText + " " + Text.T("Choose Buy credits / Sign in.");
 
         // The key prompt's first line once the saved key or sign-in was refused.
         private string RejectedText() =>
             Credits.IsToken(SavedKey())
-                ? "Your RegenerateFM credits sign-in has ended or its credits have run out. Choose Buy credits / Sign in."
-                : "OpenAI didn't accept the saved key. Paste a new one.";
+                ? Text.T("Your RegenerateFM credits sign-in has ended or its credits have run out. Choose Buy credits / Sign in.")
+                : Text.T("OpenAI didn't accept the saved key. Paste a new one.");
 
         // A message in FM24's own dialog, or the log if FM24 can't show it.
         private void Tell(string text)
@@ -46,7 +46,7 @@ namespace RegenerateFM.Desktop.FM24
                 return;
             try
             {
-                Dll.ShowDialog(ReloadPort, Token, "message", "RegenerateFM credits", Dll.ClipText(text));
+                Dll.ShowDialog(ReloadPort, Token, "message", Text.T("RegenerateFM credits"), Dll.ClipText(text));
             }
             catch (Exception error) when (error is DialogUnavailableException || error is ArgumentException ||
                                           error is System.Net.Sockets.SocketException)
@@ -83,7 +83,7 @@ namespace RegenerateFM.Desktop.FM24
             }
             catch (Exception error) when (error is IOException || error is InvalidDataException || error is UnauthorizedAccessException)
             {
-                return "Could not save the key: " + error.Message;
+                return Text.T("Could not save the key: {0}", error.Message);
             }
             KeyRejected = false;
             Log("OpenAI key checked and saved in " + KeyStore.Folder + ".");
@@ -110,9 +110,11 @@ namespace RegenerateFM.Desktop.FM24
                 return error.Message;
             }
             bool opened = OpenBrowser(signIn.Link);
-            tell((opened ? "Your browser is open at RegenerateFM credits." : "Open " + signIn.Link + " in your browser.") +
-                 " Sign in with your email, buy credits if you need them, and confirm the code " + signIn.UserCode + "." +
-                 " RegenerateFM carries on by itself once you've signed in.");
+            tell(opened
+                ? Text.T("Your browser is open at RegenerateFM credits. Sign in with your email, buy credits if you need them, and confirm the code {0}. RegenerateFM carries on by itself once you've signed in.",
+                         signIn.UserCode)
+                : Text.T("Open {0} in your browser. Sign in with your email, buy credits if you need them, and confirm the code {1}. RegenerateFM carries on by itself once you've signed in.",
+                         signIn.Link, signIn.UserCode));
             Credits.Poll answer;
             try
             {
@@ -124,7 +126,7 @@ namespace RegenerateFM.Desktop.FM24
                 return error.Message;
             }
             if (answer == null)
-                return "The sign-in expired before it was confirmed. Choose Buy credits / Sign in again.";
+                return Text.T("The sign-in expired before it was confirmed. Choose Buy credits / Sign in again.");
             try
             {
                 KeyStore.Save(KeyStore.DefaultPath, answer.Token);
@@ -132,12 +134,13 @@ namespace RegenerateFM.Desktop.FM24
             catch (Exception error) when (error is IOException || error is ArgumentException || error is UnauthorizedAccessException ||
                                           error is InvalidDataException)
             {
-                return "Could not save the sign-in: " + error.Message;
+                return Text.T("Could not save the sign-in: {0}", error.Message);
             }
             KeyRejected = false;
-            tell("Signed in to RegenerateFM credits as " + answer.Email + ", with " + answer.Credits + " credit" +
-                 (answer.Credits == 1 ? "" : "s") + "." +
-                 (answer.Credits > 0 ? "" : " Buy credits in the browser page, then choose the face command again."));
+            tell(answer.Credits == 1 ? Text.T("Signed in to RegenerateFM credits as {0}, with 1 credit.", answer.Email)
+                 : answer.Credits > 0 ? Text.T("Signed in to RegenerateFM credits as {0}, with {1} credits.", answer.Email, answer.Credits)
+                 : Text.T("Signed in to RegenerateFM credits as {0}, with {1} credits. Buy credits in the browser page, then choose the face command again.",
+                          answer.Email, answer.Credits));
             return null;
         }
 
@@ -164,8 +167,9 @@ namespace RegenerateFM.Desktop.FM24
                 }
                 bool unavailable = false;
                 bool saved = AskUntilSaved(KeyRejected ? RejectedText() : null,
-                    "Paste it (it starts with sk-) with Ctrl+V or type it, then choose Save key.",
-                    "The key or sign-in is saved encrypted for your Windows user in", text =>
+                    Text.T("Paste it (it starts with sk-) with Ctrl+V or type it, then choose Save key."),
+                    Text.T("The key or sign-in is saved encrypted for your Windows user in {0}. Delete that folder to forget it.", KeyStore.Folder),
+                    text =>
                     {
                         try
                         {
@@ -190,9 +194,10 @@ namespace RegenerateFM.Desktop.FM24
         {
             while (true)
             {
-                string text = (problem != null ? problem + "\n\n" : "") + CreditsText +
-                              "\n\nOr use your own OpenAI API key. " + KeyCost + " " + howToPaste + " Get a key… opens " +
-                              KeyStore.KeysPage + ".\n\n" + whereSaved + " " + KeyStore.Folder + ". Delete that folder to forget it.";
+                string text = (problem != null ? problem + "\n\n" : "") + CreditsText + "\n\n" +
+                              Text.T("Or use your own OpenAI API key. Each face is then one billed request on your OpenAI account, usually a few cents or less. {0} Get a key… opens {1}.",
+                                     howToPaste, KeyStore.KeysPage) +
+                              "\n\n" + whereSaved;
                 string entered = ask(text);
                 if (entered == null)
                     return false;
@@ -223,8 +228,10 @@ namespace RegenerateFM.Desktop.FM24
             lock (_keyLock)
             {
                 bool unavailable = false;
-                bool saved = AskUntilSaved(problem, "Paste or type it (it starts with sk-), then choose Save key.",
-                    "The key or sign-in is kept on this Mac only, readable only by your user account, in", text =>
+                bool saved = AskUntilSaved(problem, Text.T("Paste or type it (it starts with sk-), then choose Save key."),
+                    Text.T("The key or sign-in is kept on this Mac only, readable only by your user account, in {0}. Delete that folder to forget it.",
+                           KeyStore.Folder),
+                    text =>
                     {
                         try
                         {

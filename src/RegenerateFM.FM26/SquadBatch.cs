@@ -132,6 +132,8 @@ namespace RegenerateFM.FM26
             var menuList = menuItem;
             while (menuList != null && menuList.name != "View")
                 menuList = menuList.parent;
+            // In another language: the dropdown that opens under SquadButton.
+            menuList ??= SquadDropdownList(root);
             if (menuList == null || menuList.worldBound.width < 100)
             {
                 // A closed dropdown is the usual case; only odd matches are logged.
@@ -153,6 +155,9 @@ namespace RegenerateFM.FM26
             var dropdown = scroll.parent;
             if (_squadMenuButton != null && _squadMenuButton.parent != null && _squadMenuList == menuList)
             {
+                string label = Text.T("Generate faces…");
+                if (_squadMenuButton.text != label)
+                    _squadMenuButton.text = label;
                 if (_squadMenuButton.parent == root)
                     PositionSquadMenuButton(_squadMenuButton, scroll, root);
                 return;
@@ -160,7 +165,7 @@ namespace RegenerateFM.FM26
             RemoveSquadMenuButton();
             var button = new Button((Il2CppSystem.Action)(System.Action)(() => StartSquadScan(ListKind.Players)))
             {
-                name = "regeneratefm-squad-command", text = "Generate faces…", focusable = false
+                name = "regeneratefm-squad-command", text = Text.T("Generate faces…"), focusable = false
             };
             button.style.height = 36;
             button.style.flexShrink = 0;
@@ -178,6 +183,7 @@ namespace RegenerateFM.FM26
                 PositionSquadMenuButton(button, scroll, root);
                 root.Add(button);
             }
+            Directed(button);
             _squadMenuButton = button;
             _squadMenuList = menuList;
             var chain = new List<string>();
@@ -293,7 +299,7 @@ namespace RegenerateFM.FM26
             catch (Exception error)
             {
                 Log.LogWarning(error.Message);
-                ShowDialog(error.Message, "Close", () => CancelSquadScan());
+                ShowDialog(error.Message, Text.T("Close"), () => CancelSquadScan());
                 return;
             }
             var list = ListScroll(kind, CurrentRoot());
@@ -302,8 +308,8 @@ namespace RegenerateFM.FM26
                 Log.LogWarning("The " + Plural(kind) + " list was not found; no image request was made");
                 return;
             }
-            var status = ShowDialog("Scanning " + (kind == ListKind.Staff ? "staff" : "squad") + " portraits…", "Cancel",
-                () => CancelSquadScan());
+            var status = ShowDialog(kind == ListKind.Staff ? Text.T("Scanning staff portraits…") : Text.T("Scanning squad portraits…"),
+                Text.T("Cancel"), () => CancelSquadScan());
             _squadScan = new SquadScan { Kind = kind, Status = status };
             BeginScan(_squadScan, list);
         }
@@ -325,6 +331,11 @@ namespace RegenerateFM.FM26
                     return expected;
             }
             var texts = TextValues(table.parent);
+            // In another language: the count under the team's name ("Kadergröße: 23"),
+            // its only number.
+            if (texts.Count > 1 && Regex.Matches(texts[1], @"\d+") is var numbers && numbers.Count == 1 &&
+                int.TryParse(numbers[0].Value, out int shown))
+                return shown;
             Log.LogWarning("Squad player count was not found near the table; texts: " +
                 string.Join(" | ", texts.GetRange(0, Math.Min(40, texts.Count))));
             return 0;
@@ -354,7 +365,9 @@ namespace RegenerateFM.FM26
             if (scan.List.parent == null || ListScroll(scan.Kind, CurrentRoot()) == null)
             {
                 if (scan.Offer != null)
-                    OtherListFailed(scan, "its " + Plural(scan.Kind) + " list closed while it was being read");
+                    OtherListFailed(scan, scan.Kind == ListKind.Staff
+                        ? Text.T("its staff list closed while it was being read")
+                        : Text.T("its players list closed while it was being read"));
                 else
                     CancelSquadScan();
                 return;
@@ -384,7 +397,9 @@ namespace RegenerateFM.FM26
             }
             scan.Steps++;
             if (scan.Status != null)
-                scan.Status.text = "Scanning portraits… " + scan.Portraits.Count + " " + Plural(scan.Kind) + " checked";
+                scan.Status.text = scan.Kind == ListKind.Staff
+                    ? Text.T("Scanning portraits… {0} staff checked", scan.Portraits.Count)
+                    : Text.T("Scanning portraits… {0} players checked", scan.Portraits.Count);
             float currentY = scan.List.scrollOffset.y;
             float maxY = Math.Max(0f, scan.List.contentContainer.layout.height -
                                     scan.List.contentViewport.layout.height);
@@ -418,8 +433,9 @@ namespace RegenerateFM.FM26
                 {
                     if (!complete)
                     {
-                        OtherListFailed(scan, "only " + scan.Portraits.Count + " of its " + scan.ExpectedCount + " " +
-                                              Plural(scan.Kind) + " could be read");
+                        OtherListFailed(scan, scan.Kind == ListKind.Staff
+                            ? Text.T("only {0} of its {1} staff could be read", scan.Portraits.Count, scan.ExpectedCount)
+                            : Text.T("only {0} of its {1} players could be read", scan.Portraits.Count, scan.ExpectedCount));
                         return;
                     }
                     scan.Offer.OtherMissing = missing;
@@ -430,8 +446,9 @@ namespace RegenerateFM.FM26
                 if (!complete)
                 {
                     if (scan.Status != null)
-                        scan.Status.text = "Scan incomplete (" + scan.Portraits.Count + " of " + scan.ExpectedCount + " " +
-                                           Plural(scan.Kind) + "). No images have been requested.";
+                        scan.Status.text = scan.Kind == ListKind.Staff
+                            ? Text.T("Scan incomplete ({0} of {1} staff). No images have been requested.", scan.Portraits.Count, scan.ExpectedCount)
+                            : Text.T("Scan incomplete ({0} of {1} players). No images have been requested.", scan.Portraits.Count, scan.ExpectedCount);
                     return;
                 }
                 ShowSquadConfirmation(new SquadOffer { Kind = scan.Kind, Missing = missing, Count = scan.Portraits.Count }, false);
@@ -489,14 +506,16 @@ namespace RegenerateFM.FM26
             if (include)
                 text += " " + MissingText(offer.OtherMissing.Count, offer.OtherCount, Other(offer.Kind), true);
             else if (offer.OtherProblem != null)
-                text += " Couldn't count " + OtherList(Other(offer.Kind)) + ": " + offer.OtherProblem + ".";
-            text += missing.Count == 0 ? " No images have been requested."
-                : " Generate " + Faces(missing.Count) + "? Each face makes one billed API request.";
-            ShowDialog(text, "Cancel", () => CancelSquadScan());
+                text += " " + (Other(offer.Kind) == ListKind.Staff
+                    ? Text.T("Couldn't count the club's staff: {0}.", offer.OtherProblem)
+                    : Text.T("Couldn't count the first team's players: {0}.", offer.OtherProblem));
+            text += " " + (missing.Count == 0 ? Text.T("No images have been requested.")
+                : missing.Count == 1 ? Text.T("Generate {0} face? Each face makes one billed API request.", missing.Count)
+                : Text.T("Generate {0} faces? Each face makes one billed API request.", missing.Count));
+            ShowDialog(text, Text.T("Cancel"), () => CancelSquadScan());
             int at = 1;
             var other = Plural(Other(offer.Kind));
-            _squadDialog.Insert(at++, TickBox("Include " + OtherList(Other(offer.Kind)) + (include ? "" : offer.OtherMissing != null
-                ? " (" + offer.OtherMissing.Count + " without a portrait)" : ""), include, () =>
+            _squadDialog.Insert(at++, TickBox(IncludeText(Other(offer.Kind), include ? null : offer.OtherMissing?.Count), include, () =>
             {
                 if (include)
                     ShowSquadConfirmation(offer, false);
@@ -508,7 +527,7 @@ namespace RegenerateFM.FM26
             if (missing.Count > 0)
             {
                 var generate = new Button((Il2CppSystem.Action)(System.Action)(() => StartSquadBatch(missing)))
-                { text = "Generate " + Faces(missing.Count), focusable = false };
+                { text = missing.Count == 1 ? Text.T("Generate {0} face", missing.Count) : Text.T("Generate {0} faces", missing.Count), focusable = false };
                 generate.style.height = 34;
                 generate.style.marginTop = 10;
                 generate.style.color = Color.white;
@@ -519,22 +538,37 @@ namespace RegenerateFM.FM26
                         (include ? " and " + offer.OtherMissing.Count + " " + other : "") + " missing portraits");
         }
 
-        private static string Faces(int count) => count + (count == 1 ? " face" : " faces");
-
         // "12 of 23 players have no portrait", "All of the club's 19 staff have portraits."
         private static string MissingText(int missing, int count, ListKind kind, bool other)
         {
-            string people = !other ? count + " " + Plural(kind)
-                : kind == ListKind.Staff ? "the club's " + count + " staff" : "the first team's " + count + " players";
-            return missing == 0 ? (other ? "All of " : "All ") + people + " have portraits."
-                : missing + " of " + people + (missing == 1 ? " has" : " have") + " no portrait.";
+            bool staff = kind == ListKind.Staff;
+            if (missing == 0)
+                return other
+                    ? staff ? Text.T("All of the club's {0} staff have portraits.", count) : Text.T("All of the first team's {0} players have portraits.", count)
+                    : staff ? Text.T("All {0} staff have portraits.", count) : Text.T("All {0} players have portraits.", count);
+            if (missing == 1)
+                return other
+                    ? staff ? Text.T("{0} of the club's {1} staff has no portrait.", missing, count) : Text.T("{0} of the first team's {1} players has no portrait.", missing, count)
+                    : staff ? Text.T("{0} of {1} staff has no portrait.", missing, count) : Text.T("{0} of {1} players has no portrait.", missing, count);
+            return other
+                ? staff ? Text.T("{0} of the club's {1} staff have no portrait.", missing, count) : Text.T("{0} of the first team's {1} players have no portrait.", missing, count)
+                : staff ? Text.T("{0} of {1} staff have no portrait.", missing, count) : Text.T("{0} of {1} players have no portrait.", missing, count);
+        }
+
+        // The tick box for the club's other list, with how many of it have no portrait once counted.
+        private static string IncludeText(ListKind kind, int? missing)
+        {
+            if (kind == ListKind.Staff)
+                return missing.HasValue ? Text.T("Include the club's staff ({0} without a portrait)", missing.Value) : Text.T("Include the club's staff");
+            return missing.HasValue ? Text.T("Include the first team's players ({0} without a portrait)", missing.Value) : Text.T("Include the first team's players");
         }
 
         // A tick box as a row: FM26's panels don't style UI Toolkit's Toggle.
         private static VisualElement TickBox(string text, bool ticked, Action toggled)
         {
             var row = new Button((Il2CppSystem.Action)(System.Action)(toggled)) { text = "", focusable = false };
-            row.style.flexDirection = FlexDirection.Row;
+            // The box starts the line: at the right in Arabic.
+            row.style.flexDirection = Text.RightToLeft ? FlexDirection.RowReverse : FlexDirection.Row;
             row.style.alignItems = Align.Center;
             row.style.marginTop = 12;
             row.style.paddingLeft = 0;
@@ -542,7 +576,10 @@ namespace RegenerateFM.FM26
             row.style.borderTopWidth = row.style.borderBottomWidth = row.style.borderLeftWidth = row.style.borderRightWidth = 0;
             var box = new VisualElement { pickingMode = PickingMode.Ignore };
             box.style.width = box.style.height = 16;
-            box.style.marginRight = 8;
+            if (Text.RightToLeft)
+                box.style.marginLeft = 8;
+            else
+                box.style.marginRight = 8;
             box.style.flexShrink = 0;
             box.style.borderTopWidth = box.style.borderBottomWidth = box.style.borderLeftWidth = box.style.borderRightWidth = 2;
             box.style.borderTopColor = box.style.borderBottomColor = box.style.borderLeftColor = box.style.borderRightColor = Color.white;
@@ -551,6 +588,9 @@ namespace RegenerateFM.FM26
             label.style.color = Color.white;
             label.style.whiteSpace = WhiteSpace.Normal;
             label.style.flexShrink = 1;
+            // A Button centres its text; a label that wraps ("Spieler der ersten
+            // Mannschaft einbeziehen") reads from the box instead.
+            label.style.unityTextAlign = Text.RightToLeft ? TextAnchor.MiddleRight : TextAnchor.MiddleLeft;
             row.Add(box);
             row.Add(label);
             return row;
@@ -560,7 +600,8 @@ namespace RegenerateFM.FM26
         private void CountOtherList(SquadOffer offer)
         {
             var kind = Other(offer.Kind);
-            var status = ShowDialog("Opening " + OtherList(kind) + "…", "Cancel", () => CancelSquadScan());
+            var status = ShowDialog(kind == ListKind.Staff ? Text.T("Opening the club's staff…") : Text.T("Opening the first team's players…"),
+                Text.T("Cancel"), () => CancelSquadScan());
             _squadScan = new SquadScan { Kind = kind, Offer = offer, Status = status, Finding = true };
             Log.LogInfo("RegenerateFM counting the club's " + Plural(kind));
         }
@@ -576,7 +617,8 @@ namespace RegenerateFM.FM26
             }
             if (now - scan.StartedUtc > TimeSpan.FromSeconds(30))
             {
-                OtherListFailed(scan, "its " + Plural(scan.Kind) + " list didn't open");
+                OtherListFailed(scan, scan.Kind == ListKind.Staff
+                    ? Text.T("its staff list didn't open") : Text.T("its players list didn't open"));
                 return;
             }
             if (list != null || now < scan.NextStepUtc)
@@ -613,11 +655,11 @@ namespace RegenerateFM.FM26
             catch (Exception error)
             {
                 Log.LogWarning(error.Message);
-                ShowDialog(error.Message, "Close", () => CancelSquadScan());
+                ShowDialog(error.Message, Text.T("Close"), () => CancelSquadScan());
                 return;
             }
-            var status = ShowDialog("Opening the first missing " + (queue[0].Kind == ListKind.Staff ? "member of staff" : "player") + "…",
-                "Stop after current face", () => RequestStopSquadBatch());
+            var status = ShowDialog(queue[0].Kind == ListKind.Staff ? Text.T("Opening the first missing member of staff…") : Text.T("Opening the first missing player…"),
+                Text.T("Stop after current face"), () => RequestStopSquadBatch());
             var batch = new SquadBatch { Status = status, Settings = settings };
             batch.Queue.AddRange(queue);
             _squadBatch = batch;
@@ -652,7 +694,9 @@ namespace RegenerateFM.FM26
         {
             var list = ListScroll(batch.Kind, CurrentRoot());
             var now = System.DateTime.UtcNow;
-            batch.Status.text = batch.Completed + " faces done. Opening " + OtherList(batch.Kind) + "…";
+            batch.Status.text = batch.Kind == ListKind.Staff
+                ? Text.T("{0} faces done. Opening the club's staff…", batch.Completed)
+                : Text.T("{0} faces done. Opening the first team's players…", batch.Completed);
             if (now < batch.NextStepUtc)
                 return;
             if (list != null)
@@ -677,7 +721,7 @@ namespace RegenerateFM.FM26
                 if (!batch.UnfocusedSinceUtc.HasValue)
                 {
                     batch.UnfocusedSinceUtc = System.DateTime.UtcNow;
-                    batch.Status.text = "Paused while FM26 is in the background; return to FM26 to continue.";
+                    batch.Status.text = Text.T("Paused while FM26 is in the background; return to FM26 to continue.");
                     Log.LogInfo("RegenerateFM squad batch paused: FM26 is in the background");
                 }
                 return;
@@ -692,7 +736,8 @@ namespace RegenerateFM.FM26
             }
             if (batch.StopAfterCurrent && batch.Stage != SquadStage.Request && batch.Stage != SquadStage.Refresh)
             {
-                StopSquadBatch("Stopped after " + batch.Completed + (batch.Completed == 1 ? " face." : " faces.") + ScoutingNote(batch));
+                StopSquadBatch((batch.Completed == 1 ? Text.T("Stopped after {0} face.", batch.Completed)
+                    : Text.T("Stopped after {0} faces.", batch.Completed)) + ScoutingNote(batch));
                 return;
             }
             if (System.DateTime.UtcNow - batch.StageStartedUtc > TimeSpan.FromSeconds(45) &&
@@ -703,13 +748,14 @@ namespace RegenerateFM.FM26
                 // Overview, and the team page can drop out of the history altogether.
                 if (batch.Stage == SquadStage.AwaitSquad && batch.ReturnByBack)
                 {
-                    var team = batch.ReturnTab ?? "the team page";
-                    StopSquadBatch("FM26's Back button didn't return to " + team + ", so the batch stopped after " +
-                        batch.Completed + (batch.Completed == 1 ? " face" : " faces") + ". Open " + team +
-                        "'s squad again and choose Generate faces… for the rest." + ScoutingNote(batch));
+                    var team = batch.ReturnTab ?? Text.T("the team page");
+                    StopSquadBatch((batch.Completed == 1
+                        ? Text.T("FM26's Back button didn't return to {0}, so the batch stopped after {1} face. Open {0}'s squad again and choose Generate faces… for the rest.", team, batch.Completed)
+                        : Text.T("FM26's Back button didn't return to {0}, so the batch stopped after {1} faces. Open {0}'s squad again and choose Generate faces… for the rest.", team, batch.Completed)) +
+                        ScoutingNote(batch));
                 }
                 else
-                    StopSquadBatch("Timed out while navigating FM26. " + batch.Completed + " faces were generated.");
+                    StopSquadBatch(Text.T("Timed out while navigating FM26. {0} faces were generated.", batch.Completed));
                 return;
             }
             switch (batch.Stage)
@@ -734,8 +780,7 @@ namespace RegenerateFM.FM26
                         SetBatchStage(batch, SquadStage.ReturnToSquad);
                     }
                     else if (!WaitingForGraphics)
-                        StopSquadBatch("Graphics refresh failed after " + batch.Completed +
-                            " completed faces. The last portrait was saved; restart FM26 to load it.");
+                        StopSquadBatch(Text.T("Graphics refresh failed after {0} completed faces. The last portrait was saved; restart FM26 to load it.", batch.Completed));
                     break;
                 case SquadStage.ReturnToSquad:
                     ReturnToSquad(batch);
@@ -757,7 +802,9 @@ namespace RegenerateFM.FM26
                         batch.Index++;
                         batch.StaffClicked = 0;
                         if (batch.Index >= batch.Queue.Count)
-                            StopSquadBatch("Finished: " + Faces(batch.Completed) + " generated." + ScoutingNote(batch));
+                            StopSquadBatch((batch.Completed == 1
+                                ? Text.T("Finished: {0} face generated.", batch.Completed)
+                                : Text.T("Finished: {0} faces generated.", batch.Completed)) + ScoutingNote(batch));
                         else if (batch.Kind != kind)
                         {
                             batch.NextStepUtc = System.DateTime.UtcNow;
@@ -780,15 +827,14 @@ namespace RegenerateFM.FM26
         {
             if (System.DateTime.UtcNow < batch.NextPlayerUtc)
             {
-                batch.Status.text = batch.Completed + " faces done. Next face in " +
-                    Math.Ceiling((batch.NextPlayerUtc - System.DateTime.UtcNow).TotalSeconds) +
-                    " seconds; you can stop the batch.";
+                batch.Status.text = Text.T("{0} faces done. Next face in {1} seconds; you can stop the batch.", batch.Completed,
+                    Math.Ceiling((batch.NextPlayerUtc - System.DateTime.UtcNow).TotalSeconds));
                 return;
             }
             if (BatchList(batch) == null || batch.List?.parent == null)
                 throw new InvalidOperationException("The " + Plural(batch.Kind) + " list changed before finding " + batch.Queue[batch.Index].Name);
             var target = batch.Queue[batch.Index];
-            batch.Status.text = "Finding " + target.Name + " (" + (batch.Index + 1) + "/" + batch.Queue.Count + ")…";
+            batch.Status.text = Text.T("Finding {0} ({1}/{2})…", target.Name, batch.Index + 1, batch.Queue.Count);
             var view = FindNamed(batch.List, "View");
             int readable = 0;
             for (int i = 0; view != null && i < view.hierarchy.childCount; i++)
@@ -929,7 +975,7 @@ namespace RegenerateFM.FM26
             FindKnownEthnicity(personId, null, profile, out bool newgen);
             profile.Likeness = !newgen;
             batch.PersonId = personId;
-            batch.Status.text = "Generating " + target.Name + " (" + (batch.Index + 1) + "/" + batch.Queue.Count + ")…";
+            batch.Status.text = Text.T("Generating {0} ({1}/{2})…", target.Name, batch.Index + 1, batch.Queue.Count);
             batch.Request = RequestPortrait(personId, profile, batch.Settings);
             SetBatchStage(batch, SquadStage.Request);
             Log.LogInfo((asPlayer ? "Player" : "Staff") + " portrait request started for " + target.Name + " (" + personId + ")");
@@ -940,22 +986,22 @@ namespace RegenerateFM.FM26
             if (!batch.Request.IsCompleted)
             {
                 if (System.DateTime.UtcNow - batch.StageStartedUtc > GenerationTimeout)
-                    StopSquadBatch("Portrait request timed out for " + batch.Queue[batch.Index].Name);
+                    StopSquadBatch(Text.T("Portrait request timed out for {0}", batch.Queue[batch.Index].Name));
                 return;
             }
             var result = batch.Request.GetAwaiter().GetResult();
             if (!result.Success)
             {
-                StopSquadBatch("Portrait request failed for " + batch.Queue[batch.Index].Name + ": " + result.Error);
+                StopSquadBatch(Text.T("Portrait request failed for {0}: {1}", batch.Queue[batch.Index].Name, result.Error));
                 ShowKeyProblem(result);
                 return;
             }
             Log.LogInfo("Squad portrait saved for " + batch.Queue[batch.Index].Name + " to " + result.GraphicsDir);
-            batch.Status.text = "Loading " + batch.Queue[batch.Index].Name + " into FM26…";
+            batch.Status.text = Text.T("Loading {0} into FM26…", batch.Queue[batch.Index].Name);
             batch.GraphicsSerial = _graphicsLoadSerial;
             if (!Refresh())
             {
-                StopSquadBatch("Portrait saved, but FM26 graphics refresh failed. Restart FM26 to load it.");
+                StopSquadBatch(Text.T("Portrait saved, but FM26 graphics refresh failed. Restart FM26 to load it."));
                 return;
             }
             SetBatchStage(batch, SquadStage.Refresh);
@@ -981,13 +1027,16 @@ namespace RegenerateFM.FM26
             var nav = FindText(root, "First Team");
             while (nav != null && FindText(nav, "Overview") == null)
                 nav = nav.parent;
+            var firstTeam = nav == null ? null : FindText(nav, "First Team");
+            if (nav == null)
+                (nav, firstTeam) = SquadTabs(root);
             if (nav == null)
                 return;
             // English clubs label youth tabs by age ("Under 21s" for "Arsenal U21s").
             var age = Regex.Match(batch.ReturnTab ?? "", @"\bU(\d{2})s?$");
             var label = FindText(nav, batch.ReturnTab) ??
                         (age.Success ? FindText(nav, "Under " + age.Groups[1].Value + "s") : null) ??
-                        FindText(nav, "First Team");
+                        firstTeam;
             var button = label;
             while (button != null && button.TryCast<Button>() == null)
                 button = button.parent;
@@ -1024,7 +1073,7 @@ namespace RegenerateFM.FM26
                             " after " + batch.Queue[batch.Index].Name);
                 return;
             }
-            var label = FindText(CurrentRoot(), "Squad");
+            var label = FindText(CurrentRoot(), "Squad") ?? FindNamed(FindNamed(CurrentRoot(), "SquadButton"), "text");
             var button = label;
             while (button != null && button.TryCast<Button>() == null)
                 button = button.parent;
@@ -1039,10 +1088,12 @@ namespace RegenerateFM.FM26
         // How many players the batch skipped because they need scouting, and the
         // staff it couldn't open, if any.
         private static string ScoutingNote(SquadBatch batch) =>
-            (batch.NeedsScouting == 0 ? "" : " " + batch.NeedsScouting +
-             (batch.NeedsScouting == 1 ? " player needs" : " players need") + " scouting before RegenerateFM can make their face.") +
-            (batch.Unopened.Count == 0 ? "" : " Skipped " + string.Join(", ", batch.Unopened) +
-             ": FM26's staff list doesn't link to " + (batch.Unopened.Count == 1 ? "their profile." : "their profiles."));
+            (batch.NeedsScouting == 0 ? "" : " " + (batch.NeedsScouting == 1
+                ? Text.T("{0} player needs scouting before RegenerateFM can make their face.", batch.NeedsScouting)
+                : Text.T("{0} players need scouting before RegenerateFM can make their face.", batch.NeedsScouting))) +
+            (batch.Unopened.Count == 0 ? "" : " " + (batch.Unopened.Count == 1
+                ? Text.T("Skipped {0}: FM26's staff list doesn't link to their profile.", string.Join(", ", batch.Unopened))
+                : Text.T("Skipped {0}: FM26's staff list doesn't link to their profiles.", string.Join(", ", batch.Unopened))));
 
         private void StopSquadBatch(string message)
         {
@@ -1060,7 +1111,7 @@ namespace RegenerateFM.FM26
             var button = _squadDialog != null && _squadDialog.hierarchy.childCount > 1
                 ? _squadDialog.hierarchy.ElementAt(1).TryCast<Button>() : null;
             if (button != null)
-                button.text = "Close";
+                button.text = Text.T("Close");
         }
 
         private void RequestStopSquadBatch()
@@ -1073,11 +1124,12 @@ namespace RegenerateFM.FM26
             }
             if (batch.Stage != SquadStage.Request && batch.Stage != SquadStage.Refresh)
             {
-                StopSquadBatch("Stopped after " + batch.Completed + (batch.Completed == 1 ? " face." : " faces.") + ScoutingNote(batch));
+                StopSquadBatch((batch.Completed == 1 ? Text.T("Stopped after {0} face.", batch.Completed)
+                    : Text.T("Stopped after {0} faces.", batch.Completed)) + ScoutingNote(batch));
                 return;
             }
             batch.StopAfterCurrent = true;
-            batch.Status.text = "Stopping after the current face finishes…";
+            batch.Status.text = Text.T("Stopping after the current face finishes…");
             Log.LogInfo("RegenerateFM squad batch stop requested after " + batch.Completed + " completed faces");
         }
 

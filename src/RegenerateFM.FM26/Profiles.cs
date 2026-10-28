@@ -36,14 +36,14 @@ namespace RegenerateFM.FM26
                 if (document.name == "PanelManager")
                     root = document.rootVisualElement;
             if (root == null)
-                throw new InvalidOperationException("FM26 player UI was not found.");
+                throw new InvalidOperationException(Text.T("FM26 player UI was not found."));
             var header = FindNamed(root, "ReportHeader");
             if (header == null || header.worldBound.width < 800)
-                throw new InvalidOperationException("Open a player Overview before generating a face.");
+                throw new InvalidOperationException(Text.T("Open a player Overview before generating a face."));
             if (!HeaderId(header, out long visibleId))
-                throw new InvalidOperationException("Could not read this player's ID from the profile. Reopen it and try again.");
+                throw new InvalidOperationException(Text.T("Could not read this player's ID from the profile. Reopen it and try again."));
             if (visibleId != playerId)
-                throw new InvalidOperationException("Player profile changed; reopen it and try again.");
+                throw new InvalidOperationException(Text.T("Player profile changed; reopen it and try again."));
             picture = FindNamed(header, "PersonPicture");
             var banner = FindNamed(header, "report-player-banner-max");
             if (banner == null)
@@ -79,9 +79,11 @@ namespace RegenerateFM.FM26
                     break;
                 }
             }
+            if (profile.Age == 0)
+                profile.Age = BoundAge(banner, out _);
             var attributes = FindNamed(root, "PlayerAttributesBlock");
             if (attributes == null || attributes.worldBound.width < 500)
-                throw new InvalidOperationException("The player Overview attribute panel is not visible.");
+                throw new InvalidOperationException(Text.T("The player Overview attribute panel is not visible."));
             var texts = TextValues(attributes);
             if (string.IsNullOrWhiteSpace(profile.Position))
                 foreach (var value in texts)
@@ -90,13 +92,17 @@ namespace RegenerateFM.FM26
                         profile.Position = value;
                         break;
                     }
+            // In another language the compact header's abbreviations are kept as shown.
+            if (string.IsNullOrWhiteSpace(profile.Position))
+                profile.Position = FirstText(FindNamed(banner, "Frame 1000003800"));
             for (int i = 0; i + 1 < texts.Count; i++)
-                if (texts[i] == "Height")
+                if (IsLabel(texts[i], "Height", HeightLabel))
                 {
                     profile.Height = texts[i + 1];
                     break;
                 }
             int shown = 0, unknown = 0;
+            List<(VisualElement Heading, string Section)> headings = null;
             foreach (var row in NamedElements(attributes, "attributes_row"))
             {
                 if (row.worldBound.width < 40 || row.worldBound.height < 10)
@@ -124,7 +130,17 @@ namespace RegenerateFM.FM26
                 else if (GoalkeepingNames.Contains(stat))
                     profile.Goalkeeping[stat] = number;
                 else if (!stat.Contains("Rating"))
-                    profile.Technical[stat] = number;
+                {
+                    // In another language the attribute is put under its column's heading.
+                    headings ??= AttributeHeadings(attributes);
+                    switch (AttributeSection(row, headings))
+                    {
+                        case "Physical": profile.Physical[stat] = number; break;
+                        case "Mental": profile.Mental[stat] = number; break;
+                        case "Goalkeeping": profile.Goalkeeping[stat] = number; break;
+                        default: profile.Technical[stat] = number; break;
+                    }
+                }
             }
             // Half or more not scouted is too little to describe them; otherwise the
             // known attributes are used.
@@ -179,9 +195,7 @@ namespace RegenerateFM.FM26
         private sealed class NeedsScoutingException : InvalidOperationException
         {
             public NeedsScoutingException(string name)
-                : base("Your scouts don't know enough about " + name + " yet: half or more of their " +
-                       "attributes are unknown. Scout them first, and once most are known, RegenerateFM can make " +
-                       "their face. No image was requested.") { }
+                : base(Text.T("Your scouts don't know enough about {0} yet: half or more of their attributes are unknown. Scout them first, and once most are known, RegenerateFM can make their face. No image was requested.", name)) { }
         }
 
         // FM26 shows a compact profile header on a smaller screen (1381 points
@@ -229,14 +243,14 @@ namespace RegenerateFM.FM26
             picture = null;
             root = CurrentRoot();
             if (root == null)
-                throw new InvalidOperationException("FM26 staff UI was not found.");
+                throw new InvalidOperationException(Text.T("FM26 staff UI was not found."));
             var header = FindNamed(root, "ReportHeader");
             if (header == null || header.worldBound.width < 800 || IsPlayerOverview(root) || IsPlayerHeader(header))
-                throw new InvalidOperationException("Open a staff Overview before generating a face.");
+                throw new InvalidOperationException(Text.T("Open a staff Overview before generating a face."));
             picture = FindNamed(header, "PersonPicture");
             var texts = TextValues(header);
             if (!HeaderId(header, out long visibleId) || visibleId != personId)
-                throw new InvalidOperationException("Staff profile changed; reopen it and try again.");
+                throw new InvalidOperationException(Text.T("Staff profile changed; reopen it and try again."));
             var profile = new ProfileSnapshot { Type = "staff", Gender = HeaderGender(header, personId),
                                                 Relatives = HeaderRelatives(header, personId) };
             var banner = FindNamed(header, "report-player-banner-max") ?? header;
@@ -299,9 +313,12 @@ namespace RegenerateFM.FM26
                     break;
                 }
             }
+            string ageText = null;
+            if (profile.Age == 0)
+                profile.Age = BoundAge(banner, out ageText);
             if (string.IsNullOrWhiteSpace(profile.Nationality) && !compact)
             {
-                var ageIndex = bannerTexts.FindIndex(value => AgePattern.IsMatch(value));
+                var ageIndex = bannerTexts.FindIndex(value => AgePattern.IsMatch(value) || value == ageText);
                 if (ageIndex > 0)
                     profile.Nationality = bannerTexts[ageIndex - 1];
             }
@@ -725,6 +742,7 @@ namespace RegenerateFM.FM26
                 if (Time.unscaledTime < _nextScan)
                     return;
                 _nextScan = Time.unscaledTime + 0.5f;
+                plugin.SyncLanguage();
                 try { plugin.CheckGender(); }
                 catch (Exception error) { plugin.Log.LogWarning("Gender scan failed: " + error.Message); }
                 try { plugin.CheckBiographyCache(); }
@@ -736,7 +754,7 @@ namespace RegenerateFM.FM26
                 try { plugin.CheckSquadMenu(); plugin.CheckStaffMenu(); plugin.PollSquadScan(); }
                 catch (Exception error) { plugin.Log.LogWarning("Squad scan failed: " + error); plugin.CancelSquadScan(); }
                 try { plugin.PollSquadBatch(); }
-                catch (Exception error) { plugin.StopSquadBatch("Squad generation stopped: " + error.Message); }
+                catch (Exception error) { plugin.StopSquadBatch(Text.T("Squad generation stopped: {0}", error.Message)); }
             }
         }
     }

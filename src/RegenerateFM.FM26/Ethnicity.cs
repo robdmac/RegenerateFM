@@ -166,19 +166,27 @@ namespace RegenerateFM.FM26
             return true;
         }
 
+        // Prompts.EthnicityLabels, in the same order, as the ethnicity list shows them.
+        private static string[] EthnicityDisplayLabels() => new[]
+        {
+            Text.T("white Northern European"), Text.T("Mediterranean or Hispanic"), Text.T("North African or Middle Eastern"),
+            Text.T("Black African or Caribbean"), Text.T("South Asian"), Text.T("South-East Asian"), Text.T("Pacific Islander"),
+            Text.T("Indigenous American"), Text.T("Indigenous Australian"), Text.T("mixed race (Black and white)"), Text.T("East Asian"),
+        };
+
         // Before a face for someone FM hasn't drawn in a match: the AI will guess
         // their ethnicity, unless the user picks one from the list.
         private void AskEthnicity(long personId, bool staff, string name)
         {
             string chosen = null;
-            ShowDialog(name + " hasn't played in a match you've watched, so we don't know their ethnicity and the AI " +
-                       "will guess it from their name and nationality. Generate a face?", "No", () => CancelSquadScan());
+            ShowDialog(Text.T("{0} hasn't played in a match you've watched, so we don't know their ethnicity and the AI will guess it from their name and nationality. Generate a face?", name),
+                       Text.T("No"), () => CancelSquadScan());
             var dialog = _squadDialog;
             var list = new VisualElement();
             list.style.display = DisplayStyle.None;
             var choice = new Button((Il2CppSystem.Action)(System.Action)(() =>
                 list.style.display = list.style.display.value == DisplayStyle.None ? DisplayStyle.Flex : DisplayStyle.None))
-            { text = "Ethnicity: Guess ▾", focusable = false };
+            { text = Text.T("Ethnicity: {0} ▾", Text.T("Guess")), focusable = false };
             choice.style.marginTop = 12;
             choice.style.height = 30;
             choice.style.color = Color.white;
@@ -186,10 +194,11 @@ namespace RegenerateFM.FM26
             var optionColour = new Color(0.18f, 0.15f, 0.25f, 1f);
             var pickedColour = new Color(0.30f, 0.18f, 0.45f, 1f);
             var optionButtons = new List<Button>();
-            var options = new List<(string Label, string Ethnicity)> { ("Guess", null) };
+            var options = new List<(string Label, string Ethnicity)> { (Text.T("Guess"), null) };
+            var labels = EthnicityDisplayLabels();
             for (int i = 0; i < Prompts.Ethnicities.Length; i++)
             {
-                string label = Prompts.EthnicityLabels[i];
+                string label = i < labels.Length ? labels[i] : Prompts.EthnicityLabels[i];
                 options.Add((char.ToUpperInvariant(label[0]) + label.Substring(1), Prompts.Ethnicities[i]));
             }
             foreach (var (label, ethnicity) in options)
@@ -198,7 +207,7 @@ namespace RegenerateFM.FM26
                 option = new Button((Il2CppSystem.Action)(System.Action)(() =>
                 {
                     chosen = ethnicity;
-                    choice.text = "Ethnicity: " + label + " ▾";
+                    choice.text = Text.T("Ethnicity: {0} ▾", label);
                     foreach (var other in optionButtons)
                         other.style.backgroundColor = other == option ? pickedColour : optionColour;
                     list.style.display = DisplayStyle.None;
@@ -215,7 +224,7 @@ namespace RegenerateFM.FM26
             {
                 CancelSquadScan();
                 Generate(personId, staff, false, true, chosen);
-            })) { text = "Yes", focusable = false };
+            })) { text = Text.T("Yes"), focusable = false };
             yes.style.height = 34;
             yes.style.marginTop = 10;
             yes.style.color = Color.white;
@@ -223,6 +232,7 @@ namespace RegenerateFM.FM26
             dialog.Insert(1, choice);
             dialog.Insert(2, list);
             dialog.Insert(3, yes);
+            Directed(dialog);
             Log.LogInfo("Asked about the ethnicity of " + name + " (" + personId + ")");
         }
     }

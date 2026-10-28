@@ -138,6 +138,52 @@ namespace RegenerateFM.Tests
                 Assert.Contains("did not answer", Assert.Throws<TimeoutException>(() => Dll.RequestReload(dll.Port, new string('t', 43), timeout: 1.2)).Message);
         }
 
+        [Fact]
+        public void TheLabelsGoAsOneBase64ListInTheLibrarysOrder()
+        {
+            using (var dll = new FakeDll("done"))
+            {
+                Assert.True(Dll.SendLabels(dll.Port, Token, serial: 9));
+                var fields = dll.Received[0];
+                Assert.Equal(new[] { "REGENERATEFM24L", "1", "9", Token }, fields.Take(4));
+                Assert.Equal(5, fields.Length);
+                Assert.Equal(Dll.Labels(), Decode(fields[4]).Split('\n'));
+            }
+            // A library from before translations doesn't answer: it keeps its English.
+            using (var old = new FakeDll())
+                Assert.False(Dll.SendLabels(old.Port, Token, timeout: 1.2));
+            // Too long for the library: left empty, so it shows its English.
+            var labels = new[] { "Ja", new string('x', Dll.MaxLabelBytes + 1), "Nein\nNo" };
+            var packet = Encoding.ASCII.GetString(Dll.LabelsPacket(1, Token, labels)).Split(' ');
+            Assert.Equal(new[] { "Ja", "", "Nein No" }, Decode(packet[4]).Split('\n'));
+            var many = Enumerable.Range(0, 18).Select(i => new string((char)('a' + i), 400)).ToArray();
+            var all = Decode(Encoding.ASCII.GetString(Dll.LabelsPacket(1, Token, many)).Split(' ')[4]);
+            Assert.True(Encoding.UTF8.GetByteCount(all) <= Dll.MaxLabelsBytes);
+            Assert.Equal(18, all.Split('\n').Length);
+        }
+
+        // The companion's English is the library's built-in English, label for label.
+        [Fact]
+        public void TheLabelsEnglishIsTheLibrarysDefault()
+        {
+            var directory = new System.IO.DirectoryInfo(AppContext.BaseDirectory);
+            while (directory != null && !System.IO.File.Exists(System.IO.Path.Combine(directory.FullName, "native", "fm24", "regeneratefm24.c")))
+                directory = directory.Parent;
+            Assert.NotNull(directory);
+            var english = Dll.Labels();
+            foreach (string name in new[] { "regeneratefm24.c", "regeneratefm24_macos.c" })
+            {
+                string source = System.IO.File.ReadAllText(System.IO.Path.Combine(directory.FullName, "native", "fm24", name));
+                string table = source.Substring(source.IndexOf("label_defaults[LABEL_COUNT] = {", StringComparison.Ordinal));
+                table = table.Substring(0, table.IndexOf("};", StringComparison.Ordinal));
+                var defaults = System.Text.RegularExpressions.Regex.Matches(table, @"\[LABEL_\w+\] = ((?:""[^""]*""\s*)+)")
+                    .Select(match => System.Text.RegularExpressions.Regex.Matches(match.Groups[1].Value, @"""([^""]*)""")
+                        .Aggregate("", (text, part) => text + part.Groups[1].Value).Replace("\\xe2\\x80\\xa6", "…"))
+                    .ToArray();
+                Assert.Equal(english, defaults);
+            }
+        }
+
         // A started listener plus a UDP client speaking the DLL's protocol.
         private sealed class Bridge : IDisposable
         {

@@ -52,9 +52,9 @@ namespace RegenerateFM
         {
             key = (key ?? "").Trim();
             if (key.Length == 0)
-                throw new ArgumentException("Paste your OpenAI API key first.");
+                throw new ArgumentException(Text.T("Paste your OpenAI API key first."));
             if (!KeyPattern.IsMatch(key))
-                throw new ArgumentException("That doesn't look like an OpenAI API key. It starts with sk- and has no spaces.");
+                throw new ArgumentException(Text.T("That doesn't look like an OpenAI API key. It starts with sk- and has no spaces."));
             return key;
         }
 
