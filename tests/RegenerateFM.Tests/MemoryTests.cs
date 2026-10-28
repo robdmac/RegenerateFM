@@ -132,6 +132,21 @@ namespace RegenerateFM.Tests
         }
 
         [Fact]
+        public void TheMacInGameDateComesFromItsGlobalInAnyLanguage()
+        {
+            var mac = Layout.MacOS;
+            long image = 0x100000000, holder = 0x40000;
+            var game = new FakeProcess(mac, image, zeros: true);
+            game.Q(image + mac.DateGlobal, holder).Put(holder + mac.DateOffset, new byte[] { 0x04, 0x01, 0xE7, 0x07 });
+            Assert.Equal(new DateTime(2023, 9, 17), ScreenReader.GameDate(game));
+            // An impossible day is no date, so the top bar's is read instead.
+            game.Put(holder + mac.DateOffset, new byte[] { 0x6F, 0x01, 0xE7, 0x07 });
+            Assert.Null(ScreenReader.GameDate(game));
+            // Where its place isn't known yet (fm.exe).
+            Assert.Null(ScreenReader.GameDate(new FakeProcess(Layout.Windows, image, zeros: true)));
+        }
+
+        [Fact]
         public void RatingOffsetsMatchTwoLiveProfiles()
         {
             // These bytes came from two FM24 24.4.2 game records. Expected values

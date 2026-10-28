@@ -224,7 +224,7 @@ namespace RegenerateFM.Desktop.FM24.Memory
                 if (biographies.Count == 1)
                     screen.Biography = FirstParagraph(WidgetString(game, biographies[0], BiographyText, 16384));
                 screen.Ages = Ages(game, widgets);
-                screen.Today = Date(game, widgets);
+                screen.Today = GameDate(game) ?? Date(game, widgets);
                 return screen;
             }
             catch (Exception error) when (People.Unreadable(error) || error is DecoderFallbackException)
@@ -267,13 +267,33 @@ namespace RegenerateFM.Desktop.FM24.Memory
             return dates.Count == 1 ? dates.First() : (DateTime?)null;
         }
 
+        // The in-game date, from the game's own date, which reads the same in
+        // every language. Null where its place isn't known or it's invalid.
+        public static DateTime? GameDate(GameProcess game)
+        {
+            if (game.Layout.DateGlobal == 0)
+                return null;
+            try
+            {
+                long holder = game.U64(game.ImageBase + game.Layout.DateGlobal);
+                int day = game.U16(holder + game.Layout.DateOffset), year = game.U16(holder + game.Layout.DateOffset + 2);
+                if (year < 1900 || year > 2200 || day < 1 || day > (DateTime.IsLeapYear(year) ? 366 : 365))
+                    return null;
+                return new DateTime(year, 1, 1).AddDays(day - 1);
+            }
+            catch (Exception error) when (People.Unreadable(error))
+            {
+                return null;
+            }
+        }
+
         // The in-game date shown on the open screen, or null.
         public static DateTime? ScreenDate(GameProcess game)
         {
             try
             {
                 long manager = Widgets.UiManager(game);
-                return Date(game, Tree(game, manager, game.U64(manager + ScreenRoot)));
+                return GameDate(game) ?? Date(game, Tree(game, manager, game.U64(manager + ScreenRoot)));
             }
             catch (Exception error) when (error is MemoryUnavailableException || People.Unreadable(error))
             {

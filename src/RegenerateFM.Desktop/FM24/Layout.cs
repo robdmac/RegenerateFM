@@ -57,6 +57,11 @@ namespace RegenerateFM.Desktop.FM24
         public long SidebarVtable;
         public int SidebarReference;
         public int TableModel;           // a Squad table widget's row model (SquadReader)
+        // The global pointing at the object that holds the in-game date, and
+        // the date's place in it: {u16 day of year, u16 year}, as a birth date.
+        // 0 where it isn't known yet; the top bar's English date is read instead.
+        public long DateGlobal;
+        public int DateOffset;
         public string ExecutableSuffix;  // the game's executable, lower case
 
         public static readonly Layout Windows = new Layout
@@ -138,6 +143,9 @@ namespace RegenerateFM.Desktop.FM24
             PersonTableGlobal = 0x5304848, PersonTableSlot = 0x318,
             SidebarVtable = 0x5060DC0,
             SidebarReference = 0x278,
+            // Found 2026-10-28 in an MK Dons save: the one place of FM24's 108
+            // copies of the date that moved on with it, from a global.
+            DateGlobal = 0x5276DB0, DateOffset = 0x7E4,
             TableModel = 0x6C8,
             ExecutableSuffix = "/fm.app/contents/macos/fm",
         };
