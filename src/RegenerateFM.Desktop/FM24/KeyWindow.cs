@@ -83,13 +83,21 @@ namespace RegenerateFM.Desktop.FM24
                 throw new IOException("Couldn't register the key dialog (" + Marshal.GetLastWin32Error() + ").");
             try
             {
-                int left = Math.Max(0, (GetSystemMetrics(0) - Width) / 2);
+                // Each button is as wide as its text needs, and at least its
+                // English width; the dialog widens when a language's buttons
+                // don't fit in one row.
+                IntPtr font = GetStockObject(17);  // DEFAULT_GUI_FONT
+                string save = Text.T("Save key"), cancel = Text.T("Cancel"), buy = Text.T("Buy credits / Sign in"), get = Text.T("Get a key…");
+                int Fit(string label, int least) => Math.Max(least, TextWidth(font, label) + 24);
+                int saveWidth = Fit(save, 120), cancelWidth = Fit(cancel, 112), buyWidth = Fit(buy, 160), getWidth = Fit(get, 110);
+                int leftButtons = (credits ? buyWidth + 8 : 0) + (link != null ? getWidth + 8 : 0);
+                int width = Math.Max(Width, 16 + leftButtons + 50 + saveWidth + 8 + cancelWidth + 48);
+                int left = Math.Max(0, (GetSystemMetrics(0) - width) / 2);
                 int top = Math.Max(0, (GetSystemMetrics(1) - Height) / 3);
-                IntPtr dialog = CreateWindowExW(ExTopmost | ExModalFrame, name, title, OverlappedDialog, left, top, Width, Height,
+                IntPtr dialog = CreateWindowExW(ExTopmost | ExModalFrame, name, title, OverlappedDialog, left, top, width, Height,
                                                 IntPtr.Zero, IntPtr.Zero, instance, IntPtr.Zero);
                 if (dialog == IntPtr.Zero)
                     throw new IOException("Couldn't open the key dialog (" + Marshal.GetLastWin32Error() + ").");
-                IntPtr font = GetStockObject(17);  // DEFAULT_GUI_FONT
                 IntPtr Add(string kind, string label, uint style, int x, int y, int width, int height, int id, uint extended = 0)
                 {
                     IntPtr handle = CreateWindowExW(extended, kind, label, Child | Visible | style, x, y, width, height,
@@ -97,18 +105,19 @@ namespace RegenerateFM.Desktop.FM24
                     SendMessageW(handle, SetFont, font, new IntPtr(1));
                     return handle;
                 }
-                Add("STATIC", text.Replace("\n", "\r\n"), 0, 16, 14, Width - 48, 250, 0);
-                IntPtr edit = Add("EDIT", "", TabStop | Password | AutoHorizontalScroll, 16, 272, Width - 48, 24, EditId, ExClientEdge);
-                Add("BUTTON", Text.T("Save key"), TabStop | DefaultPushButton, Width - 288, 312, 120, 30, IdOk);
-                Add("BUTTON", Text.T("Cancel"), TabStop, Width - 160, 312, 112, 30, IdCancel);
+                Add("STATIC", text.Replace("\n", "\r\n"), 0, 16, 14, width - 48, 250, 0);
+                IntPtr edit = Add("EDIT", "", TabStop | Password | AutoHorizontalScroll, 16, 272, width - 48, 24, EditId, ExClientEdge);
+                int cancelX = width - 48 - cancelWidth;
+                Add("BUTTON", save, TabStop | DefaultPushButton, cancelX - 8 - saveWidth, 312, saveWidth, 30, IdOk);
+                Add("BUTTON", cancel, TabStop, cancelX, 312, cancelWidth, 30, IdCancel);
                 int x = 16;
                 if (credits)
                 {
-                    Add("BUTTON", Text.T("Buy credits / Sign in"), TabStop, x, 312, 160, 30, IdCredits);
-                    x += 168;
+                    Add("BUTTON", buy, TabStop, x, 312, buyWidth, 30, IdCredits);
+                    x += buyWidth + 8;
                 }
                 if (link != null)
-                    Add("BUTTON", Text.T("Get a key…"), TabStop, x, 312, 110, 30, IdGetKey);
+                    Add("BUTTON", get, TabStop, x, 312, getWidth, 30, IdGetKey);
                 ShowWindow(dialog, 5);  // SW_SHOW
                 SetForegroundWindow(dialog);
                 SetFocus(edit);
@@ -128,6 +137,29 @@ namespace RegenerateFM.Desktop.FM24
                 GC.KeepAlive(procedure);
             }
             return result;
+        }
+
+        // ``text``'s width in pixels in ``font``.
+        private static int TextWidth(IntPtr font, string text)
+        {
+            IntPtr screen = GetDC(IntPtr.Zero);
+            try
+            {
+                IntPtr previous = SelectObject(screen, font);
+                GetTextExtentPoint32W(screen, text, text.Length, out var size);
+                SelectObject(screen, previous);
+                return size.Width;
+            }
+            finally
+            {
+                ReleaseDC(IntPtr.Zero, screen);
+            }
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct Size
+        {
+            public int Width, Height;
         }
 
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
@@ -216,6 +248,18 @@ namespace RegenerateFM.Desktop.FM24
 
         [DllImport("gdi32")]
         private static extern IntPtr GetStockObject(int index);
+
+        [DllImport("gdi32")]
+        private static extern IntPtr SelectObject(IntPtr context, IntPtr item);
+
+        [DllImport("gdi32", CharSet = CharSet.Unicode)]
+        private static extern bool GetTextExtentPoint32W(IntPtr context, string text, int length, out Size size);
+
+        [DllImport("user32")]
+        private static extern IntPtr GetDC(IntPtr window);
+
+        [DllImport("user32")]
+        private static extern int ReleaseDC(IntPtr window, IntPtr context);
 
         [DllImport("shell32", CharSet = CharSet.Unicode)]
         private static extern IntPtr ShellExecuteW(IntPtr window, string operation, string file, string parameters, string directory, int show);
