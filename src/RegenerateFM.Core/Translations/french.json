@@ -144,7 +144,7 @@
  "Portrait request failed for {0}: {1}": "Échec de la demande de portrait pour {0} : {1}",
  "Portrait request timed out for {0}": "Délai dépassé pour la demande de portrait de {0}",
  "Portrait request timed out. Try again.": "Délai dépassé pour la demande de portrait. Réessayez.",
- "Portrait saved, but FM24 reload failed: {0}. Use Preferences > Reload Skin.": "Portrait enregistré, mais le rechargement de FM24 a échoué : {0}. Utilisez Préférences > Recharger le skin.",
+ "Portrait saved, but FM24 reload failed: {0}. Restart FM24 to see it.": "Portrait enregistré, mais le rechargement de FM24 a échoué : {0}. Redémarrez FM24 pour l'afficher.",
  "Portrait saved, but FM26 graphics refresh failed. Restart FM26 to load it.": "Portrait enregistré, mais l'actualisation graphique de FM26 a échoué. Redémarrez FM26 pour le charger.",
  "Portrait saved, but game refresh failed. Restart FM26 to load it.": "Portrait enregistré, mais l'actualisation du jeu a échoué. Redémarrez FM26 pour le charger.",
  "Portrait saved, but graphics reload timed out. Restart FM26 to load it.": "Portrait enregistré, mais le rechargement des graphismes a dépassé le délai. Redémarrez FM26 pour le charger.",

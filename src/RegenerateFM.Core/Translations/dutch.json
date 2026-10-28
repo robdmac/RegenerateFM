@@ -144,7 +144,7 @@
  "Portrait request failed for {0}: {1}": "Portretverzoek voor {0} mislukt: {1}",
  "Portrait request timed out for {0}": "Time-out bij portretverzoek voor {0}",
  "Portrait request timed out. Try again.": "Time-out bij portretverzoek. Probeer het opnieuw.",
- "Portrait saved, but FM24 reload failed: {0}. Use Preferences > Reload Skin.": "Portret opgeslagen, maar herladen van FM24 mislukt: {0}. Gebruik Voorkeuren > Skin herladen.",
+ "Portrait saved, but FM24 reload failed: {0}. Restart FM24 to see it.": "Portret opgeslagen, maar herladen van FM24 mislukt: {0}. Start FM24 opnieuw om het te zien.",
  "Portrait saved, but FM26 graphics refresh failed. Restart FM26 to load it.": "Portret opgeslagen, maar grafische vernieuwing van FM26 mislukt. Herstart FM26 om het te laden.",
  "Portrait saved, but game refresh failed. Restart FM26 to load it.": "Portret opgeslagen, maar vernieuwen van het spel mislukt. Herstart FM26 om het te laden.",
  "Portrait saved, but graphics reload timed out. Restart FM26 to load it.": "Portret opgeslagen, maar time-out bij het herladen van de graphics. Herstart FM26 om het te laden.",

@@ -43,7 +43,7 @@ before hooking anything. Any other build is left unhooked.
 - **Skin reload:** after a face is saved, the library runs FM24's own "reload
   current skin" command on the UI thread, so the new face appears without
   leaving the screen. If that fails, the face stays saved and the companion
-  says to use Preferences > Reload Skin.
+  says to restart FM24 to see it.
 
 ## How it works
 

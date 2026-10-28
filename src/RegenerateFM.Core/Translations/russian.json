@@ -144,7 +144,7 @@
   "Portrait request failed for {0}: {1}": "Ошибка запроса портрета — {0}: {1}",
   "Portrait request timed out for {0}": "Истекло время запроса портрета — {0}",
   "Portrait request timed out. Try again.": "Истекло время запроса портрета. Повторите попытку.",
-  "Portrait saved, but FM24 reload failed: {0}. Use Preferences > Reload Skin.": "Портрет сохранён, но перезагрузка FM24 не удалась: {0}. Используйте «Настройки > Перезагрузить скин».",
+  "Portrait saved, but FM24 reload failed: {0}. Restart FM24 to see it.": "Портрет сохранён, но перезагрузка FM24 не удалась: {0}. Перезапустите FM24, чтобы увидеть его.",
   "Portrait saved, but FM26 graphics refresh failed. Restart FM26 to load it.": "Портрет сохранён, но обновить графику FM26 не удалось. Перезапустите FM26, чтобы загрузить его.",
   "Portrait saved, but game refresh failed. Restart FM26 to load it.": "Портрет сохранён, но обновить игру не удалось. Перезапустите FM26, чтобы загрузить его.",
   "Portrait saved, but graphics reload timed out. Restart FM26 to load it.": "Портрет сохранён, но время перезагрузки графики истекло. Перезапустите FM26, чтобы загрузить его.",

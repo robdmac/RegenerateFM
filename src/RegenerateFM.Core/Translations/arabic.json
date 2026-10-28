@@ -144,7 +144,7 @@
   "Portrait request failed for {0}: {1}": "فشل طلب الصورة لـ {0}: {1}",
   "Portrait request timed out for {0}": "انتهت مهلة طلب الصورة لـ {0}",
   "Portrait request timed out. Try again.": "انتهت مهلة طلب الصورة. حاول مجدداً.",
-  "Portrait saved, but FM24 reload failed: {0}. Use Preferences > Reload Skin.": "حُفظت الصورة، لكن فشلت إعادة تحميل FM24: {0}. استخدم التفضيلات > إعادة تحميل المظهر.",
+  "Portrait saved, but FM24 reload failed: {0}. Restart FM24 to see it.": "حُفظت الصورة، لكن فشلت إعادة تحميل FM24: {0}. أعد تشغيل FM24 لتظهر.",
   "Portrait saved, but FM26 graphics refresh failed. Restart FM26 to load it.": "حُفظت الصورة، لكن فشل تحديث رسومات FM26. أعد تشغيل FM26 لتحميلها.",
   "Portrait saved, but game refresh failed. Restart FM26 to load it.": "حُفظت الصورة، لكن فشل تحديث اللعبة. أعد تشغيل FM26 لتحميلها.",
   "Portrait saved, but graphics reload timed out. Restart FM26 to load it.": "حُفظت الصورة، لكن انتهت مهلة إعادة تحميل الرسومات. أعد تشغيل FM26 لتحميلها.",

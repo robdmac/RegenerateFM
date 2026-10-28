@@ -144,7 +144,7 @@
  "Portrait request failed for {0}: {1}": "{0} 的头像请求失败：{1}",
  "Portrait request timed out for {0}": "{0} 的头像请求超时",
  "Portrait request timed out. Try again.": "头像请求超时。请重试。",
- "Portrait saved, but FM24 reload failed: {0}. Use Preferences > Reload Skin.": "头像已保存，但 FM24 重新加载失败：{0}。请使用“偏好设置 > 重新加载皮肤”。",
+ "Portrait saved, but FM24 reload failed: {0}. Restart FM24 to see it.": "头像已保存，但 FM24 重新加载失败：{0}。请重启 FM24 以显示新头像。",
  "Portrait saved, but FM26 graphics refresh failed. Restart FM26 to load it.": "头像已保存，但 FM26 图形刷新失败。请重启 FM26 以加载。",
  "Portrait saved, but game refresh failed. Restart FM26 to load it.": "头像已保存，但游戏刷新失败。请重启 FM26 以加载。",
  "Portrait saved, but graphics reload timed out. Restart FM26 to load it.": "头像已保存，但图形重新加载超时。请重启 FM26 以加载。",

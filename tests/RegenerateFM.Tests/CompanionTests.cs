@@ -100,7 +100,7 @@ namespace RegenerateFM.Tests
             var result = _companion.Generate(null, "generate");
             Assert.True(result.Ok);
             Assert.False(result.Refreshed);
-            Assert.Contains("Reload Skin", result.Warning);
+            Assert.Contains("Restart FM24", result.Warning);
             // FM24 still shows the earlier face until it reloads, so that file stays.
             Assert.Equal(2, Saved().Length);
             Assert.Contains(earlier, Saved());

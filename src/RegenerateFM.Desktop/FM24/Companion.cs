@@ -407,7 +407,7 @@ namespace RegenerateFM.Desktop.FM24
             }
             catch (Exception error) when (Expected(error) || error is TimeoutException || error is System.Net.Sockets.SocketException)
             {
-                string warning = Text.T("Portrait saved, but FM24 reload failed: {0}. Use Preferences > Reload Skin.", error.Message);
+                string warning = Text.T("Portrait saved, but FM24 reload failed: {0}. Restart FM24 to see it.", error.Message);
                 // "Shown": the progress dialog now says so; nothing else needs to.
                 return new FaceResult { Ok = true, PlayerId = playerId, Warning = warning, Shown = progress != null && progress.Fail(warning) };
             }

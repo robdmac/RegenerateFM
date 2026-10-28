@@ -67,7 +67,7 @@
   "Generate faces…": "Generer ansikter…",
   "Generate missing squad faces works on a team's player list, and the list on this screen has no players RegenerateFM can read. Open the team's Squad screen (for a reserve or youth team, its tab in the Development Center) and choose it from that menu.": "Generer manglende troppsansikter virker på et lags spillerliste, og listen på denne skjermen har ingen spillere RegenerateFM kan lese. Åpne lagets Tropp-skjerm (for et reserve- eller ungdomslag: lagets fane i Utviklingssenteret), og velg det fra den menyen.",
   "Generate missing squad faces…": "Generer manglende troppsansikter…",
-  "Generate missing staff faces works on a club's Staff screen, and RegenerateFM couldn't tell which club this screen shows. Open the club's Staff screen and choose it from its menu there.": "Generer manglende stabsansikter virker på en klubbs Stab-skjerm, og RegenerateFM kunne ikke se hvilken klubb denne skjermen viser. Åpne klubbens Stab-skjerm, og velg det fra menyen der.",
+  "Generate missing staff faces works on a club's Staff screen, and RegenerateFM couldn't tell which club this screen shows. Open the club's Staff screen and choose it from its menu there.": "Generer manglende stabsansikter virker på en klubbs Ansatte-skjerm, og RegenerateFM kunne ikke se hvilken klubb denne skjermen viser. Åpne klubbens Ansatte-skjerm, og velg det fra menyen der.",
   "Generate missing staff faces…": "Generer manglende stabsansikter…",
   "Generate new face": "Generer nytt ansikt",
   "Generate {0} face": "Generer {0} ansikt",
@@ -144,7 +144,7 @@
   "Portrait request failed for {0}: {1}": "Portrettforespørselen mislyktes for {0}: {1}",
   "Portrait request timed out for {0}": "Portrettforespørselen fikk tidsavbrudd for {0}",
   "Portrait request timed out. Try again.": "Portrettforespørselen fikk tidsavbrudd. Prøv igjen.",
-  "Portrait saved, but FM24 reload failed: {0}. Use Preferences > Reload Skin.": "Portrettet ble lagret, men ny innlasting i FM24 mislyktes: {0}. Bruk Innstillinger > Last inn skinn på nytt.",
+  "Portrait saved, but FM24 reload failed: {0}. Restart FM24 to see it.": "Portrettet ble lagret, men ny innlasting i FM24 mislyktes: {0}. Start FM24 på nytt for å se det.",
   "Portrait saved, but FM26 graphics refresh failed. Restart FM26 to load it.": "Portrettet ble lagret, men oppdatering av grafikken i FM26 mislyktes. Start FM26 på nytt for å laste det inn.",
   "Portrait saved, but game refresh failed. Restart FM26 to load it.": "Portrettet ble lagret, men oppdatering av spillet mislyktes. Start FM26 på nytt for å laste det inn.",
   "Portrait saved, but graphics reload timed out. Restart FM26 to load it.": "Portrettet ble lagret, men ny innlasting av grafikken fikk tidsavbrudd. Start FM26 på nytt for å laste det inn.",
@@ -259,7 +259,7 @@
   "only {0} of its {1} staff could be read": "bare {0} av de {1} i staben kunne leses",
   "person mismatch": "feil person",
   "squad players": "troppsspillere",
-  "staff": "stabsmedlemmer",
+  "staff": "ansatte",
   "the team page": "lagsiden",
   "white Northern European": "hvit nordeuropeisk",
   "{0} No image request was made.": "{0} Ingen bildeforespørsel ble sendt.",
@@ -299,5 +299,5 @@
   "{0} row that isn't staff RegenerateFM can read was left out.": "{0} rad som ikke inneholder et stabsmedlem RegenerateFM kan lese, ble utelatt.",
   "{0} rows that aren't players RegenerateFM can read were left out.": "{0} rader som ikke inneholder spillere RegenerateFM kan lese, ble utelatt.",
   "{0} rows that aren't staff RegenerateFM can read were left out.": "{0} rader som ikke inneholder stabsmedlemmer RegenerateFM kan lese, ble utelatt.",
-  "{0} staff": "stabsmedlemmer i {0}"
+  "{0} staff": "ansatte i {0}"
 }
