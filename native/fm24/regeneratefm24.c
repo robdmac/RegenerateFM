@@ -1165,8 +1165,16 @@ static void popup_opened(void *manager, void *event)
             if ((count = popup_rows(popup, popup_id, &root, rows)) < 0) return;
         }
     }
-    for (int i = 0; i < count; ++i)
-        if (item_fourcc(rows[i], SKIN_ID('i','d',' ',' ')) == UPDATE_ITEM) update = rows[i];
+    char text[LABEL_SIZE];
+    for (int i = 0; i < count; ++i) {
+        unsigned int id = item_fourcc(rows[i], SKIN_ID('i','d',' ',' '));
+        /* The skin's portrait popup has its rows in English from setup; they
+           take FM24's language here, as the rows added above do. */
+        if (popup_id != SKIN_ID('P','p','r','f') && (id == PROFILE_EVENT || id == UPDATE_ITEM))
+            set_text(rows[i] + ITEM_PROPERTIES, SKIN_ID('t','e','x','t'),
+                     label(id == PROFILE_EVENT ? LABEL_GENERATE : LABEL_UPDATE, text, sizeof(text)));
+        if (id == UPDATE_ITEM) update = rows[i];
+    }
     if (!update) return;
     LARGE_INTEGER f, t0, t1, t2;
     QueryPerformanceFrequency(&f); QueryPerformanceCounter(&t0);

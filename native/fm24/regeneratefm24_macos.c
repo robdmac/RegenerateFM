@@ -819,6 +819,18 @@ static void set_fourcc(void *record, unsigned int key, unsigned int code)
     GAME_FUNCTION(value_function, RELOAD_VALUE_FREE)(value);
 }
 
+/* set_text for a menu item, which takes the event setter. */
+static void set_item_text(void *item, unsigned int key, const char *text)
+{
+    unsigned char string[16] __attribute__((aligned(16))) = {0};
+    unsigned char value[64] __attribute__((aligned(16))) = {0};
+    GAME_FUNCTION(string_init_function, SQUAD_MENU_STRING_INIT)(string, text, -1);
+    GAME_FUNCTION(string_value_function, DIALOG_VALUE_STRING)(value, string);
+    GAME_FUNCTION(set_function, RELOAD_EVENT_SET)(item, key, value);
+    GAME_FUNCTION(value_function, RELOAD_VALUE_FREE)(value);
+    GAME_FUNCTION(value_function, SQUAD_MENU_STRING_FREE)(string);
+}
+
 static void add_squad_item(void *provider, void **builder, void *context)
 {
     if (!builder || !*builder || !GAME_FUNCTION(record_check_function, SQUAD_MENU_IS_RECORD)(context))
@@ -1054,8 +1066,16 @@ static void popup_opened(void *manager, void *event)
             if ((count = popup_rows(popup, popup_id, &root, rows)) < 0) return;
         }
     }
-    for (int i = 0; i < count; ++i)
-        if (item_fourcc(rows[i], SKIN_ID('i','d',' ',' ')) == UPDATE_ITEM) update = rows[i];
+    char text[LABEL_SIZE];
+    for (int i = 0; i < count; ++i) {
+        unsigned int id = item_fourcc(rows[i], SKIN_ID('i','d',' ',' '));
+        /* The skin's portrait popup has its rows in English from setup; they
+           take FM24's language here, as the rows added above do. */
+        if (popup_id != SKIN_ID('P','p','r','f') && (id == PROFILE_EVENT || id == UPDATE_ITEM))
+            set_item_text(rows[i] + ITEM_PROPERTIES, SKIN_ID('t','e','x','t'),
+                          label(id == PROFILE_EVENT ? LABEL_GENERATE : LABEL_UPDATE, text, sizeof(text)));
+        if (id == UPDATE_ITEM) update = rows[i];
+    }
     if (!update) return;
     struct timespec t0, t1, t2;
     clock_gettime(CLOCK_MONOTONIC, &t0);

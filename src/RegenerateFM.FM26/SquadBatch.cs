@@ -567,7 +567,8 @@ namespace RegenerateFM.FM26
         private static VisualElement TickBox(string text, bool ticked, Action toggled)
         {
             var row = new Button((Il2CppSystem.Action)(System.Action)(toggled)) { text = "", focusable = false };
-            row.style.flexDirection = FlexDirection.Row;
+            // The box starts the line: at the right in Arabic.
+            row.style.flexDirection = Text.RightToLeft ? FlexDirection.RowReverse : FlexDirection.Row;
             row.style.alignItems = Align.Center;
             row.style.marginTop = 12;
             row.style.paddingLeft = 0;
@@ -575,7 +576,10 @@ namespace RegenerateFM.FM26
             row.style.borderTopWidth = row.style.borderBottomWidth = row.style.borderLeftWidth = row.style.borderRightWidth = 0;
             var box = new VisualElement { pickingMode = PickingMode.Ignore };
             box.style.width = box.style.height = 16;
-            box.style.marginRight = 8;
+            if (Text.RightToLeft)
+                box.style.marginLeft = 8;
+            else
+                box.style.marginRight = 8;
             box.style.flexShrink = 0;
             box.style.borderTopWidth = box.style.borderBottomWidth = box.style.borderLeftWidth = box.style.borderRightWidth = 2;
             box.style.borderTopColor = box.style.borderBottomColor = box.style.borderLeftColor = box.style.borderRightColor = Color.white;
@@ -584,6 +588,9 @@ namespace RegenerateFM.FM26
             label.style.color = Color.white;
             label.style.whiteSpace = WhiteSpace.Normal;
             label.style.flexShrink = 1;
+            // A Button centres its text; a label that wraps ("Spieler der ersten
+            // Mannschaft einbeziehen") reads from the box instead.
+            label.style.unityTextAlign = Text.RightToLeft ? TextAnchor.MiddleRight : TextAnchor.MiddleLeft;
             row.Add(box);
             row.Add(label);
             return row;

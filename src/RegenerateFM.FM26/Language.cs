@@ -19,19 +19,25 @@ namespace RegenerateFM.FM26
         internal const int ActionsLabel = 15539;
         internal const int StaffTitle = 23144;
         internal const int AllStaffTab = 12243;
-        // The attribute panel's column headings.
+        // The attribute panel's column headings. A goalkeeper's panel has its
+        // own Goalkeeping and Technical headings (checked in Arabic on Linux).
         private const int TechnicalHeading = 4900, SetPiecesHeading = 4904, MentalHeading = 4901,
-                          PhysicalHeading = 4905, GoalkeepingHeading = 4909;
+                          PhysicalHeading = 4905, GoalkeepingHeading = 4909,
+                          KeeperGoalkeepingHeading = 4908, KeeperTechnicalHeading = 4907;
 
         private static readonly Dictionary<int, string> GameTexts = new Dictionary<int, string>();
         private bool _languageUnreadable;
 
-        // RegenerateFM's own text follows FM26's interface language (Text).
+        // RegenerateFM's own text follows FM26's interface language (Text), and
+        // FM26's texts for label IDs are read again once it changes.
         internal void SyncLanguage()
         {
             try
             {
+                string language = Text.Language;
                 Text.Language = TranslationManager.CurrentLanguage;
+                if (Text.Language != language)
+                    GameTexts.Clear();
             }
             catch (Exception error)
             {
@@ -203,10 +209,10 @@ namespace RegenerateFM.FM26
             {
                 string section = LabelId(element) switch
                 {
-                    TechnicalHeading or SetPiecesHeading => "Technical",
+                    TechnicalHeading or SetPiecesHeading or KeeperTechnicalHeading => "Technical",
                     MentalHeading => "Mental",
                     PhysicalHeading => "Physical",
-                    GoalkeepingHeading => "Goalkeeping",
+                    GoalkeepingHeading or KeeperGoalkeepingHeading => "Goalkeeping",
                     _ => null,
                 };
                 if (section != null)
