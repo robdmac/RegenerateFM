@@ -59,7 +59,6 @@ namespace RegenerateFM.Desktop.FM24
         public int TableModel;           // a Squad table widget's row model (SquadReader)
         // The global pointing at the object that holds the in-game date, and
         // the date's place in it: {u16 day of year, u16 year}, as a birth date.
-        // 0 where it isn't known yet; the top bar's English date is read instead.
         public long DateGlobal;
         public int DateOffset;
         public string ExecutableSuffix;  // the game's executable, lower case
@@ -100,6 +99,7 @@ namespace RegenerateFM.Desktop.FM24
             SidebarVtable = 0x57E3B48,        // SIDEBAR_MENU_TABLE, as in the DLL
             SidebarReference = 0x280,
             TableModel = 0x6E8,
+            DateGlobal = 0x6374650, DateOffset = 0x7DC,
             ExecutableSuffix = "/fm.exe",
         };
 

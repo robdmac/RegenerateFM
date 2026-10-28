@@ -63,13 +63,22 @@ namespace RegenerateFM.FM26
         // RegenerateFM's elements, with their text written right to left in
         // Arabic: UI Toolkit's advanced text generator joins and orders its
         // letters, as FM26 does for its own text. Applied to every element, as
-        // the generator style isn't inherited.
+        // the generator style isn't inherited. Text set to start at the left
+        // (a menu item's) starts at the right instead, as FM26's own does.
         internal static VisualElement Directed(VisualElement element)
         {
             if (element == null || !Text.RightToLeft)
                 return element;
             element.languageDirection = LanguageDirection.RTL;
             element.style.unityTextGenerator = UnityEngine.TextGeneratorType.Advanced;
+            var align = element.style.unityTextAlign;
+            if (align.keyword == StyleKeyword.Undefined && align.value is UnityEngine.TextAnchor.UpperLeft or UnityEngine.TextAnchor.MiddleLeft or UnityEngine.TextAnchor.LowerLeft)
+            {
+                element.style.unityTextAlign = align.value + 2;
+                var left = element.style.paddingLeft;
+                element.style.paddingLeft = element.style.paddingRight;
+                element.style.paddingRight = left;
+            }
             for (int i = 0; i < element.hierarchy.childCount; i++)
                 Directed(element.hierarchy.ElementAt(i));
             return element;

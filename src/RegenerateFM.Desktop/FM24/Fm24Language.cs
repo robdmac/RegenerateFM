@@ -8,10 +8,9 @@ namespace RegenerateFM.Desktop.FM24
 {
     // FM24's interface language ("german", "english"), from its preferences
     // file current_language.xml: on macOS in ~/Library/Application Support/
-    // Sports Interactive/Football Manager 2024/Preferences/version 1/. On
-    // Windows and Proton it is looked for under %LOCALAPPDATA% and Documents'
-    // Sports Interactive\Football Manager 2024\Preferences\version *\ (the
-    // newest); those paths are unverified. Read again only when the file changes.
+    // Sports Interactive/Football Manager 2024/Preferences/version 1/, and on
+    // Windows in %LOCALAPPDATA%'s (Documents' is also looked in, and the newest
+    // version * folder is used). Read again only when the file changes.
     public static class Fm24Language
     {
         private const string FileName = "current_language.xml";
