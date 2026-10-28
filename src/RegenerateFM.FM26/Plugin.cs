@@ -28,7 +28,9 @@ namespace RegenerateFM.FM26
     {
         internal static Plugin Instance;
         internal static bool WaitingForGraphics;
-        private static readonly Regex Tags = new Regex("<[^>]*>", RegexOptions.Compiled);
+        // Rich-text tags, and the zero-width spaces FM26 puts between Japanese and
+        // Chinese words as line-break hints ("ミッド​フィル​ダー").
+        private static readonly Regex Tags = new Regex("<[^>]*>|​", RegexOptions.Compiled);
         // "16 years old" in the full-size profile header, "16 y/o (3/26/2008)" in
         // the compact one FM26 shows on a smaller screen.
         private static readonly Regex AgePattern = new Regex(@"\b(\d{1,2}) (?:years old|y/o)\b", RegexOptions.Compiled);
