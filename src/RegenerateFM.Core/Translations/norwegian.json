@@ -259,7 +259,7 @@
   "only {0} of its {1} staff could be read": "bare {0} av de {1} i staben kunne leses",
   "person mismatch": "feil person",
   "squad players": "troppsspillere",
-  "staff": "i staben",
+  "staff": "stabsmedlemmer",
   "the team page": "lagsiden",
   "white Northern European": "hvit nordeuropeisk",
   "{0} No image request was made.": "{0} Ingen bildeforespørsel ble sendt.",
@@ -299,5 +299,5 @@
   "{0} row that isn't staff RegenerateFM can read was left out.": "{0} rad som ikke er et stabsmedlem RegenerateFM kan lese, ble utelatt.",
   "{0} rows that aren't players RegenerateFM can read were left out.": "{0} rader som ikke er spillere RegenerateFM kan lese, ble utelatt.",
   "{0} rows that aren't staff RegenerateFM can read were left out.": "{0} rader som ikke er stabsmedlemmer RegenerateFM kan lese, ble utelatt.",
-  "{0} staff": "i staben til {0}"
+  "{0} staff": "stabsmedlemmer i {0}"
 }

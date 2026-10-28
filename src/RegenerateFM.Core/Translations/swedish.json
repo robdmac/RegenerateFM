@@ -259,7 +259,7 @@
   "only {0} of its {1} staff could be read": "bara {0} av de {1} i personalen kunde läsas",
   "person mismatch": "fel person",
   "squad players": "truppspelare",
-  "staff": "i personalen",
+  "staff": "anställda",
   "the team page": "lagsidan",
   "white Northern European": "vit nordeuropeisk",
   "{0} No image request was made.": "{0} Ingen bildbegäran skickades.",
@@ -299,5 +299,5 @@
   "{0} row that isn't staff RegenerateFM can read was left out.": "{0} rad som inte är personal som RegenerateFM kan läsa utelämnades.",
   "{0} rows that aren't players RegenerateFM can read were left out.": "{0} rader som inte är spelare som RegenerateFM kan läsa utelämnades.",
   "{0} rows that aren't staff RegenerateFM can read were left out.": "{0} rader som inte är personal som RegenerateFM kan läsa utelämnades.",
-  "{0} staff": "i personalen hos {0}"
+  "{0} staff": "anställda i {0}"
 }
