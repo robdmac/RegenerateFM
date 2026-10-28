@@ -22,7 +22,7 @@ From read-only process memory (`Memory/`), the companion reads:
 - **Person:** the person comes from the screen FM24 has open, in game memory. The header's title, the canonical person record and the contract must agree. If **Show screen IDs in Title Bar** is on, the header's `(ID:n)` must match as well; the setting isn't needed.
 - **Repeat read:** everything is read twice to catch navigation during capture.
 
-If anything can't be verified, the request is refused before any image is requested. If the in-game reload fails after a face is saved, the image is kept; use Preferences > Reload Skin to load it.
+If anything can't be verified, the request is refused before any image is requested. If the in-game reload fails after a face is saved, the image is kept and appears once FM24 is restarted.
 
 ## Setup
 

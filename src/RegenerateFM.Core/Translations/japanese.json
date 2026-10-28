@@ -144,7 +144,7 @@
  "Portrait request failed for {0}: {1}": "{0}の顔写真リクエストに失敗しました：{1}",
  "Portrait request timed out for {0}": "{0}の顔写真リクエストがタイムアウトしました",
  "Portrait request timed out. Try again.": "顔写真リクエストがタイムアウトしました。もう一度お試しください。",
- "Portrait saved, but FM24 reload failed: {0}. Use Preferences > Reload Skin.": "顔写真は保存しましたが、FM24 の再読み込みに失敗しました：{0}。「環境設定 > スキンを再読み込み」を使ってください。",
+ "Portrait saved, but FM24 reload failed: {0}. Restart FM24 to see it.": "顔写真は保存しましたが、FM24 の再読み込みに失敗しました：{0}。表示するには FM24 を再起動してください。",
  "Portrait saved, but FM26 graphics refresh failed. Restart FM26 to load it.": "顔写真は保存しましたが、FM26 のグラフィック更新に失敗しました。読み込むには FM26 を再起動してください。",
  "Portrait saved, but game refresh failed. Restart FM26 to load it.": "顔写真は保存しましたが、ゲームの更新に失敗しました。読み込むには FM26 を再起動してください。",
  "Portrait saved, but graphics reload timed out. Restart FM26 to load it.": "顔写真は保存しましたが、グラフィックの再読み込みがタイムアウトしました。読み込むには FM26 を再起動してください。",

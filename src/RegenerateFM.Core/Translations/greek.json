@@ -144,7 +144,7 @@
   "Portrait request failed for {0}: {1}": "Το αίτημα πορτρέτου απέτυχε για {0}: {1}",
   "Portrait request timed out for {0}": "Το αίτημα πορτρέτου για {0} έληξε",
   "Portrait request timed out. Try again.": "Το αίτημα πορτρέτου έληξε. Δοκιμάστε ξανά.",
-  "Portrait saved, but FM24 reload failed: {0}. Use Preferences > Reload Skin.": "Το πορτρέτο αποθηκεύτηκε, αλλά η επαναφόρτωση του FM24 απέτυχε: {0}. Χρησιμοποιήστε Προτιμήσεις > Επαναφόρτωση Skin.",
+  "Portrait saved, but FM24 reload failed: {0}. Restart FM24 to see it.": "Το πορτρέτο αποθηκεύτηκε, αλλά η επαναφόρτωση του FM24 απέτυχε: {0}. Επανεκκινήστε το FM24 για να το δείτε.",
   "Portrait saved, but FM26 graphics refresh failed. Restart FM26 to load it.": "Το πορτρέτο αποθηκεύτηκε, αλλά η ανανέωση γραφικών του FM26 απέτυχε. Επανεκκινήστε το FM26 για να φορτωθεί.",
   "Portrait saved, but game refresh failed. Restart FM26 to load it.": "Το πορτρέτο αποθηκεύτηκε, αλλά η ανανέωση του παιχνιδιού απέτυχε. Επανεκκινήστε το FM26 για να φορτωθεί.",
   "Portrait saved, but graphics reload timed out. Restart FM26 to load it.": "Το πορτρέτο αποθηκεύτηκε, αλλά η επαναφόρτωση γραφικών έληξε. Επανεκκινήστε το FM26 για να φορτωθεί.",

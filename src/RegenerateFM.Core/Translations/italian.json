@@ -144,7 +144,7 @@
   "Portrait request failed for {0}: {1}": "Richiesta del ritratto non riuscita per {0}: {1}",
   "Portrait request timed out for {0}": "Richiesta del ritratto scaduta per {0}",
   "Portrait request timed out. Try again.": "Richiesta del ritratto scaduta. Riprovare.",
-  "Portrait saved, but FM24 reload failed: {0}. Use Preferences > Reload Skin.": "Ritratto salvato, ma il ricaricamento di FM24 non è riuscito: {0}. Usare Preferenze > Ricarica skin.",
+  "Portrait saved, but FM24 reload failed: {0}. Restart FM24 to see it.": "Ritratto salvato, ma il ricaricamento di FM24 non è riuscito: {0}. Riavviare FM24 per vederlo.",
   "Portrait saved, but FM26 graphics refresh failed. Restart FM26 to load it.": "Ritratto salvato, ma l'aggiornamento della grafica di FM26 non è riuscito. Riavviare FM26 per caricarlo.",
   "Portrait saved, but game refresh failed. Restart FM26 to load it.": "Ritratto salvato, ma l'aggiornamento del gioco non è riuscito. Riavviare FM26 per caricarlo.",
   "Portrait saved, but graphics reload timed out. Restart FM26 to load it.": "Ritratto salvato, ma il ricaricamento della grafica è scaduto. Riavviare FM26 per caricarlo.",

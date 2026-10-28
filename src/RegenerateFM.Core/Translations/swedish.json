@@ -144,7 +144,7 @@
   "Portrait request failed for {0}: {1}": "Porträttbegäran misslyckades för {0}: {1}",
   "Portrait request timed out for {0}": "Porträttbegäran tog för lång tid för {0}",
   "Portrait request timed out. Try again.": "Porträttbegäran tog för lång tid. Försök igen.",
-  "Portrait saved, but FM24 reload failed: {0}. Use Preferences > Reload Skin.": "Porträttet sparades, men omladdningen i FM24 misslyckades: {0}. Använd Inställningar > Läs in skin igen.",
+  "Portrait saved, but FM24 reload failed: {0}. Restart FM24 to see it.": "Porträttet sparades, men omladdningen i FM24 misslyckades: {0}. Starta om FM24 för att se det.",
   "Portrait saved, but FM26 graphics refresh failed. Restart FM26 to load it.": "Porträttet sparades, men grafikuppdateringen i FM26 misslyckades. Starta om FM26 för att läsa in det.",
   "Portrait saved, but game refresh failed. Restart FM26 to load it.": "Porträttet sparades, men uppdateringen av spelet misslyckades. Starta om FM26 för att läsa in det.",
   "Portrait saved, but graphics reload timed out. Restart FM26 to load it.": "Porträttet sparades, men omladdningen av grafiken tog för lång tid. Starta om FM26 för att läsa in det.",
@@ -259,7 +259,7 @@
   "only {0} of its {1} staff could be read": "bara {0} av de {1} i personalen kunde läsas",
   "person mismatch": "fel person",
   "squad players": "truppspelare",
-  "staff": "stabsmedlemmar",
+  "staff": "anställda",
   "the team page": "lagsidan",
   "white Northern European": "vit nordeuropeisk",
   "{0} No image request was made.": "{0} Ingen bildbegäran skickades.",
@@ -299,5 +299,5 @@
   "{0} row that isn't staff RegenerateFM can read was left out.": "{0} rad som inte innehåller någon stabsmedlem som RegenerateFM kan läsa utelämnades.",
   "{0} rows that aren't players RegenerateFM can read were left out.": "{0} rader som inte innehåller spelare som RegenerateFM kan läsa utelämnades.",
   "{0} rows that aren't staff RegenerateFM can read were left out.": "{0} rader som inte innehåller stabsmedlemmar som RegenerateFM kan läsa utelämnades.",
-  "{0} staff": "stabsmedlemmar i {0}"
+  "{0} staff": "anställda i {0}"
 }
