@@ -166,9 +166,9 @@ func realPath(_ url: URL) -> URL {
 /// The Epic Games Launcher's installed games, from its records (as
 /// src/RegenerateFM.Desktop/Epic/EpicLaunch.cs reads them).
 enum Epic {
-    /// Epic's IDs (AppName) for FM24, FM26 and the FM26 Demo.
+    /// Epic's IDs (AppName) for FM24, FM26, the FM26 Demo and the FM27 Launch Preview.
     static let fm24 = "da2038ef19e94554898056d79168b3f8", fm26 = "e54a251079034694b55ab6289707bfa0",
-               fm26Demo = "4bec350f11854ea1b6c76969ac88976e"
+               fm26Demo = "4bec350f11854ea1b6c76969ac88976e", fm27Preview = "8d866ddfb2e142c9b16acb6a08791a97"
     static let backupSuffix = ".regeneratefm-backup"
 
     static var manifests: URL {
@@ -192,7 +192,7 @@ enum Epic {
     /// Every game folder Epic has installed.
     static func installs() -> [URL] { records().map(\.folder) }
 
-    /// FM24 and FM26 among them, by Epic's IDs.
+    /// FM24, FM26 and FM27 among them, by Epic's IDs.
     static func installedGames() -> [Game] {
         records().compactMap { entry in
             guard FileManager.default.fileExists(atPath: entry.folder.appendingPathComponent("fm.app").path) else { return nil }
@@ -200,6 +200,10 @@ enum Epic {
             case fm24: return Game(name: "Football Manager 2024 (Epic)", appID: Steam.fm24, folder: entry.folder)
             case fm26: return Game(name: "Football Manager 26 (Epic)", appID: Steam.games[0].1, folder: entry.folder)
             case fm26Demo: return Game(name: "Football Manager 26 Demo (Epic)", appID: Steam.games[1].1, folder: entry.folder)
+            case fm27Preview: return Game(name: "Football Manager 27 (Epic)", appID: Steam.games[3].1, folder: entry.folder)
+            // FM27 itself, once Epic sells it under its own ID: by its program.
+            case _ where gameProgram(entry.folder).hasSuffix("/Football Manager 27"):
+                return Game(name: "Football Manager 27 (Epic)", appID: Steam.games[3].1, folder: entry.folder)
             default: return nil
             }
         }
