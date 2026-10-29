@@ -920,6 +920,7 @@ namespace RegenerateFM.FM26
         private void Frame()
         {
             CheckRefreshTimeout();
+            RefillEmptyContent();
             PollGeneration();
             PollKeyCheck();
             PollCreditsSignIn();
