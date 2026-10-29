@@ -58,6 +58,13 @@ namespace RegenerateFM.FM26
                 if (HasHash(gameAssembly, "7ce3eb474dc6093df633f979e869e55b2ec7953fde2e732392a694d379ff7a0c")
                     && HasHash(gamePlugin, "eb6c86fab56e051fe41482c7b93d8cb0af716a1cc2c6197ce1babbff68372bb8"))
                     return true;
+                // Epic's FM26 for Windows: GameAssembly.dll is the same code built
+                // again (only its build time and debug ID differ) with the same
+                // metadata; its game_plugin.dll, whose code the plugin doesn't
+                // use, is packed differently.
+                if (HasHash(gameAssembly, "1f2dbcce6deb7ca40eb1309d10c818e1217fe9e43c4c674d0fea90f1069f5982")
+                    && HasHash(gamePlugin, "d86f511cec5a8de871ceedebf3eab05cec057bf2f82ee9ee0ef2e923e1a60944"))
+                    return true;
                 // The FM26 Demo (Steam app 3551360) is a separate 26.3.2 build
                 // that keeps its user data in "Football Manager 26 Demo".
                 if (HasHash(gameAssembly, "edcd74617b881817da1895f4272add8fcfcab9d15a4ab64d858d408f59c730f0")
