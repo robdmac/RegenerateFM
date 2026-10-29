@@ -31,6 +31,8 @@ namespace RegenerateFM.Desktop.Linux
         // FM26's user-data folder, so removing these keeps them.
         public static readonly string[] Fm26Added = { "BepInEx", "dotnet", "winhttp.dll", "doorstop_config.ini", ".doorstop_version" };
         public const string Companion = "regeneratefm-fm24.exe";
+        // What to expect from FM26's first start after installing (as the macOS installer says).
+        public const string FirstStartNote = "The first time FM26 starts with RegenerateFM, it takes a few minutes longer (up to about 10 on a slower computer) while BepInEx prepares the game, with no progress shown; let it finish. This happens once: later starts are as quick as before. It happens once more after an FM26 update.";
         public const string QuitSteam = "Steam is running. Quit Steam first (Steam > Exit, not just closing its window), then run " +
                                         "install-linux.sh again: Steam only keeps a game's launch option set while it is closed.";
         public const string Usage =
@@ -261,8 +263,12 @@ namespace RegenerateFM.Desktop.Linux
                 return 1;
             }
             if (!remove)
+            {
                 Log("\nStart Steam and press Play. The first time you choose a face command, RegenerateFM asks for your OpenAI key " +
                     "or a RegenerateFM sign-in.");
+                if (found.Keys.Any(game => game != "fm24"))
+                    Log(FirstStartNote);
+            }
             return 0;
         }
     }

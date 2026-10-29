@@ -349,6 +349,9 @@ enum Installer {
     static let plugin = "BepInEx/plugins/RegenerateFM"
     /// What the FM26-macOS folder adds beside fm.app. Faces and settings are
     /// in FM26's user-data folder, so removing these keeps them.
+    /// What to expect from FM26's first start after installing (as the Linux installer says).
+    static let firstStartNote = "The first time FM26 starts with RegenerateFM, it takes a few minutes longer (up to about 10 on a slower computer) while BepInEx prepares the game, with no progress shown; let it finish. This happens once: later starts are as quick as before. It happens once more after an FM26 update."
+
     static let added = ["BepInEx", "dotnet", "libdoorstop.dylib", ".doorstop_version", "clear-exception-ports", launcher]
 
     static var payload: URL? {
@@ -661,6 +664,7 @@ final class Model: ObservableObject {
     /// With the files in place: the launch option, and what to do next.
     private func finishInstall(_ game: Game, note: String? = nil) {
         var text = installedText(game, note: note)
+        text += " " + Installer.firstStartNote
         if !rosetta {
             text += " FM26 runs under Rosetta 2 with RegenerateFM: click Install Rosetta first."
         }
