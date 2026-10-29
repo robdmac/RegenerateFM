@@ -45,7 +45,12 @@ namespace RegenerateFM.FM26
             var label = element.TryCast<TextElement>();
             if (label != null && !string.IsNullOrEmpty(label.text))
                 text.Append(" \"").Append(label.text.Replace("\n", " ")).Append('"');
-            text.Append(FormattableString.Invariant($" [{bounds.x:0},{bounds.y:0} {bounds.width:0}x{bounds.height:0}]")).Append('\n');
+            text.Append(FormattableString.Invariant($" [{bounds.x:0},{bounds.y:0} {bounds.width:0}x{bounds.height:0}]"));
+            var remapper = element.TryCast<SI.Bindable.BindingRemapper>();
+            if (remapper?.Mappings != null)
+                foreach (var mapping in remapper.Mappings)
+                    text.Append(" {").Append(mapping.from).Append(" -> ").Append(mapping.to).Append('}');
+            text.Append('\n');
             for (int i = 0; i < element.hierarchy.childCount; i++)
                 DumpElement(element.hierarchy.ElementAt(i), depth + 1, text);
         }

@@ -47,6 +47,7 @@ namespace RegenerateFM.FM26
                         && HasHash(macPlugin, "2e915b0f264920ae1205b111f45d50e354ac0e7d0b6e136b99189c24b265f431"))
                     {
                         Fm27 = true;
+                        Text.GameName = "FM27";
                         UserDataName = "Football Manager 27";
                         return true;
                     }

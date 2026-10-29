@@ -28,10 +28,13 @@ namespace RegenerateFM.FM26
                 return null;
             foreach (var layer in new[] { "Card", "Report", "Menu" })
             {
+                // FM26's layer holds its Body; FM27's is a sibling named for it ("ReportBody").
                 VisualElement body = null;
                 for (int i = 0; i < root.hierarchy.childCount && body == null; i++)
                 {
                     var child = root.hierarchy.ElementAt(i);
+                    if (child.name == layer + "Body")
+                        body = child;
                     if (child.name != layer)
                         continue;
                     for (int j = 0; j < child.hierarchy.childCount; j++)

@@ -30,15 +30,23 @@ namespace RegenerateFM
             set => _language = string.IsNullOrWhiteSpace(value) ? "english" : value.Trim().ToLowerInvariant();
         }
 
+        // The game RegenerateFM is running in, when it isn't the one its text
+        // names: the FM26 plugin sets "FM27" in FM27, and every "FM26" in its
+        // text (in any language) reads "FM27".
+        public static string GameName { get; set; }
+
         // Whether the language is written right to left (FM's only one is Arabic).
         public static bool RightToLeft => _language == "arabic";
 
         // The text in the current language. Placeholders are string.Format's
         // ("Generating {0} ({1}/{2})…").
-        public static string T(string english) => Lookup(english, _language);
+        public static string T(string english) => Named(Lookup(english, _language));
 
         public static string T(string english, params object[] values) =>
-            string.Format(CultureInfo.InvariantCulture, Lookup(english, _language), values);
+            string.Format(CultureInfo.InvariantCulture, Named(Lookup(english, _language)), values);
+
+        private static string Named(string text) =>
+            text == null || string.IsNullOrEmpty(GameName) ? text : text.Replace("FM26", GameName);
 
         // For a test or a caller that knows the language.
         public static string In(string language, string english) => Lookup(english, (language ?? "english").Trim().ToLowerInvariant());

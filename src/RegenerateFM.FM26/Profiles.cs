@@ -251,6 +251,24 @@ namespace RegenerateFM.FM26
             return nation;
         }
 
+        // FM27's staff header has no numbered frames: its texts are the name, the
+        // preferred job, the nation code and the age, then "Actions", the club
+        // and the job at the club.
+        private static void ReadFm27StaffHeader(VisualElement header, ProfileSnapshot profile)
+        {
+            var texts = TextValues(header);
+            if (string.IsNullOrWhiteSpace(profile.Name) && texts.Count > 0)
+                profile.Name = texts[0];
+            int actions = texts.FindIndex(value => IsLabel(value, "Actions", ActionsLabel));
+            if (actions >= 0 && actions + 2 < texts.Count)
+            {
+                profile.Club ??= texts[actions + 1];
+                profile.JobTitle = texts[actions + 2];
+            }
+            else if (string.IsNullOrWhiteSpace(profile.JobTitle) && texts.Count > 1)
+                profile.JobTitle = texts[1];
+        }
+
         private static string CompactNation(VisualElement header) =>
             FirstText(FindNamed(FindNamed(header, "Frame 1000003900"), "not-null"));
 
@@ -310,6 +328,8 @@ namespace RegenerateFM.FM26
             // has the job at the club.
             profile.JobTitle = FirstText(FindNamed(contract, "Frame 1000003768")) ??
                                FirstText(FindNamed(contract, "Frame 1000003771")) ?? profile.JobTitle;
+            if (Fm27)
+                ReadFm27StaffHeader(header, profile);
             // Its nation is shown twice, as a code by the age ("ENG") and in full
             // ("England"); the compact header has only the code.
             foreach (var nation in NamedElements(header, "Frame 1000003766"))
@@ -383,7 +403,28 @@ namespace RegenerateFM.FM26
         // so that preference isn't needed. Skins that print "(ID:n)" still work.
         private static bool HeaderId(VisualElement header, out long id)
         {
-            return BoundObjectId(header, out id) || TextId(TextValues(header), out id);
+            if (BoundObjectId(header, out id) || TextId(TextValues(header), out id))
+                return true;
+            if (!Fm27 || !PersonNodeByMapping(header, out var bindings, out var person))
+                return false;
+            if (PersonUniqueId(person, out id))
+                return true;
+            // Nothing on screen binds it: bind it once (as the gender is), and it
+            // is there on a later read (a menu item reads the ID again on click).
+            var personKey = person.Key;
+            // By the node, not its Key (whose ToString is the same for every person).
+            if (UniqueIdBound.Add(((Il2CppInterop.Runtime.InteropTypes.Il2CppObjectBase)person).Pointer))
+            {
+                try
+                {
+                    BindingPaths.Bind(bindings, personKey, "UniqueId", UniqueIdCallback);
+                }
+                catch (Exception error)
+                {
+                    Instance?.Log.LogWarning("The staff member's ID could not be bound: " + error.Message);
+                }
+            }
+            return false;
         }
 
         private static bool BoundObjectId(VisualElement header, out long id)
@@ -403,6 +444,74 @@ namespace RegenerateFM.FM26
                     return value != null && !value.IsNull && long.TryParse(value.AsString(), out id) && id > 0;
                 }
             return false;
+        }
+
+        // FM27's staff header has no objectID mapping; one of its remappers maps
+        // a name to a property of "person" ({nation -> person.nation}), whose
+        // alias's parent is the Person node. Its UniqueId is the person's ID.
+        private static bool PersonNodeByMapping(VisualElement header, out Bindings bindings, out IReadOnlyNode person)
+        {
+            person = null;
+            bindings = null;
+            if (header == null || !GameSubsystems.TryGet<Bindings>(out bindings) || bindings == null)
+                return false;
+            foreach (var element in AllElements(header))
+            {
+                var remapper = element.TryCast<BindingRemapper>();
+                if (remapper?.Mappings == null)
+                    continue;
+                foreach (var mapping in remapper.Mappings)
+                {
+                    if (!(mapping.to ?? "").StartsWith("person.", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    var view = BindableView(remapper);
+                    if (view == null)
+                        break;
+                    var key = view.Key;
+                    if (!bindings.TryGetNode(ref key, out var node) || node == null)
+                        break;
+                    // The node's children are capitalised ("Nation" for the mapping's "nation").
+                    for (var child = node.FirstChild; child != null; child = child.NextSibling)
+                    {
+                        if (string.Equals(child.Name, mapping.from, StringComparison.OrdinalIgnoreCase))
+                        {
+                            var alias = child.Alias;
+                            if (bindings.TryGetNode(ref alias, out var target) && target?.Parent != null)
+                            {
+                                person = target.Parent;
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+
+        private static readonly HashSet<IntPtr> UniqueIdBound = new HashSet<IntPtr>();
+        private static readonly Bindings.ValueChangedCallback UniqueIdCallback =
+            new Action<Bindings.Key, SI.Core.TypedValue>((_, _) => { });
+
+        private static bool PersonUniqueId(IReadOnlyNode person, out long id)
+        {
+            id = 0;
+            for (var child = person?.FirstChild; child != null; child = child.NextSibling)
+                if (string.Equals(child.Name, "UniqueId", StringComparison.OrdinalIgnoreCase))
+                {
+                    var value = child.Value;
+                    return value != null && !value.IsNull && long.TryParse(value.AsString(), out id) && id > 0;
+                }
+            return false;
+        }
+
+        private static IEnumerable<VisualElement> AllElements(VisualElement element)
+        {
+            if (element == null)
+                yield break;
+            yield return element;
+            for (int i = 0; i < element.hierarchy.childCount; i++)
+                foreach (var child in AllElements(element.hierarchy.ElementAt(i)))
+                    yield return child;
         }
 
         // FM26 binds a person's gender as Person.IsPersonFemale. The header's
@@ -472,6 +581,11 @@ namespace RegenerateFM.FM26
             personKey = default;
             bindings = null;
             var view = BindableView(ObjectIdRemapper(header));
+            if (view == null && Fm27 && PersonNodeByMapping(header, out bindings, out var person))
+            {
+                personKey = person.Key;
+                return true;
+            }
             if (view == null || !GameSubsystems.TryGet<Bindings>(out bindings) || bindings == null)
                 return false;
             var key = view.Key;
