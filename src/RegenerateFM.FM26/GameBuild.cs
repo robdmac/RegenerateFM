@@ -67,8 +67,11 @@ namespace RegenerateFM.FM26
                     return true;
                 // The FM26 Demo (Steam app 3551360) is a separate 26.3.2 build
                 // that keeps its user data in "Football Manager 26 Demo".
+                // Epic's Demo has the same GameAssembly.dll, and a game_plugin.dll
+                // packed differently, as Epic's full game does.
                 if (HasHash(gameAssembly, "edcd74617b881817da1895f4272add8fcfcab9d15a4ab64d858d408f59c730f0")
-                    && HasHash(gamePlugin, "a4181cf61a265058d0b447fd0d679d5ac282b08a7962f0f0d67dbd27bdf9aa26"))
+                    && (HasHash(gamePlugin, "a4181cf61a265058d0b447fd0d679d5ac282b08a7962f0f0d67dbd27bdf9aa26")
+                        || HasHash(gamePlugin, "26f292cf4b0af33a41f075d086537f3aadb3c14cbcee0e5206f2270e83809cad")))
                 {
                     UserDataName = "Football Manager 26 Demo";
                     return true;

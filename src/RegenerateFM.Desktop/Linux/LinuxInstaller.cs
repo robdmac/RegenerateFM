@@ -32,7 +32,7 @@ namespace RegenerateFM.Desktop.Linux
         public static readonly string[] Fm26Added = { "BepInEx", "dotnet", "winhttp.dll", "doorstop_config.ini", ".doorstop_version" };
         public const string Companion = "regeneratefm-fm24.exe";
         // What to expect from FM26's first start after installing (as the macOS installer says).
-        public const string FirstStartNote = "The first time FM26 starts with RegenerateFM, it takes a few minutes longer (up to about 10 on a slower computer) while BepInEx prepares the game; a RegenerateFM window shows its progress. Let it finish. This happens once: later starts are as quick as before. It happens once more after an FM26 update.";
+        public const string FirstStartNote = "The first time FM26 starts with RegenerateFM, it takes a few minutes longer (up to about 10 on a slower computer) while BepInEx prepares the game, with no progress shown; let it finish. This happens once: later starts are as quick as before. It happens once more after an FM26 update.";
         public const string QuitSteam = "Steam is running. Quit Steam first (Steam > Exit, not just closing its window), then run " +
                                         "install-linux.sh again: Steam only keeps a game's launch option set while it is closed.";
         public const string Usage =

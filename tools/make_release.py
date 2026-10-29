@@ -14,7 +14,8 @@ Layout of dist/RegenerateFM-Windows-Linux.zip, in regeneratefm-<version>/:
 
 It needs the FM26 plugin built first (see src/RegenerateFM.FM26/README.md: it
 is built against a game folder), FM24's DLL (native/fm24/build.py) and FM26's
-progress window (native/fm26progress/build.py --windows). It
+progress window for the Mac (native/fm26progress/build.py --macos, used by
+macos/make_installer.py). It
 publishes the companion and the Linux installer itself with dotnet, unless
 --no-publish. FM26 and FM24 on macOS are in RegenerateFM-macOS.dmg instead
 (macos/make_installer.py, which uses macos_files below).
@@ -55,6 +56,11 @@ PROGRESS_BUILD = ROOT / "native" / "fm26progress" / "build"
 START_PROJECT = ROOT / "src" / "RegenerateFM.FM26.Start"
 START_DLL = START_PROJECT / "bin" / "Release" / "net6.0" / "RegenerateFM.Start.dll"
 START_TARGET = "target_assembly = BepInEx\\core\\RegenerateFM.Start.dll"
+# Not on Windows yet: Epic's FM26 Demo in a Windows VM, started through
+# RegenerateFM.Start.dll, kept saying "The server is not reachable" (TODO.md,
+# "Progress window on Windows"), so Doorstop starts BepInEx directly there,
+# as before. The Mac's window is shipped.
+WINDOWS_PROGRESS = False
 MACOS_NATIVE = {"BepInEx/core/libfunchook.dylib": "libfunchook.dylib",
                 "BepInEx/core/Il2CppInterop.Runtime.dll": "Il2CppInterop.Runtime.dll",
                 "BepInEx/core/Il2CppInterop.Common.dll": "Il2CppInterop.Common.dll"}
@@ -259,10 +265,11 @@ def main() -> None:
                          "git rm -r -q --cached . && git reset -q --hard).")
     modes = git_modes()
     loader = bepinex_files(bepinex_zip(BEPINEX, args.bepinex_zip), "winhttp.dll")
-    if not args.no_publish:
-        subprocess.run([shutil.which("dotnet") or str(Path.home() / ".local" / "dotnet" / "dotnet"), "build", str(START_PROJECT),
-                        "-c", "Release", "-v", "q", "-nologo"], check=True)
-    loader.update(windows_progress_files(loader))
+    if WINDOWS_PROGRESS:
+        if not args.no_publish:
+            subprocess.run([shutil.which("dotnet") or str(Path.home() / ".local" / "dotnet" / "dotnet"), "build", str(START_PROJECT),
+                            "-c", "Release", "-v", "q", "-nologo"], check=True)
+        loader.update(windows_progress_files(loader))
     top = f"regeneratefm-{version}"
     plugin = PLUGIN_DLL.read_bytes()
     for name, data in (("the FM26 plugin", plugin), (COMPANION[1], programs[COMPANION[0]]),
