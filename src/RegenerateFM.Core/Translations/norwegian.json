@@ -299,5 +299,11 @@
   "{0} row that isn't staff RegenerateFM can read was left out.": "{0} rad som ikke inneholder et stabsmedlem RegenerateFM kan lese, ble utelatt.",
   "{0} rows that aren't players RegenerateFM can read were left out.": "{0} rader som ikke inneholder spillere RegenerateFM kan lese, ble utelatt.",
   "{0} rows that aren't staff RegenerateFM can read were left out.": "{0} rader som ikke inneholder stabsmedlemmer RegenerateFM kan lese, ble utelatt.",
-  "{0} staff": "ansatte i {0}"
+  "{0} staff": "ansatte i {0}",
+  "Preparing FM26 for RegenerateFM": "Klargjør FM26 for RegenerateFM",
+  "This happens once, the first time FM26 starts with RegenerateFM, and again after an FM26 update. Later starts are as quick as before.": "Dette skjer bare én gang: første gang FM26 starter med RegenerateFM, og igjen etter en oppdatering av FM26. Senere oppstarter går like raskt som før.",
+  "Downloading Unity's libraries…": "Laster ned Unity-bibliotekene…",
+  "Reading FM26's code…": "Leser koden til FM26…",
+  "Building RegenerateFM's link to FM26…": "Bygger koblingen mellom RegenerateFM og FM26…",
+  "Starting FM26…": "Starter FM26…"
 }

@@ -11,6 +11,7 @@ obj/
 dist/
 native/fm24/build/
 native/fm24/build-macos/
+native/fm26progress/build/
 macos/build/
 FM-Graphics-Reload-guide.en.md
 mono_crash.*.json

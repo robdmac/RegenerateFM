@@ -299,5 +299,11 @@
   "{0} row that isn't staff RegenerateFM can read was left out.": "RegenerateFM'in okuyabileceği personel verisi içermeyen {0} satır dışarıda bırakıldı.",
   "{0} rows that aren't players RegenerateFM can read were left out.": "RegenerateFM'in okuyabileceği oyuncu verisi içermeyen {0} satır dışarıda bırakıldı.",
   "{0} rows that aren't staff RegenerateFM can read were left out.": "RegenerateFM'in okuyabileceği personel verisi içermeyen {0} satır dışarıda bırakıldı.",
-  "{0} staff": "{0} personeli"
+  "{0} staff": "{0} personeli",
+  "Preparing FM26 for RegenerateFM": "FM26, RegenerateFM için hazırlanıyor",
+  "This happens once, the first time FM26 starts with RegenerateFM, and again after an FM26 update. Later starts are as quick as before.": "Bu yalnızca bir kez olur: FM26 RegenerateFM ile ilk kez başlatıldığında ve bir FM26 güncellemesinden sonra bir kez daha. Sonraki açılışlar eskisi kadar hızlıdır.",
+  "Downloading Unity's libraries…": "Unity kütüphaneleri indiriliyor…",
+  "Reading FM26's code…": "FM26'nın kodu okunuyor…",
+  "Building RegenerateFM's link to FM26…": "RegenerateFM ile FM26 arasındaki bağlantı kuruluyor…",
+  "Starting FM26…": "FM26 başlatılıyor…"
 }

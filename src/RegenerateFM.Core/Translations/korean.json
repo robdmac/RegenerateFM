@@ -299,5 +299,11 @@
  "{0} row that isn't staff RegenerateFM can read was left out.": "RegenerateFM이 읽을 수 있는 스태프 데이터가 아닌 행 {0}개를 제외했습니다.",
  "{0} rows that aren't players RegenerateFM can read were left out.": "RegenerateFM이 읽을 수 있는 선수 데이터가 아닌 행 {0}개를 제외했습니다.",
  "{0} rows that aren't staff RegenerateFM can read were left out.": "RegenerateFM이 읽을 수 있는 스태프 데이터가 아닌 행 {0}개를 제외했습니다.",
- "{0} staff": "{0} 스태프"
+ "{0} staff": "{0} 스태프",
+ "Preparing FM26 for RegenerateFM": "RegenerateFM을 위해 FM26을 준비하는 중",
+ "This happens once, the first time FM26 starts with RegenerateFM, and again after an FM26 update. Later starts are as quick as before.": "이 과정은 한 번만 진행됩니다. RegenerateFM과 함께 FM26을 처음 실행할 때, 그리고 FM26 업데이트 후에 한 번 더 진행됩니다. 이후 실행 속도는 이전과 같습니다.",
+ "Downloading Unity's libraries…": "Unity 라이브러리를 다운로드하는 중…",
+ "Reading FM26's code…": "FM26의 코드를 읽는 중…",
+ "Building RegenerateFM's link to FM26…": "RegenerateFM과 FM26의 연결을 만드는 중…",
+ "Starting FM26…": "FM26을 시작하는 중…"
 }

@@ -299,5 +299,11 @@
  "{0} row that isn't staff RegenerateFM can read was left out.": "RegenerateFM が読み取れるスタッフデータではない{0}行を除外しました。",
  "{0} rows that aren't players RegenerateFM can read were left out.": "RegenerateFM が読み取れる選手データではない{0}行を除外しました。",
  "{0} rows that aren't staff RegenerateFM can read were left out.": "RegenerateFM が読み取れるスタッフデータではない{0}行を除外しました。",
- "{0} staff": "{0}のスタッフ"
+ "{0} staff": "{0}のスタッフ",
+ "Preparing FM26 for RegenerateFM": "RegenerateFM 用に FM26 を準備しています",
+ "This happens once, the first time FM26 starts with RegenerateFM, and again after an FM26 update. Later starts are as quick as before.": "この処理は一度だけです。RegenerateFM を入れて FM26 を初めて起動したときと、FM26 のアップデート後にもう一度行われます。以降の起動はこれまでと同じ速さです。",
+ "Downloading Unity's libraries…": "Unity のライブラリをダウンロードしています…",
+ "Reading FM26's code…": "FM26 のコードを読み込んでいます…",
+ "Building RegenerateFM's link to FM26…": "RegenerateFM と FM26 の連携を構築しています…",
+ "Starting FM26…": "FM26 を起動しています…"
 }

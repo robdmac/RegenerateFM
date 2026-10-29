@@ -299,5 +299,11 @@
   "{0} row that isn't staff RegenerateFM can read was left out.": "استُبعد {0} من الصفوف التي ليست أفراد طاقم يستطيع RegenerateFM قراءتهم.",
   "{0} rows that aren't players RegenerateFM can read were left out.": "استُبعد {0} من الصفوف التي ليست لاعبين يستطيع RegenerateFM قراءتهم.",
   "{0} rows that aren't staff RegenerateFM can read were left out.": "استُبعد {0} من الصفوف التي ليست أفراد طاقم يستطيع RegenerateFM قراءتهم.",
-  "{0} staff": "طاقم {0}"
+  "{0} staff": "طاقم {0}",
+  "Preparing FM26 for RegenerateFM": "تجهيز FM26 لـ RegenerateFM",
+  "This happens once, the first time FM26 starts with RegenerateFM, and again after an FM26 update. Later starts are as quick as before.": "يحدث هذا مرة واحدة فقط: عند أول تشغيل لـ FM26 مع RegenerateFM، ومرة أخرى بعد تحديث FM26. ستكون مرات التشغيل اللاحقة سريعة كما كانت من قبل.",
+  "Downloading Unity's libraries…": "جارٍ تنزيل مكتبات Unity…",
+  "Reading FM26's code…": "جارٍ قراءة شفرة FM26…",
+  "Building RegenerateFM's link to FM26…": "جارٍ بناء الربط بين RegenerateFM وFM26…",
+  "Starting FM26…": "جارٍ تشغيل FM26…"
 }

@@ -43,7 +43,8 @@ fi
 # quarantined library that isn't notarised ("libdoorstop.dylib" Not Opened),
 # which leaves FM26 waiting on that dialog. Clear it from the files this
 # folder adds; fm.app is left alone.
-for installed in "${BASEDIR}/libdoorstop.dylib" "${BASEDIR}/dotnet" "${BASEDIR}/BepInEx" "${BASEDIR}/clear-exception-ports"; do
+for installed in "${BASEDIR}/libdoorstop.dylib" "${BASEDIR}/dotnet" "${BASEDIR}/BepInEx" "${BASEDIR}/clear-exception-ports" \
+                 "${BASEDIR}/regeneratefm-progress"; do
     /usr/bin/xattr -r -d com.apple.quarantine "$installed" 2>/dev/null || true
 done
 
@@ -53,8 +54,24 @@ if [ ! -e "${BASEDIR}/Data" ]; then
     ln -s "fm.app/Contents/Resources/Data" "${BASEDIR}/Data"
 fi
 
+# While BepInEx prepares FM26 (its first start, and its first after an FM26
+# update), regeneratefm-progress shows a progress window; on any other start
+# it exits by itself. It reads the copy of BepInEx's log that
+# RegenerateFM.Start.dll, Doorstop's target below, writes as BepInEx works. It
+# is given this shell's process ID, which becomes FM26's (or, for Epic, waits
+# for it), and runs without the libraries meant for the game.
+TARGET="${BASEDIR}/BepInEx/core/BepInEx.Unity.IL2CPP.dll"
+if [ -f "${BASEDIR}/BepInEx/core/RegenerateFM.Start.dll" ]; then
+    TARGET="${BASEDIR}/BepInEx/core/RegenerateFM.Start.dll"
+    if [ -x "${BASEDIR}/regeneratefm-progress" ]; then
+        /usr/bin/env -u DYLD_INSERT_LIBRARIES -u DYLD_LIBRARY_PATH "${BASEDIR}/regeneratefm-progress" \
+            --pid $$ --log "${BASEDIR}/BepInEx/RegenerateFM.progress.log" --name "$(/usr/bin/basename "$GAME")" \
+            < /dev/null > /dev/null 2>&1 &
+    fi
+fi
+
 export DOORSTOP_ENABLED=1
-export DOORSTOP_TARGET_ASSEMBLY="${BASEDIR}/BepInEx/core/BepInEx.Unity.IL2CPP.dll"
+export DOORSTOP_TARGET_ASSEMBLY="$TARGET"
 export DOORSTOP_BOOT_CONFIG_OVERRIDE=
 export DOORSTOP_IGNORE_DISABLED_ENV=0
 export DOORSTOP_CLR_RUNTIME_CORECLR_PATH="${BASEDIR}/dotnet/libcoreclr.dylib"

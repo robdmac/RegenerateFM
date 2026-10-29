@@ -350,9 +350,9 @@ enum Installer {
     /// What the FM26-macOS folder adds beside fm.app. Faces and settings are
     /// in FM26's user-data folder, so removing these keeps them.
     /// What to expect from FM26's first start after installing (as the Linux installer says).
-    static let firstStartNote = "The first time FM26 starts with RegenerateFM, it takes a few minutes longer (up to about 10 on a slower computer) while BepInEx prepares the game, with no progress shown; let it finish. This happens once: later starts are as quick as before. It happens once more after an FM26 update."
+    static let firstStartNote = "The first time FM26 starts with RegenerateFM, it takes a few minutes longer (up to about 10 on a slower computer) while BepInEx prepares the game; a RegenerateFM window shows its progress. Let it finish. This happens once: later starts are as quick as before. It happens once more after an FM26 update."
 
-    static let added = ["BepInEx", "dotnet", "libdoorstop.dylib", ".doorstop_version", "clear-exception-ports", launcher]
+    static let added = ["BepInEx", "dotnet", "libdoorstop.dylib", ".doorstop_version", "clear-exception-ports", "regeneratefm-progress", launcher]
 
     static var payload: URL? {
         Bundle.main.resourceURL?.appendingPathComponent("FM26-macOS")
