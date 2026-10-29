@@ -153,7 +153,8 @@ namespace RegenerateFM.FM26
                     var list = inputs[i]?.TryCast<VisualArg<SI.Core.StructList<TranslationArg>>>();
                     if (list == null)
                         continue;
-                    var items = list.Get();
+                    // m_value, not Get(): FM27's VisualArg has no Get().
+                    var items = list.m_value;
                     for (int j = 0; j < items.Count; j++)
                     {
                         // "Person.Age" on a player's header, "person.age" on a staff member's.
@@ -183,7 +184,7 @@ namespace RegenerateFM.FM26
                 var inputs = binding.VisualFunction.Inputs;
                 for (int i = 0; i < inputs.Count; i++)
                     if (inputs[i]?.TryCast<VisualArg<TranslationID>>() is VisualArg<TranslationID> id)
-                        return id.Get().GameID;
+                        return id.m_value.GameID;
             }
             catch (Exception error)
             {

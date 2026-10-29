@@ -1,0 +1,13 @@
+diff --git a/LibCpp2IL/MachO/MachOUniversalFile.cs b/LibCpp2IL/MachO/MachOUniversalFile.cs
+index c9f1622..5626c45 100644
+--- a/LibCpp2IL/MachO/MachOUniversalFile.cs
++++ b/LibCpp2IL/MachO/MachOUniversalFile.cs
+@@ -61,7 +61,7 @@ public class MachOUniversalFile : ClassReadingBinaryReader
+         var numberBytesRead = input.Read(machOFileBuffer, 0, (int)selectedEntry.FileSize);
+         if (numberBytesRead != (int)selectedEntry.FileSize)
+             LibLogger.WarnNewline($"Read {numberBytesRead} bytes, but expected to read {selectedEntry.FileSize} bytes");
+-        var memoryStream = new MemoryStream(machOFileBuffer, 0, (int)selectedEntry.FileSize, false, true);
++        var memoryStream = new MemoryStream(machOFileBuffer, 0, (int)selectedEntry.FileSize, true, true);
+         BestMachOFile = new MachOFile(memoryStream);
+     }
+ }

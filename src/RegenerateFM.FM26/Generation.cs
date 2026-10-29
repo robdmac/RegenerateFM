@@ -460,7 +460,10 @@ namespace RegenerateFM.FM26
                 WaitingForGraphics = true;
                 _lastLocatorUtc = null;
                 _refreshStartedUtc = System.DateTime.UtcNow;
-                resources[0].RegisterLocalPath(folder, null);
+                // By name: FM27's returns a LocalPathScan, FM26's nothing, so a call
+                // compiled against FM26's is a missing method in FM27.
+                typeof(ResourcesSubsystem).GetMethod(nameof(ResourcesSubsystem.RegisterLocalPath))
+                    .Invoke(resources[0], new object[] { folder, null });
                 Log.LogInfo("Requested RegenerateFM graphics reload from " + folder);
                 return true;
             }

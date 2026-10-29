@@ -144,10 +144,21 @@ index 3958f4a..a102f91 100644
  
      public static MethodBase TryResolvePointer(IntPtr methodStart)
 diff --git a/Il2CppInterop.Common/XrefScans/XrefScannerLowLevel.cs b/Il2CppInterop.Common/XrefScans/XrefScannerLowLevel.cs
-index a8d44d7..683dc5f 100644
+index a8d44d7..ea961ca 100644
 --- a/Il2CppInterop.Common/XrefScans/XrefScannerLowLevel.cs
 +++ b/Il2CppInterop.Common/XrefScans/XrefScannerLowLevel.cs
-@@ -43,6 +43,83 @@ public static class XrefScannerLowLevel
+@@ -31,7 +31,9 @@ public static class XrefScannerLowLevel
+                 // We hope and pray that the compiler didn't use short jumps for any function calls
+                 if (!instruction.IsJmpShort)
+                 {
+-                    yield return (IntPtr)ExtractTargetAddress(in instruction);
++                    var target = ExtractTargetAddress(in instruction);
++                    if (target != 0)
++                        yield return (IntPtr)target;
+                     if (firstFlowControl && instruction.FlowControl == FlowControl.UnconditionalBranch) yield break;
+                 }
+             }
+@@ -43,6 +45,88 @@ public static class XrefScannerLowLevel
          }
      }
  
@@ -163,7 +174,9 @@ index a8d44d7..683dc5f 100644
 +
 +    /// <summary>
 +    ///     Follows tail calls through functions that are straight-line code with no calls (thunks, and wrappers that
-+    ///     only compute an argument), and returns the first function that isn't one.
++    ///     only compute an argument, even with branches inside, as FM27's GetTypeInfoFromHandle picks a 32- or 64-bit
++    ///     division before tail-calling GetTypeInfoFromTypeDefinitionIndex), and returns the first function that
++    ///     isn't one.
 +    /// </summary>
 +    public static IntPtr FollowTailCalls(IntPtr codeStart)
 +    {
@@ -222,6 +235,9 @@ index a8d44d7..683dc5f 100644
 +            if (instruction.FlowControl == FlowControl.UnconditionalBranch && !instruction.IsJmpShort &&
 +                instruction.Op0Kind is OpKind.NearBranch32 or OpKind.NearBranch64)
 +                return (IntPtr)ExtractTargetAddress(in instruction);
++            // A branch inside the function: read on, to the tail call its paths end in.
++            if (instruction.FlowControl == FlowControl.ConditionalBranch)
++                continue;
 +            if (instruction.FlowControl != FlowControl.Next)
 +                break;
 +        }
@@ -231,6 +247,79 @@ index a8d44d7..683dc5f 100644
      public static IEnumerable<IntPtr> CallAndIndirectTargets(IntPtr pointer)
      {
          return CallAndIndirectTargetsImpl(XrefScanner.DecoderForAddress(pointer, 1024 * 1024));
+@@ -93,8 +177,14 @@ public static class XrefScannerLowLevel
+                 return instruction.FarBranch16;
+             case OpKind.FarBranch32:
+                 return instruction.FarBranch32;
++            // Through a pointer beside the code (call [rip+x]), as code built by
++            // newer toolchains (FM27's, Unity 6.3) calls other functions: the
++            // pointer this process holds there. Through a register or another
++            // memory form, the target isn't known: 0.
++            case OpKind.Memory when instruction.IsIPRelativeMemoryOperand:
++                return (ulong)System.Runtime.InteropServices.Marshal.ReadIntPtr((IntPtr)(long)instruction.IPRelativeMemoryAddress);
+             default:
+-                throw new ArgumentOutOfRangeException();
++                return 0;
+         }
+     }
+ }
+diff --git a/Il2CppInterop.Generator/Utils/XrefScanMetadataGenerationUtil.cs b/Il2CppInterop.Generator/Utils/XrefScanMetadataGenerationUtil.cs
+index bb0355d..65b4a3a 100644
+--- a/Il2CppInterop.Generator/Utils/XrefScanMetadataGenerationUtil.cs
++++ b/Il2CppInterop.Generator/Utils/XrefScanMetadataGenerationUtil.cs
+@@ -1,4 +1,6 @@
++using Il2CppInterop.Common;
+ using Il2CppInterop.Common.XrefScans;
++using Microsoft.Extensions.Logging;
+ using Il2CppInterop.Generator.Contexts;
+ using Il2CppInterop.Generator.Extensions;
+ 
+@@ -8,6 +10,9 @@ internal static class XrefScanMetadataGenerationUtil
+ {
+     internal static long MetadataInitForMethodRva;
+     internal static IntPtr MetadataInitForMethodFileOffset;
++    // Unity 6.3's IL2CPP (FM27) no longer calls a metadata-init function from
++    // these methods, so there may be none to find: then no method has one.
++    private static bool MetadataInitSearched;
+ 
+     private static readonly (string Assembly, string Type, string Method)[] MetadataInitCandidates =
+     {
+@@ -28,23 +33,29 @@ internal static class XrefScanMetadataGenerationUtil
+ 
+             if (unityObjectCctor == null) continue;
+ 
+-            MetadataInitForMethodFileOffset =
+-                (IntPtr)(long)XrefScannerLowLevel
+-                    .JumpTargets((IntPtr)(gameAssemblyBase + unityObjectCctor.ExtractOffset())).First();
++            var target = XrefScannerLowLevel
++                .JumpTargets((IntPtr)(gameAssemblyBase + unityObjectCctor.ExtractOffset())).FirstOrDefault();
++            if (target == IntPtr.Zero) continue;
++            MetadataInitForMethodFileOffset = target;
+             MetadataInitForMethodRva = (long)MetadataInitForMethodFileOffset - gameAssemblyBase -
+                 unityObjectCctor.ExtractOffset() + unityObjectCctor.ExtractRva();
+ 
+             return;
+         }
+ 
+-        throw new ApplicationException("Unable to find a method with metadata init reference");
++        Logger.Instance.LogWarning("No method calls a metadata init function; methods get no metadata init references");
+     }
+ 
+     internal static (long FlagRva, long TokenRva) FindMetadataInitForMethod(MethodRewriteContext method,
+         long gameAssemblyBase)
+     {
+-        if (MetadataInitForMethodRva == 0)
+-            FindMetadataInitForMethod(method.DeclaringType.AssemblyContext.GlobalContext, gameAssemblyBase);
++        lock (MetadataInitCandidates)
++        {
++            if (!MetadataInitSearched)
++                FindMetadataInitForMethod(method.DeclaringType.AssemblyContext.GlobalContext, gameAssemblyBase);
++            MetadataInitSearched = true;
++        }
++        if (MetadataInitForMethodFileOffset == IntPtr.Zero) return (0, 0);
+ 
+         var codeStart = (IntPtr)(gameAssemblyBase + method.FileOffset);
+         var firstCall = XrefScannerLowLevel.JumpTargets(codeStart).FirstOrDefault();
 diff --git a/Il2CppInterop.Runtime/Injection/Hooks/Class_GetFieldDefaultValue_Hook.cs b/Il2CppInterop.Runtime/Injection/Hooks/Class_GetFieldDefaultValue_Hook.cs
 index cf06db2..0b22690 100644
 --- a/Il2CppInterop.Runtime/Injection/Hooks/Class_GetFieldDefaultValue_Hook.cs

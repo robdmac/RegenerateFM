@@ -4,9 +4,16 @@
 - libfunchook.dylib: funchook 1.1.3 for x86_64, with patches/funchook-rosetta.patch.
   BepInEx's default hooking library (Dobby) patches code in a way Rosetta 2
   doesn't see, so its hooks never run; funchook's mprotect-based patching works.
-- Il2CppInterop.Runtime.dll and Il2CppInterop.Common.dll: Il2CppInterop 1.5.3
-  (the version in BepInEx 6.0.0-be.789), with patches/il2cppinterop-macos.patch
-  so that class injection finds GameAssembly.dylib and FM26's clang-built code.
+- Il2CppInterop.Runtime.dll, Il2CppInterop.Common.dll and
+  Il2CppInterop.Generator.dll: Il2CppInterop 1.5.3 (the version in BepInEx
+  6.0.0-be.789), with patches/il2cppinterop-macos.patch so that class injection
+  finds GameAssembly.dylib and FM26's clang-built code, and the generator
+  copes with FM27's methods calling no metadata init function.
+- LibCpp2IL.dll: Cpp2IL at the commit BepInEx bundles, with
+  patches/libcpp2il-macho-fixups.patch. FM27's GameAssembly.dylib uses chained
+  fixups, which LibCpp2IL applies by writing to its copy of the binary, but it
+  copies a universal binary's slice into a read-only stream, so BepInEx's
+  first start failed with "Stream does not support writing".
 - clear-exception-ports: clear_exception_ports.c, which run_regeneratefm.sh
   starts FM26 through when the Epic Games Launcher started it.
 
@@ -27,6 +34,8 @@ HERE = Path(__file__).resolve().parent
 FUNCHOOK = ("https://github.com/kubo/funchook.git", "88388db3c69e16c1560fee65c6857d75f5ce6fd5")  # v1.1.3
 DISTORM_COMMIT = "ab59d6e193948cfa5d1482fb6c7e64870e9e93b9"
 IL2CPPINTEROP = ("https://github.com/BepInEx/Il2CppInterop.git", "dbda1cb353b0f4253345dc45136d170b9e50a5a0")  # 1.5.3
+# The LibCpp2IL in BepInEx be.789-791: 2022.1.0-development.1452+558ddd9.
+CPP2IL = ("https://github.com/SamboyCoding/Cpp2IL.git", "558ddd98642010897d54316b51fbaa7889fda093")
 
 
 def run(*command: str | Path, cwd: Path | None = None) -> None:
@@ -68,11 +77,28 @@ def build_il2cppinterop(work: Path, output: Path, dotnet: str) -> None:
                     output / "Il2CppInterop.Runtime.dll")
     shutil.copyfile(source / "bin" / "Il2CppInterop.Common" / "netstandard2.0" / "Il2CppInterop.Common.dll",
                     output / "Il2CppInterop.Common.dll")
+    # The generator BepInEx runs on a first start: FM27's (Unity 6.3) methods
+    # call no metadata init function, which it required.
+    run(dotnet, "build", "Il2CppInterop.Generator/Il2CppInterop.Generator.csproj", "-c", "Release", "-nologo",
+        "-f", "netstandard2.1", "-p:GeneratePackageOnBuild=false", cwd=source)
+    shutil.copyfile(source / "bin" / "Il2CppInterop.Generator" / "netstandard2.1" / "Il2CppInterop.Generator.dll",
+                    output / "Il2CppInterop.Generator.dll")
 
 
 def build_clear_exception_ports(output: Path) -> None:
     run("xcrun", "clang", "-O2", "-Wall", "-arch", "arm64", "-arch", "x86_64", "-mmacosx-version-min=12.0",
         "-o", output / "clear-exception-ports", HERE / "clear_exception_ports.c")
+
+
+def build_libcpp2il(work: Path, output: Path, dotnet: str) -> None:
+    source = work / "Cpp2IL"
+    checkout(*CPP2IL, source)
+    run("git", "apply", HERE / "patches" / "libcpp2il-macho-fixups.patch", cwd=source)
+    # Its global.json asks for the .NET 9 SDK; any SDK that builds net6.0 will do.
+    (source / "global.json").unlink()
+    run(dotnet, "build", "LibCpp2IL/LibCpp2IL.csproj", "-c", "Release", "-f", "net6.0", "-nologo",
+        "-p:VersionSuffix=development.1452", "-p:CheckEolTargetFramework=false", cwd=source)
+    shutil.copyfile(source / "LibCpp2IL" / "bin" / "Release" / "net6.0" / "LibCpp2IL.dll", output / "LibCpp2IL.dll")
 
 
 def main() -> None:
@@ -91,8 +117,11 @@ def main() -> None:
     with tempfile.TemporaryDirectory(prefix="regeneratefm-macos-") as scratch:
         build_funchook(Path(scratch), args.output)
         build_il2cppinterop(Path(scratch), args.output, dotnet)
+        build_libcpp2il(Path(scratch), args.output, dotnet)
     build_clear_exception_ports(args.output)
-    for name in ("libfunchook.dylib", "Il2CppInterop.Runtime.dll", "Il2CppInterop.Common.dll", "clear-exception-ports"):
+    for name in ("libfunchook.dylib", "Il2CppInterop.Runtime.dll", "Il2CppInterop.Common.dll",
+                 "Il2CppInterop.Generator.dll", "LibCpp2IL.dll",
+                 "clear-exception-ports"):
         print(f"Built {args.output / name}")
 
 

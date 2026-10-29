@@ -33,7 +33,7 @@ namespace RegenerateFM.FM26
             root = null;
             var documents = Resources.FindObjectsOfTypeAll<UIDocument>();
             foreach (var document in documents)
-                if (document.name == "PanelManager")
+                if (Array.IndexOf(MainDocumentNames, document.name) >= 0)
                     root = document.rootVisualElement;
             if (root == null)
                 throw new InvalidOperationException(Text.T("FM26 player UI was not found."));
@@ -49,7 +49,8 @@ namespace RegenerateFM.FM26
             if (banner == null)
                 banner = header;
             var profile = new ProfileSnapshot();
-            var nameBox = FindNamed(banner, "Frame 1000003381");
+            // FM26's name box; FM27's frames have no numbers, and its name is the banner's first text.
+            var nameBox = FindNamed(banner, "Frame 1000003381") ?? (Fm27 ? banner : null);
             foreach (var value in TextValues(nameBox))
                 if (!value.StartsWith("(ID:", StringComparison.OrdinalIgnoreCase))
                 {
@@ -69,7 +70,7 @@ namespace RegenerateFM.FM26
             if (string.IsNullOrWhiteSpace(profile.Club) &&
                 FirstText(FindNamed(header, "Frame 1000003767")) is string contract && Prompts.NoClub(contract))
                 profile.Club = contract.Trim();
-            profile.Nationality = FirstText(FindNamed(header, "Frame 1000003766")) ?? CompactNation(header);
+            profile.Nationality = FirstText(FindNamed(header, "Frame 1000003766")) ?? CompactNation(header) ?? HeaderNation(header);
             foreach (var value in TextValues(banner))
             {
                 var match = AgePattern.Match(value);
@@ -235,6 +236,21 @@ namespace RegenerateFM.FM26
             return string.Join(", ", parts);
         }
 
+        // The nation as the header's nation links show it, the longest of them:
+        // a code by the age ("ENG") and the name in full ("England"). FM27's
+        // frames have no numbered names to find the full one by.
+        private static string HeaderNation(VisualElement header)
+        {
+            string nation = null;
+            foreach (var link in NamedElements(header, "NationLink"))
+            {
+                var name = FirstText(link);
+                if (!string.IsNullOrWhiteSpace(name) && (nation == null || name.Length > nation.Length))
+                    nation = name;
+            }
+            return nation;
+        }
+
         private static string CompactNation(VisualElement header) =>
             FirstText(FindNamed(FindNamed(header, "Frame 1000003900"), "not-null"));
 
@@ -304,6 +320,7 @@ namespace RegenerateFM.FM26
             }
             if (compact)
                 profile.Nationality ??= FirstText(FindNamed(header, "NationCell_12px--unpacked"));
+            profile.Nationality ??= HeaderNation(header);
             foreach (var value in bannerTexts)
             {
                 var match = AgePattern.Match(value);
@@ -336,10 +353,13 @@ namespace RegenerateFM.FM26
             return profile;
         }
 
+        // The UI document FM draws its screens in: FM26's, then FM27's.
+        private static readonly string[] MainDocumentNames = { "PanelManager", "MainUIDocument" };
+
         private static VisualElement CurrentRoot()
         {
             foreach (var document in Resources.FindObjectsOfTypeAll<UIDocument>())
-                if (document.name == "PanelManager")
+                if (Array.IndexOf(MainDocumentNames, document.name) >= 0)
                     return document.rootVisualElement;
             return null;
         }
@@ -370,7 +390,7 @@ namespace RegenerateFM.FM26
         {
             id = 0;
             var remapper = ObjectIdRemapper(header);
-            var view = remapper?.TryCast<IBindableElement>()?.GetView();
+            var view = BindableView(remapper);
             if (view == null || !GameSubsystems.TryGet<Bindings>(out var bindings) || bindings == null)
                 return false;
             var key = view.Key;
@@ -451,7 +471,7 @@ namespace RegenerateFM.FM26
         {
             personKey = default;
             bindings = null;
-            var view = ObjectIdRemapper(header)?.TryCast<IBindableElement>()?.GetView();
+            var view = BindableView(ObjectIdRemapper(header));
             if (view == null || !GameSubsystems.TryGet<Bindings>(out bindings) || bindings == null)
                 return false;
             var key = view.Key;
@@ -593,13 +613,31 @@ namespace RegenerateFM.FM26
         // contents, which is what FM26's code expects.
         private static class BindingPaths
         {
-            private static IntPtr Method(string name) => (IntPtr)typeof(Bindings)
-                .GetField("NativeMethodInfoPtr_" + name, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)
-                .GetValue(null);
+            // The first of these generated method fields the game's Bindings has.
+            private static IntPtr Method(params string[] names)
+            {
+                foreach (string name in names)
+                {
+                    var field = typeof(Bindings).GetField("NativeMethodInfoPtr_" + name,
+                                                          System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+                    if (field != null)
+                        return (IntPtr)field.GetValue(null);
+                }
+                throw new MissingFieldException(nameof(Bindings), names[0]);
+            }
 
             private static readonly IntPtr ExistsMethod = Method("Exists_Public_Boolean_byref_Key_byref_ReadOnlySpan_1_Char_0");
             private static readonly IntPtr GetMethod = Method("Get_Public_TypedValue_byref_Key_byref_ReadOnlySpan_1_Char_0");
-            private static readonly IntPtr BindMethod = Method("Bind_Public_Key_byref_Key_byref_ReadOnlySpan_1_Char_ValueChangedCallback_0");
+            // FM27's Bind takes an owner before the callback, which it records, so
+            // it can't be null: one object, kept for the plugin's life.
+            private static readonly Il2CppSystem.Object BindOwner = new Il2CppSystem.Object();
+            private static readonly bool BindTakesObject = !Fm26BindMethodExists();
+            private static readonly IntPtr BindMethod = Method("Bind_Public_Key_byref_Key_byref_ReadOnlySpan_1_Char_ValueChangedCallback_0",
+                                                               "Bind_Public_Key_byref_Key_byref_ReadOnlySpan_1_Char_Object_ValueChangedCallback_0");
+
+            private static bool Fm26BindMethodExists() =>
+                typeof(Bindings).GetField("NativeMethodInfoPtr_Bind_Public_Key_byref_Key_byref_ReadOnlySpan_1_Char_ValueChangedCallback_0",
+                                          System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static) != null;
             private static readonly IntPtr UnbindMethod = Method("Unbind_Public_Void_byref_Key_byref_ReadOnlySpan_1_Char_ValueChangedCallback_0");
             private static readonly IntPtr SetMethod = Method("Set_Public_Key_byref_ReadOnlySpan_1_Char_TypedValue_NodeFlags_SetFlags_0");
 
@@ -638,7 +676,8 @@ namespace RegenerateFM.FM26
             public static unsafe Bindings.Key Bind(Bindings bindings, Bindings.Key root, string path, Bindings.ValueChangedCallback callback)
             {
                 var key = *(Bindings.Key*)IL2CPP.il2cpp_object_unbox(
-                    Invoke(BindMethod, bindings, &root, path, IL2CPP.Il2CppObjectBaseToPtr(callback)));
+                    BindTakesObject ? Invoke(BindMethod, bindings, &root, path, IL2CPP.Il2CppObjectBaseToPtrNotNull(BindOwner), IL2CPP.Il2CppObjectBaseToPtr(callback))
+                                    : Invoke(BindMethod, bindings, &root, path, IL2CPP.Il2CppObjectBaseToPtr(callback)));
                 GC.KeepAlive(callback);
                 return key;
             }
@@ -660,6 +699,31 @@ namespace RegenerateFM.FM26
                 return key;
             }
         }
+
+        // An element's bindable view: IBindableElement's in FM26; in FM27 GetView
+        // is IBindableComponent's, which FM26's interop assemblies (that this is
+        // built against) don't have, so it is found by name in the game's.
+        private static IView BindableView(BindingRemapper element)
+        {
+            if (element == null)
+                return null;
+            if (!Fm27)
+                return Fm26BindableView(element);
+            if (_bindableComponentGetView == null)
+            {
+                var component = typeof(IBindableElement).Assembly.GetType("SI.Bindable.IBindableComponent", true);
+                _bindableComponentTryCast = typeof(Il2CppInterop.Runtime.InteropTypes.Il2CppObjectBase).GetMethod("TryCast").MakeGenericMethod(component);
+                _bindableComponentGetView = component.GetMethod("GetView", Type.EmptyTypes);
+            }
+            var bindable = _bindableComponentTryCast.Invoke(element, null);
+            return bindable == null ? null : (IView)_bindableComponentGetView.Invoke(bindable, null);
+        }
+
+        private static System.Reflection.MethodInfo _bindableComponentTryCast, _bindableComponentGetView;
+
+        // Only compiled on FM26: FM27's IBindableElement has no GetView.
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        private static IView Fm26BindableView(BindingRemapper element) => element.TryCast<IBindableElement>()?.GetView();
 
         private static BindingRemapper ObjectIdRemapper(VisualElement element)
         {
@@ -719,43 +783,62 @@ namespace RegenerateFM.FM26
             return paragraph.Length <= 600 ? paragraph : paragraph.Substring(0, 600).TrimEnd();
         }
 
+        // Each frame's checks, from StaffWatcher's Update.
+        private float _nextScan;
+        private string _lastFrameError;
+
+        private void RunFrame()
+        {
+            try
+            {
+                Frame();
+            }
+            catch (Exception error)
+            {
+                // Unity's log may not reach BepInEx's (FM27's doesn't), so each new failure is logged here.
+                string text = error.ToString();
+                if (text != _lastFrameError)
+                    Log.LogError("RegenerateFM's per-frame checks failed: " + text);
+                _lastFrameError = text;
+            }
+        }
+
+        private void Frame()
+        {
+            CheckRefreshTimeout();
+            PollGeneration();
+            PollKeyCheck();
+            PollCreditsSignIn();
+            PollKeyTyping();
+            try { ReadMatchEthnicities(); }
+            catch (Exception error) { Log.LogWarning("Match appearance scan failed: " + error.Message); }
+            try { PollScoutingRetry(); }
+            catch (Exception error) { Log.LogWarning("Profile check failed: " + error.Message); }
+            if (Time.unscaledTime < _nextScan)
+                return;
+            _nextScan = Time.unscaledTime + 0.5f;
+            SyncLanguage();
+            try { CheckUiDumpFlag(); }
+            catch (Exception error) { Log.LogWarning("UI dump failed: " + error.Message); }
+            try { CheckGender(); }
+            catch (Exception error) { Log.LogWarning("Gender scan failed: " + error.Message); }
+            try { CheckBiographyCache(); }
+            catch (Exception error) { Log.LogWarning("Biography scan failed: " + error.Message); }
+            try { CheckPortraitTrigger(); }
+            catch (Exception error) { Log.LogWarning("Portrait menu setup failed: " + error.Message); }
+            try { CheckDialogPage(); }
+            catch (Exception error) { Log.LogWarning("Dialog check failed: " + error.Message); }
+            try { CheckSquadMenu(); CheckStaffMenu(); PollSquadScan(); }
+            catch (Exception error) { Log.LogWarning("Squad scan failed: " + error); CancelSquadScan(); }
+            try { PollSquadBatch(); }
+            catch (Exception error) { StopSquadBatch(Text.T("Squad generation stopped: {0}", error.Message)); }
+        }
+
         public sealed class StaffWatcher : MonoBehaviour
         {
-            private float _nextScan;
-
             public StaffWatcher(IntPtr pointer) : base(pointer) { }
 
-            private void Update()
-            {
-                var plugin = Instance;
-                if (plugin == null)
-                    return;
-                plugin.CheckRefreshTimeout();
-                plugin.PollGeneration();
-                plugin.PollKeyCheck();
-                plugin.PollCreditsSignIn();
-                plugin.PollKeyTyping();
-                try { plugin.ReadMatchEthnicities(); }
-                catch (Exception error) { plugin.Log.LogWarning("Match appearance scan failed: " + error.Message); }
-                try { plugin.PollScoutingRetry(); }
-                catch (Exception error) { plugin.Log.LogWarning("Profile check failed: " + error.Message); }
-                if (Time.unscaledTime < _nextScan)
-                    return;
-                _nextScan = Time.unscaledTime + 0.5f;
-                plugin.SyncLanguage();
-                try { plugin.CheckGender(); }
-                catch (Exception error) { plugin.Log.LogWarning("Gender scan failed: " + error.Message); }
-                try { plugin.CheckBiographyCache(); }
-                catch (Exception error) { plugin.Log.LogWarning("Biography scan failed: " + error.Message); }
-                try { plugin.CheckPortraitTrigger(); }
-                catch (Exception error) { plugin.Log.LogWarning("Portrait menu setup failed: " + error.Message); }
-                try { plugin.CheckDialogPage(); }
-                catch (Exception error) { plugin.Log.LogWarning("Dialog check failed: " + error.Message); }
-                try { plugin.CheckSquadMenu(); plugin.CheckStaffMenu(); plugin.PollSquadScan(); }
-                catch (Exception error) { plugin.Log.LogWarning("Squad scan failed: " + error); plugin.CancelSquadScan(); }
-                try { plugin.PollSquadBatch(); }
-                catch (Exception error) { plugin.StopSquadBatch(Text.T("Squad generation stopped: {0}", error.Message)); }
-            }
+            private void Update() => Instance?.RunFrame();
         }
     }
 }

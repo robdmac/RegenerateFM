@@ -63,7 +63,9 @@ START_TARGET = "target_assembly = BepInEx\\core\\RegenerateFM.Start.dll"
 WINDOWS_PROGRESS = False
 MACOS_NATIVE = {"BepInEx/core/libfunchook.dylib": "libfunchook.dylib",
                 "BepInEx/core/Il2CppInterop.Runtime.dll": "Il2CppInterop.Runtime.dll",
-                "BepInEx/core/Il2CppInterop.Common.dll": "Il2CppInterop.Common.dll"}
+                "BepInEx/core/Il2CppInterop.Common.dll": "Il2CppInterop.Common.dll",
+                "BepInEx/core/Il2CppInterop.Generator.dll": "Il2CppInterop.Generator.dll",
+                "BepInEx/core/LibCpp2IL.dll": "LibCpp2IL.dll"}
 # Tracked files left out of the release's source folder: the README's
 # recording and historical research.
 NOT_PUBLIC = ("docs/", "native/fm24/research/")

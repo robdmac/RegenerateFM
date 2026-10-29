@@ -71,7 +71,12 @@ namespace RegenerateFM.FM26
                     // The ID is read again on click: just after a profile opens the
                     // header can be drawn before its data is bound.
                     if (header == null || !IsActionTarget(context.Target, header))
+                    {
+                        // Why a menu got no face commands, for a game whose screens have changed.
+                        Instance.Log.LogDebug("Not a profile's Actions menu (header " + (header == null ? "not found" : "found") +
+                                              "): " + Ancestry(context.Target));
                         return;
+                    }
                     var contributor = Instance._menuContributor.TryCast<IMenuContributor>();
                     context.AddContributor(contributor);
                 }
@@ -173,7 +178,11 @@ namespace RegenerateFM.FM26
                 var root = CurrentRoot();
                 var header = FindNamed(root, "ReportHeader");
                 if (header == null || !IsActionTarget(context.Target, header))
+                {
+                    Instance.Log.LogDebug("No face commands for this menu (header " + (header == null ? "not found" : "found") +
+                                          "): " + Ancestry(context.Target));
                     return;
+                }
                 long? personId = HeaderId(header, out long shownId) ? shownId : (long?)null;
                 context.Description.AddItem(parent, Text.T("Generate face"),
                     (Il2CppSystem.Action)(System.Action)(() => Instance.GenerateOpenProfile(personId, false)));
