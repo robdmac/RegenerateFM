@@ -20,7 +20,9 @@ namespace RegenerateFM.Desktop.FM24.Setup
     {
         public const string AppId = "2252570";
         public const string GameFolder = "Football Manager 2024";
-        public const string EpicFolder = "FootballManager24";
+        // Epic's ID for FM24 (its AppName, the same on Windows and the Mac), and
+        // the folder Epic makes for it in the one the player chooses.
+        public const string EpicApp = "da2038ef19e94554898056d79168b3f8", EpicFolder = "FootballManager24";
         // The game's install folder: Steam's (as the user-data folder), then Epic's.
         public static readonly string[] GameFolders = { GameFolder, EpicFolder };
         // On the Mac, what Epic starts: the game's own program, or RegenerateFM's launcher.
@@ -66,7 +68,7 @@ namespace RegenerateFM.Desktop.FM24.Setup
         {
             string executable = OperatingSystem.IsMacOS() ? MacProgram : "fm.exe";
             var found = new List<string>();
-            foreach (string game in new[] { SteamLaunch.FindGameDir("fm24", executable), EpicLaunch.FindGameDir(EpicFolder, executable) })
+            foreach (string game in new[] { SteamLaunch.FindGameDir("fm24", executable), EpicLaunch.FindGameDir(EpicApp, executable) })
                 if (game != null && !found.Any(other => SteamLaunch.Resolve(other) == SteamLaunch.Resolve(game)))
                     found.Add(game);
             return found;
@@ -270,7 +272,7 @@ namespace RegenerateFM.Desktop.FM24.Setup
         public static bool OtherCopySetUp(string game)
         {
             string executable = OperatingSystem.IsMacOS() ? MacProgram : "fm.exe";
-            foreach (string other in new[] { SteamLaunch.FindGameDir("fm24", executable), EpicLaunch.FindGameDir(EpicFolder, executable) })
+            foreach (string other in new[] { SteamLaunch.FindGameDir("fm24", executable), EpicLaunch.FindGameDir(EpicApp, executable) })
                 if (other != null && SteamLaunch.Resolve(other) != SteamLaunch.Resolve(game) &&
                     File.Exists(Path.Combine(other, NativeInstall.Manifest)))
                     return true;

@@ -13,7 +13,8 @@ Checked on FM26 26.3.2 (Steam, universal `fm.app`) on an Apple M2 with macOS 26:
 | `BepInEx/core/Il2CppInterop.Runtime.dll`, `Il2CppInterop.Common.dll` | Il2CppInterop 1.5.3 (be.789's version) with `patches/il2cppinterop-macos.patch`, built by `build.py` |
 | `BepInEx/config/BepInEx.cfg` | Only `[Detours] DetourProviderType = Funchook`; BepInEx adds the rest |
 | `BepInEx/plugins/RegenerateFM/` | The plugin |
-| `run_regeneratefm.sh` | The launcher, used as FM26's Steam launch option: `"<game folder>/run_regeneratefm.sh" %command%` |
+| `run_regeneratefm.sh` | The launcher, used as FM26's Steam launch option: `"<game folder>/run_regeneratefm.sh" %command%`. For Epic's FM26 the installer makes it the program Epic starts (Epic has no launch options) |
+| `clear-exception-ports` | `clear_exception_ports.c`, built by `build.py`. When Epic starts the launcher, FM26 would inherit the Epic Games Launcher's crash handler, and BepInEx's first start then hangs under Rosetta before FM26's window opens (checked 2026-10-29: two of two first starts through Epic hung, two of two with this helper didn't). The launcher starts FM26 through it, for Epic only |
 
 Nothing inside `fm.app` changes, so SEGA's signature and notarisation stay intact. FM26's hardened runtime already allows what's needed: its entitlements include `allow-dyld-environment-variables` and `disable-library-validation`.
 

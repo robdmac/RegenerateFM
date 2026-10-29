@@ -132,6 +132,7 @@ def macos_files(archive: Path) -> dict[str, tuple[bytes, int]]:
         files[name] = ((MACOS_BUILD / built).read_bytes(), 0o644)
     files["BepInEx/config/BepInEx.cfg"] = ((ROOT / "macos/BepInEx.cfg").read_bytes(), 0o644)
     files["run_regeneratefm.sh"] = ((ROOT / "macos/run_regeneratefm.sh").read_bytes(), 0o755)
+    files["clear-exception-ports"] = ((MACOS_BUILD / "clear-exception-ports").read_bytes(), 0o755)
     return files
 
 

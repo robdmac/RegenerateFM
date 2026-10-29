@@ -84,6 +84,7 @@ class MacInstallerTests(unittest.TestCase):
     def cli(self, *args, steam=None, ok=True, unity_libs=None):
         """The installer's output, or its error message when ok is False."""
         env = dict(os.environ, REGENERATEFM_STEAM_ROOT=str(steam or self.tmp / "no-steam"),
+                   REGENERATEFM_EPIC_MANIFESTS=str(self.tmp / "no-epic"),
                    REGENERATEFM_UNITY_LIBS_SOURCE=unity_libs or (self.tmp / "no-libraries" / "{VERSION}.zip").as_uri())
         result = subprocess.run([str(self.installer), "--cli", *map(str, args)], capture_output=True, env=env)
         if not ok:

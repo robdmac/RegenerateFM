@@ -77,12 +77,14 @@ namespace RegenerateFM.Tests
         [Fact]
         public void Fm24IsFoundWhereEpicInstalledItWhenSteamHasNone()
         {
-            string game = _root.Combine("Epic Games", Fm24Setup.EpicFolder);
+            // Wherever the player chose, found by Epic's ID for the game, not its folder.
+            string game = _root.Combine("Games on another drive", "FM");
             string executable = OperatingSystem.IsMacOS() ? Fm24Setup.MacProgram : "fm.exe";
             Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(game, executable)));
             File.WriteAllText(Path.Combine(game, executable), "");
             EpicRecord(game + "/");
             Assert.Equal(game, Fm24Setup.FindGameDir());
+            Assert.Null(EpicLaunch.FindGameDir("e54a251079034694b55ab6289707bfa0", executable));  // FM26's ID
             // Steam's copy comes first.
             string steam = Path.Combine(_steam, "steamapps", "common", Fm24Setup.GameFolder);
             Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(steam, executable)));

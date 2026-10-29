@@ -39,6 +39,11 @@ namespace RegenerateFM.FM26
                     if (HasHash(macAssembly, "7886b66692c18504de32ad3973fe4c9afc3edfe12a6941b44e83627cb9563e26")
                         && HasHash(macPlugin, "de6b048ab1a95fd4ae683a7d751a33645183a9a570fa1c2fba32fd308ca87979"))
                         return true;
+                    // Epic's FM26 for Mac: the same 26.3.2 code built again, so
+                    // only its build IDs, build times and signatures differ.
+                    if (HasHash(macAssembly, "a34a3cd631653867136eb8c7728242d73a64735f77dcc24b3bcf1f541d23d2e2")
+                        && HasHash(macPlugin, "e98ab747b32746c45e7bc1e2fc186eea9ace818c52b2519a5266539ee4814eed"))
+                        return true;
                     // The FM26 Demo for Mac, 26.3.2 too, with its own user data.
                     if (HasHash(macAssembly, "b3f86da82f7ef5b24d5a0cae4d4cccd4f904d0e8b971d3e7b92c78500a14eda5")
                         && HasHash(macPlugin, "ef6fb6078a5dfceaa325799caf00bb635f3a7dbd8cc4aa3021aa7beeccf8cc4d"))

@@ -13,8 +13,9 @@ namespace RegenerateFM.Desktop.Epic
     //
     // Epic keeps a record per installed game (a JSON .item file) in its
     // Manifests folder: ~/Library/Application Support/Epic/EpicGamesLauncher/
-    // Data/Manifests on macOS, %ProgramData%\Epic\EpicGamesLauncher\Data\
-    // Manifests on Windows. InstallLocation is the game's folder and
+    // Data/Manifests on macOS; on Windows in the AppDataPath it names in the
+    // registry, normally %ProgramData%\Epic\EpicGamesLauncher\Data. AppName
+    // is the game's Epic ID, InstallLocation the folder the player chose and
     // LaunchExecutable the program in it that Epic starts, with the player's
     // Epic sign-in on its command line (FM24 quits without it). Epic has no
     // launch options, so RegenerateFM's launcher becomes that program. The
@@ -32,16 +33,28 @@ namespace RegenerateFM.Desktop.Epic
 
         public static string DefaultManifestsDir()
         {
-            string data = OperatingSystem.IsWindows()
-                ? Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData)
-                : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Library", "Application Support");
-            return Path.Combine(data, "Epic", "EpicGamesLauncher", "Data", "Manifests");
+            if (OperatingSystem.IsWindows())
+            {
+                try
+                {
+                    using var hive = Microsoft.Win32.RegistryKey.OpenBaseKey(Microsoft.Win32.RegistryHive.LocalMachine, Microsoft.Win32.RegistryView.Registry64);
+                    using var key = hive.OpenSubKey(@"SOFTWARE\Epic Games\EpicGamesLauncher");
+                    if (key?.GetValue("AppDataPath") is string data && data.Trim().Length > 0)
+                        return Path.Combine(data.Trim(), "Manifests");
+                }
+                catch (Exception error) when (error is System.Security.SecurityException || error is UnauthorizedAccessException || error is IOException)
+                {
+                }
+                return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Epic", "EpicGamesLauncher", "Data", "Manifests");
+            }
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Library", "Application Support",
+                                "Epic", "EpicGamesLauncher", "Data", "Manifests");
         }
 
-        // (record file, install folder, program) for every game Epic has installed.
-        public static List<(string Record, string Folder, string Program)> Installed()
+        // (record file, Epic ID, install folder, program) for every game Epic has installed.
+        public static List<(string Record, string App, string Folder, string Program)> Installed()
         {
-            var found = new List<(string, string, string)>();
+            var found = new List<(string, string, string, string)>();
             string manifests = ManifestsDir();
             string[] records;
             try
@@ -60,7 +73,7 @@ namespace RegenerateFM.Desktop.Epic
                     var item = JsonNode.Parse(File.ReadAllText(record)) as JsonObject;
                     string folder = (string)item?["InstallLocation"], program = (string)item?["LaunchExecutable"];
                     if (!string.IsNullOrEmpty(folder))
-                        found.Add((record, folder, program ?? ""));
+                        found.Add((record, (string)item["AppName"] ?? "", folder, program ?? ""));
                 }
                 catch (Exception error) when (error is IOException || error is UnauthorizedAccessException || error is JsonException ||
                                               error is InvalidOperationException)
@@ -70,13 +83,12 @@ namespace RegenerateFM.Desktop.Epic
             return found;
         }
 
-        // The game's folder among Epic's installs: the one called ``folder``
-        // (Epic's name for it, "FootballManager24") holding ``executable``, or null.
-        public static string FindGameDir(string folder, string executable)
+        // The folder Epic installed the game with Epic ID ``app`` in, wherever
+        // the player chose, if it holds ``executable``; or null.
+        public static string FindGameDir(string app, string executable)
         {
-            foreach (var (_, location, _) in Installed())
-                if (string.Equals(Path.GetFileName(Trimmed(location)), folder, StringComparison.OrdinalIgnoreCase) &&
-                    File.Exists(Path.Combine(location, executable)))
+            foreach (var (_, id, location, _) in Installed())
+                if (string.Equals(id, app, StringComparison.OrdinalIgnoreCase) && File.Exists(Path.Combine(location, executable)))
                     return Trimmed(location);
             return null;
         }
@@ -84,7 +96,7 @@ namespace RegenerateFM.Desktop.Epic
         // Epic's record for the game in ``gameDir``, or null if Epic didn't install it.
         public static string Record(string gameDir)
         {
-            foreach (var (record, location, _) in Installed())
+            foreach (var (record, _, location, _) in Installed())
                 if (SameFolder(location, gameDir))
                     return record;
             return null;
@@ -93,7 +105,7 @@ namespace RegenerateFM.Desktop.Epic
         // True if Epic's program for the game in ``gameDir`` isn't as RegenerateFM wants it yet.
         public static bool NeedsChange(string gameDir, string launcher, string program, bool remove = false)
         {
-            foreach (var (_, location, current) in Installed())
+            foreach (var (_, _, location, current) in Installed())
                 if (SameFolder(location, gameDir))
                     return current != (remove ? program : launcher);
             return false;
