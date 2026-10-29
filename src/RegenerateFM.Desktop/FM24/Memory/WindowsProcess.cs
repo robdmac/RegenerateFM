@@ -33,7 +33,7 @@ namespace RegenerateFM.Desktop.FM24.Memory
                 if (_imageBase == null)
                 {
                     var (module, path) = MainModule();
-                    if (!path.Replace('\\', '/').EndsWith("/football manager 2024/fm.exe", StringComparison.OrdinalIgnoreCase))
+                    if (!Processes.IsFm24(path))
                         throw new InvalidDataException("This process has no mapped FM24 executable header.");
                     _imageBase = module;
                     _executable = path;

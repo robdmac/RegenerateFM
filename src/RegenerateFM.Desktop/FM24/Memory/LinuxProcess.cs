@@ -47,7 +47,7 @@ namespace RegenerateFM.Desktop.FM24.Memory
                     {
                         foreach (var fields in Maps())
                             if (fields.Length == 6 && fields[1].StartsWith("r") && fields[2] == "00000000" &&
-                                fields[5].Replace('\\', '/').EndsWith("/football manager 2024/fm.exe", StringComparison.OrdinalIgnoreCase))
+                                Processes.IsFm24(fields[5]))
                             {
                                 _imageBase = long.Parse(fields[0].Split('-')[0], NumberStyles.HexNumber);
                                 break;
@@ -71,7 +71,7 @@ namespace RegenerateFM.Desktop.FM24.Memory
                 try
                 {
                     foreach (var fields in Maps())
-                        if (fields.Length == 6 && fields[5].EndsWith("/football manager 2024/fm.exe", StringComparison.OrdinalIgnoreCase))
+                        if (fields.Length == 6 && Processes.IsFm24(fields[5]))
                             return fields[5];
                 }
                 catch (IOException)

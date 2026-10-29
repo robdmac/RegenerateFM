@@ -51,8 +51,22 @@ namespace RegenerateFM.Desktop.FM24.Setup
         // The checked FM24 executable's SHA-256 (native/fm24/supported_build*.json).
         public string SupportedSha256 = null;
 
-        public string Supported => SupportedSha256 ??
-            JsonNode.Parse(Resources.Text(Mac ? "supported_build_macos.json" : "supported_build.json"))["sha256"].GetValue<string>();
+        public string Supported => SupportedSha256 ?? Build()["sha256"].GetValue<string>();
+
+        // Every checked executable's SHA-256: Steam's, then other stores' builds
+        // with the same code at the same addresses (otherBuilds).
+        public IReadOnlyList<string> SupportedBuilds()
+        {
+            if (SupportedSha256 != null)
+                return new[] { SupportedSha256 };
+            var build = Build();
+            var digests = new List<string> { build["sha256"].GetValue<string>() };
+            if (build["otherBuilds"] is JsonArray others)
+                digests.AddRange(others.Select(other => other["sha256"].GetValue<string>()));
+            return digests;
+        }
+
+        private JsonNode Build() => JsonNode.Parse(Resources.Text(Mac ? "supported_build_macos.json" : "supported_build.json"));
 
         // Replaced by tests: whether FM24 from a folder is running.
         public Func<string, bool> GameRunning;
@@ -267,7 +281,7 @@ namespace RegenerateFM.Desktop.FM24.Setup
             game = Path.GetFullPath(game);
             skin = Path.GetFullPath(skin);
             var metadata = Check(game, skin);
-            if (Digest(Path.Combine(game, Executable)) != Supported)
+            if (!SupportedBuilds().Contains(Digest(Path.Combine(game, Executable))))
                 throw new SetupException("This FM24 executable is not the validated 24.4.2 build; no hook was installed.");
             if (!TokenPattern.IsMatch(token ?? "") || port < 1024 || port > (Mac ? 65533 : 65535))
                 throw new SetupException("Invalid private token or bridge port.");

@@ -692,6 +692,9 @@ namespace RegenerateFM.Tests
             Assert.Contains("\"REGENERATEFM24F %ld no\"", source);
             // The setup carries the same checked build as the DLL.
             Assert.Equal(supported["sha256"].GetValue<string>(), new NativeInstall(mac: false).Supported);
+            // And Epic's fm.exe, the same code packed differently, at the same addresses.
+            Assert.Equal(new[] { supported["sha256"].GetValue<string>(), "33e8a2e48c4986f2a15e11c4c93aca1199029d66b19bd765403eb22dea265378" },
+                         new NativeInstall(mac: false).SupportedBuilds());
         }
     }
 }
