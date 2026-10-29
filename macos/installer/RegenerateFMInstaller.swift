@@ -148,6 +148,8 @@ struct Game: Hashable {
     let folder: URL
 
     var isFM24: Bool { appID == Steam.fm24 }
+    /// "FM27" or "FM26" (its Demo too), as the installer's text names it.
+    var short: String { appID == Steam.games[3].1 ? "FM27" : "FM26" }
     /// Installed by the Epic Games Launcher, not Steam.
     var isEpic: Bool { Epic.installs().contains(realPath(folder)) }
     var launcher: String { isFM24 ? "run_regeneratefm24.sh" : Installer.launcher }
@@ -239,7 +241,7 @@ enum Epic {
 enum Steam {
     static let fm24 = "2252570"
     static let games = [("Football Manager 26", "3551340"), ("Football Manager 26 Demo", "3551360"),
-                        ("Football Manager 2024", fm24)]
+                        ("Football Manager 2024", fm24), ("Football Manager 27", "4530370")]
     static let testRoot = ProcessInfo.processInfo.environment["REGENERATEFM_STEAM_ROOT"]
 
     static var root: URL {
@@ -568,7 +570,7 @@ enum Installer {
         if (try? manager.destinationOfSymbolicLink(atPath: data.path)) == "fm.app/Contents/Resources/Data" {
             try manager.removeItem(at: data)
         }
-        return "Removed RegenerateFM from \(folder.lastPathComponent). Your faces are kept in FM26's user-data folder."
+        return "Removed RegenerateFM from \(folder.lastPathComponent). Your faces are kept in the game's user-data folder."
     }
 }
 
@@ -590,7 +592,7 @@ final class Model: ObservableObject {
             chosen = games.first
         }
         if chosen == nil {
-            message = "Neither Football Manager 26 nor Football Manager 2024 was found in your Steam libraries or Epic's games. Choose the game's folder (in Steam: Manage > Browse local files)."
+            message = "Football Manager 27, Football Manager 26 or Football Manager 2024 wasn't found in your Steam libraries or Epic's games. Choose the game's folder (in Steam: Manage > Browse local files)."
         }
     }
 
@@ -607,7 +609,8 @@ final class Model: ObservableObject {
         // FM24's folder holds its data beside fm.app; FM26's is inside the app.
         let fm24 = FileManager.default.fileExists(atPath: folder.appendingPathComponent("data/game/panels.fmf").path)
         let demo = folder.lastPathComponent.localizedCaseInsensitiveContains("demo")
-        let (name, appID) = Steam.games[fm24 ? 2 : demo ? 1 : 0]
+        let fm27 = FileManager.default.fileExists(atPath: folder.appendingPathComponent("fm.app/Contents/MacOS/Football Manager 27").path)
+        let (name, appID) = Steam.games[fm24 ? 2 : fm27 ? 3 : demo ? 1 : 0]
         chosen = Game(name: name, appID: appID, folder: folder)
         if let epic = Epic.installedGames().first(where: { $0.folder == realPath(folder) }) { chosen = epic }
         if !games.contains(chosen!) { games.append(chosen!) }
@@ -666,9 +669,9 @@ final class Model: ObservableObject {
     /// With the files in place: the launch option, and what to do next.
     private func finishInstall(_ game: Game, note: String? = nil) {
         var text = installedText(game, note: note)
-        text += " " + Installer.firstStartNote
+        text += " " + Installer.firstStartNote.replacingOccurrences(of: "FM26", with: game.short)
         if !rosetta {
-            text += " FM26 runs under Rosetta 2 with RegenerateFM: click Install Rosetta first."
+            text += " \(game.short) runs under Rosetta 2 with RegenerateFM: click Install Rosetta first."
         }
         message = text
     }
@@ -763,7 +766,7 @@ struct InstallerView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("RegenerateFM \(Installer.version)").font(.title2).bold()
-            Text("Adds RegenerateFM to Football Manager 26 and Football Manager 2024: Generate face and Update face in the game's menus. fm.app itself isn't changed.")
+            Text("Adds RegenerateFM to Football Manager 27, Football Manager 26 and Football Manager 2024: Generate face and Update face in the game's menus. fm.app itself isn't changed.")
                 .fixedSize(horizontal: false, vertical: true)
             HStack {
                 Picker("Game:", selection: $model.chosen) {

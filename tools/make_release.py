@@ -49,6 +49,11 @@ BEPINEX = ("https://builds.bepinex.dev/projects/bepinex_be/760/"
 BEPINEX_MACOS = ("https://builds.bepinex.dev/projects/bepinex_be/789/"
                  "BepInEx-Unity.IL2CPP-macos-x64-6.0.0-be.789%2B6cea286.zip",
                  "cc2341544d271f8bcea4e7415acad10766e968d236aaee30cdd79780ec7db00b")
+# Doorstop 4.6.0 from a later build: be.789's 4.5.0 can't read FM27's UnityPlayer,
+# whose Mach-O uses chained fixups, so BepInEx never starts in FM27.
+DOORSTOP_MACOS = ("https://builds.bepinex.dev/projects/bepinex_be/791/"
+                  "BepInEx-Unity.IL2CPP-macos-x64-6.0.0-be.791%2Bb782da4.zip",
+                  "63a69c40b7930b88e2d986d765c38d0101df0e50149a0b54e3e22f10cd547e3a")
 MACOS_BUILD = ROOT / "macos" / "build"
 # FM26's progress window while BepInEx prepares it (native/fm26progress/build.py),
 # and on Windows the assembly Doorstop starts it from, before BepInEx.
@@ -137,9 +142,12 @@ def bepinex_files(archive: Path, loader: str, leave_out: tuple[str, ...] = ()) -
     return files
 
 
-def macos_files(archive: Path) -> dict[str, tuple[bytes, int]]:
+def macos_files(archive: Path, doorstop: Path) -> dict[str, tuple[bytes, int]]:
     """The FM26-macOS folder: BepInEx for macOS, the rebuilt hooking pieces, its config and launcher."""
     files = bepinex_files(archive, "libdoorstop.dylib", leave_out=("run_bepinex.sh",))
+    later = bepinex_files(doorstop, "libdoorstop.dylib")
+    for name in ("libdoorstop.dylib", ".doorstop_version"):
+        files[name] = later[name]
     for name in MACOS_NATIVE:
         if name != "BepInEx/core/libfunchook.dylib" and name not in files:
             raise SystemExit(f"The macOS BepInEx archive has no {name} to replace.")
