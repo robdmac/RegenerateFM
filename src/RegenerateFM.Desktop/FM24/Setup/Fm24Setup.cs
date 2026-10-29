@@ -19,6 +19,8 @@ namespace RegenerateFM.Desktop.FM24.Setup
     {
         public const string AppId = "2252570";
         public const string GameFolder = "Football Manager 2024";
+        // The game's install folder: Steam's (as the user-data folder), then Epic's.
+        public static readonly string[] GameFolders = { GameFolder, "FootballManager24" };
         public static readonly Dictionary<string, string> Panels = new Dictionary<string, string>
         {
             ["player"] = "/panels/player/player overview panel.xml",

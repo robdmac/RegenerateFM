@@ -548,6 +548,10 @@ namespace RegenerateFM.Tests
                 processes.AddRange(new[] { (7, "/bin/sh"), (9, game), (10, "C:/Games/Football Manager 26" + executable) });
                 Assert.Equal(9, People.FindGame().Pid);
                 processes.RemoveAll(entry => entry.Item1 == 9);
+                // Epic's copy, in its own folder.
+                processes.Add((11, "/Users/Shared/Epic Games/FootballManager24" + executable));
+                Assert.Equal(11, People.FindGame().Pid);
+                processes.RemoveAll(entry => entry.Item1 == 11);
                 Assert.Contains("isn't running. Start it", Assert.Throws<MemoryUnavailableException>(People.FindGame).Message);
                 processes.AddRange(new[] { (8, game), (9, game) });
                 Assert.Contains("More than one FM24", Assert.Throws<MemoryUnavailableException>(People.FindGame).Message);
