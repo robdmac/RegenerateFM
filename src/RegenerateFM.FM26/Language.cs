@@ -280,7 +280,7 @@ namespace RegenerateFM.FM26
             {
                 var bounds = list.worldBound;
                 if (bounds.width >= 100 && Math.Abs(bounds.x - squad.worldBound.x) < 60 &&
-                    bounds.y >= squad.worldBound.y && bounds.y < squad.worldBound.yMax + 60 && list.childCount >= 8)
+                    bounds.y >= squad.worldBound.y && bounds.y < squad.worldBound.yMax + 60 && list.childCount >= (Fm27 ? 5 : 8))
                     return list;
             }
             return null;

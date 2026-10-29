@@ -241,8 +241,14 @@ namespace RegenerateFM.FM26
             root = TopPage(root) ?? root;
             if (FindNamed(root, "TeamSquadReport") is VisualElement report && FindNamed(report, "playertable") is VisualElement teamTable)
                 return teamTable;
-            if (FindNamed(root, "SquadScreen") != null && FindNamed(root, "PlayerTableContainer") is VisualElement table)
-                return table;
+            if (FindNamed(root, "SquadScreen") is VisualElement screen)
+            {
+                if (FindNamed(root, "PlayerTableContainer") is VisualElement table)
+                    return table;
+                // FM27's Overview has a "playertable" of its own, in its FirstTeamOverview.
+                if (Fm27 && FindNamed(screen, "playertable") is VisualElement overviewTable)
+                    return overviewTable;
+            }
             return null;
         }
 
@@ -272,7 +278,7 @@ namespace RegenerateFM.FM26
             if (element == null)
                 return null;
             var scroll = element.TryCast<ScrollView>();
-            if (scroll != null && FindNamed(scroll, "NameButton") != null)
+            if (scroll != null && (FindNamed(scroll, "NameButton") != null || FindNamed(scroll, Fm27NameTemplate) != null))
                 return scroll;
             for (int i = 0; i < element.hierarchy.childCount; i++)
             {
@@ -474,9 +480,15 @@ namespace RegenerateFM.FM26
                    full.EndsWith(" " + rest, StringComparison.OrdinalIgnoreCase);
         }
 
+        // A squad row's player name: FM26's NameButton; in FM27 a link in this
+        // template, which opens the player when clicked like a staff name.
+        private const string Fm27NameTemplate = "player-name-button-template";
+
+        private static VisualElement RowName(VisualElement row) => FindNamed(row, "NameButton") ?? FindNamed(row, Fm27NameTemplate);
+
         private static SquadCandidate ReadSquadCandidate(VisualElement row)
         {
-            var name = FirstText(FindNamed(row, "NameButton"));
+            var name = FirstText(RowName(row));
             var image = FindNamed(row, "PersonImage")?.TryCast<SI.UI.Image>();
             if (string.IsNullOrWhiteSpace(name) || image == null)
                 return null;
@@ -876,10 +888,14 @@ namespace RegenerateFM.FM26
                     return;
                 }
                 var button = FindNamed(row, "NameButton")?.TryCast<Button>();
-                if (button == null)
+                var link = button == null ? FindNamed(row, Fm27NameTemplate) : null;
+                if (button == null && link == null)
                     throw new InvalidOperationException("Player link missing for " + target.Name);
                 SetBatchStage(batch, SquadStage.AwaitProfile);
-                button.clickable.SimulateSingleClick(null);
+                if (button != null)
+                    button.clickable.SimulateSingleClick(null);
+                else
+                    PointerClick(FindNamed(link, "primary-text") ?? link);
                 Log.LogInfo("Opened missing player " + target.Name + " from squad row");
                 return;
             }
