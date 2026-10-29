@@ -59,10 +59,17 @@ namespace RegenerateFM.Desktop.FM24.Setup
         public string WindowsPath(string companion) => Proton ? "Z:" + companion.Replace('/', '\\') : companion;
 
         // FM24's folder in a Steam library, else where Epic installed it.
-        public static string FindGameDir()
+        public static string FindGameDir() => FindGameDirs().FirstOrDefault();
+
+        // Every FM24 found: Steam's, then Epic's.
+        public static List<string> FindGameDirs()
         {
             string executable = OperatingSystem.IsMacOS() ? MacProgram : "fm.exe";
-            return SteamLaunch.FindGameDir("fm24", executable) ?? EpicLaunch.FindGameDir(EpicFolder, executable);
+            var found = new List<string>();
+            foreach (string game in new[] { SteamLaunch.FindGameDir("fm24", executable), EpicLaunch.FindGameDir(EpicFolder, executable) })
+                if (game != null && !found.Any(other => SteamLaunch.Resolve(other) == SteamLaunch.Resolve(game)))
+                    found.Add(game);
+            return found;
         }
 
         // FM24's user-data folder (the one with skins and graphics), not the game folder.
@@ -289,7 +296,8 @@ namespace RegenerateFM.Desktop.FM24.Setup
 
         public const string Usage =
             "setup [--game-dir DIR] [--user-data-dir DIR] [--companion EXE] [--remove] [--no-launch-option]\n" +
-            "  Sets RegenerateFM up for FM24 (or removes it), with FM24 closed.";
+            "  Sets RegenerateFM up for FM24 (or removes it), with FM24 closed: without --game-dir, for every\n" +
+            "  FM24 found (Steam's and Epic's).";
 
         // `regeneratefm-fm24 setup …`. Returns the exit code.
         public int Main(string[] args)
@@ -312,12 +320,35 @@ namespace RegenerateFM.Desktop.FM24.Setup
             companion = companion != null ? Path.GetFullPath(companion) : PackagedCompanion();
             if (companion != null && !File.Exists(companion))
                 throw new SetupException("There is no RegenerateFM companion at " + companion + ".");
-            var (game, userData) = ResolveDirs(gameDir, userDataDir);
-            Log("FM24: " + game + "\nFM24 user data: " + userData);
-            if (remove)
-                Remove(game, userData, launchOption: !noLaunchOption);
-            else
-                Install(game, userData, companion, launchOption: !noLaunchOption);
+            var games = gameDir != null ? new List<string> { gameDir } : FindGameDirs();
+            if (games.Count == 0)
+                ResolveDirs(null, userDataDir);  // says FM24 wasn't found
+            // Removing, only the copies RegenerateFM is in.
+            if (remove && gameDir == null)
+                games = games.Where(found => File.Exists(Path.Combine(found, NativeInstall.Manifest))).ToList();
+            if (games.Count == 0)
+                throw new SetupException("RegenerateFM isn't set up for any FM24 on this computer.");
+            var failed = new List<string>();
+            foreach (string found in games)
+            {
+                var (game, userData) = ResolveDirs(found, userDataDir);
+                Log("FM24: " + game + "\nFM24 user data: " + userData);
+                try
+                {
+                    if (remove)
+                        Remove(game, userData, launchOption: !noLaunchOption);
+                    else
+                        Install(game, userData, companion, launchOption: !noLaunchOption);
+                }
+                catch (SetupException error) when (games.Count > 1)
+                {
+                    // Another copy can still be set up; this one is reported at the end.
+                    Log(error.Message);
+                    failed.Add(game + ": " + error.Message);
+                }
+            }
+            if (failed.Count > 0)
+                throw new SetupException("RegenerateFM couldn't be " + (remove ? "removed from" : "set up for") + " every FM24:\n" + string.Join("\n", failed));
             return 0;
         }
     }

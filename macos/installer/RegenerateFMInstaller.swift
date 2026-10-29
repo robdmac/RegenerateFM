@@ -9,8 +9,9 @@
 // desktop program's SteamLaunch does, so Play in Steam starts RegenerateFM.
 // FM24 from the Epic Games Launcher is listed too; for it the companion's
 // setup makes run_regeneratefm24.sh the program Epic starts (Epic/
-// EpicLaunch.cs), as Epic has no launch options. fm.app itself is never changed. macos/make_installer.py builds, signs and
-// packs it.
+// EpicLaunch.cs), as Epic has no launch options. Install on one FM24 sets up
+// every FM24 listed. fm.app itself is never changed. macos/make_installer.py
+// builds, signs and packs it.
 //
 // With --cli it runs one step without a window, for tests:
 //   --cli launch-option <localconfig.vdf> <app ID> <prefix> [--remove]
@@ -567,16 +568,26 @@ final class Model: ObservableObject {
         if game.isFM24 {
             guard Installer.appleSilicon else { message = "RegenerateFM for FM24 needs an Apple Silicon Mac."; return }
             guard let payload = Installer.fm24Payload else { message = "The installer's files are missing."; return }
+            // Every FM24 here (Steam's and Epic's), so either starts RegenerateFM.
+            let targets = [game] + games.filter { $0.isFM24 && realPath($0.folder) != realPath(game.folder) }
+            if let running = targets.first(where: { Installer.gameRunning($0.folder) }) { message = "Quit \(running.name) first."; return }
             working = true
-            message = "Setting RegenerateFM up for \(game.name)…"
+            message = "Setting RegenerateFM up for \(targets.map(\.name).joined(separator: " and "))…"
             DispatchQueue.global().async {
-                let result = Result { try Installer.installFM24(from: payload, to: game.folder) }
+                let results = targets.map { target in (target, Result { try Installer.installFM24(from: payload, to: target.folder) }) }
                 DispatchQueue.main.async {
                     self.working = false
-                    switch result {
-                    case .success: self.finishInstall(game)
-                    case .failure(let error): self.message = "Couldn't set RegenerateFM up for \(game.name): \(error.localizedDescription)"
+                    var parts: [String] = []
+                    for (target, result) in results {
+                        switch result {
+                        case .success: parts.append(self.installedText(target))
+                        case .failure(let error): parts.append("Couldn't set RegenerateFM up for \(target.name): \(error.localizedDescription)")
+                        }
                     }
+                    if results.contains(where: { if case .success = $0.1 { return true } else { return false } }) {
+                        parts.append("In FM24, Generate new face and Update face are in a profile's Overview tab menu; for them on the portrait too, choose the RegenerateFM skin in Preferences > Interface.")
+                    }
+                    self.message = parts.joined(separator: "\n\n")
                 }
             }
             return
@@ -601,6 +612,16 @@ final class Model: ObservableObject {
 
     /// With the files in place: the launch option, and what to do next.
     private func finishInstall(_ game: Game, note: String? = nil) {
+        var text = installedText(game, note: note)
+        if !rosetta {
+            text += " FM26 runs under Rosetta 2 with RegenerateFM: click Install Rosetta first."
+        }
+        message = text
+    }
+
+    /// That RegenerateFM is installed in the game, and its launch option or
+    /// what Epic starts; sets ``manual`` when the player must set it.
+    private func installedText(_ game: Game, note: String? = nil) -> String {
         var text = "RegenerateFM \(Installer.version) is installed in \(game.name)."
         if let note = note, !note.hasPrefix("Downloaded") { text += " " + note }
         if game.isEpic {
@@ -621,12 +642,7 @@ final class Model: ObservableObject {
                 manual = Steam.manualText(game)
             }
         }
-        if game.isFM24 {
-            text += " In FM24, Generate new face and Update face are in a profile's Overview tab menu; for them on the portrait too, choose the RegenerateFM skin in Preferences > Interface."
-        } else if !rosetta {
-            text += " FM26 runs under Rosetta 2 with RegenerateFM: click Install Rosetta first."
-        }
-        message = text
+        return text
     }
 
     func uninstall() {

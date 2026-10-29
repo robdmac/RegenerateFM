@@ -464,6 +464,36 @@ namespace RegenerateFM.Tests
         }
 
         [Fact]
+        public void WithoutAGameFolderTheSetupDoesEveryFm24ItFinds()
+        {
+            var fm24 = new Fm24(_root);
+            string userData = _root.Combine("user");
+            Directory.CreateDirectory(userData);
+            string steam = Path.Combine(_steam, "steamapps", "common", Fm24Setup.GameFolder);
+            string epic = _root.Combine("Epic Games", Fm24Setup.EpicFolder);
+            foreach (string game in new[] { steam, epic })
+            {
+                // fm.exe as the checked build; on the Mac fm.app is what's looked for.
+                Directory.CreateDirectory(Path.Combine(game, "fm.app", "Contents", "MacOS"));
+                File.WriteAllText(Path.Combine(game, Fm24Setup.MacProgram), "");
+                File.Copy(Path.Combine(fm24.Game, "fm.exe"), Path.Combine(game, "fm.exe"));
+            }
+            EpicRecord(epic);
+            Assert.Equal(new[] { SteamLaunch.Resolve(steam), epic }, Fm24Setup.FindGameDirs());
+            var setup = Setup(fm24);
+            Assert.Equal(0, setup.Main(new[] { "--user-data-dir", userData, "--no-launch-option" }));
+            Assert.All(new[] { steam, epic }, game => Assert.True(File.Exists(Path.Combine(game, NativeInstall.Manifest))));
+            // Removing goes through the copies RegenerateFM is in.
+            File.Delete(Path.Combine(steam, NativeInstall.Manifest));
+            File.Delete(Path.Combine(steam, NativeInstall.Config));
+            File.Delete(Path.Combine(steam, "winmm.dll"));
+            Assert.Equal(0, setup.Main(new[] { "--user-data-dir", userData, "--no-launch-option", "--remove" }));
+            Assert.False(File.Exists(Path.Combine(epic, NativeInstall.Manifest)));
+            Assert.Contains("isn't set up for any FM24",
+                            Assert.Throws<SetupException>(() => setup.Main(new[] { "--user-data-dir", userData, "--no-launch-option", "--remove" })).Message);
+        }
+
+        [Fact]
         public void TheSetupRefusesWhileSteamOrFm24Runs()
         {
             var fm24 = new Fm24(_root);
