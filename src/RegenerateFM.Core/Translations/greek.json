@@ -299,5 +299,11 @@
   "{0} row that isn't staff RegenerateFM can read was left out.": "Παραλείφθηκε {0} γραμμή που δεν περιέχει μέλος προσωπικού αναγνώσιμο από το RegenerateFM.",
   "{0} rows that aren't players RegenerateFM can read were left out.": "Παραλείφθηκαν {0} γραμμές που δεν περιέχουν παίκτες αναγνώσιμους από το RegenerateFM.",
   "{0} rows that aren't staff RegenerateFM can read were left out.": "Παραλείφθηκαν {0} γραμμές που δεν περιέχουν μέλη προσωπικού αναγνώσιμα από το RegenerateFM.",
-  "{0} staff": "Μέλη προσωπικού της ομάδας {0}"
+  "{0} staff": "Μέλη προσωπικού της ομάδας {0}",
+  "Preparing FM26 for RegenerateFM": "Προετοιμασία του FM26 για το RegenerateFM",
+  "This happens once, the first time FM26 starts with RegenerateFM, and again after an FM26 update. Later starts are as quick as before.": "Αυτό γίνεται μόνο μία φορά: την πρώτη φορά που το FM26 ξεκινά με το RegenerateFM, και ξανά μετά από μια ενημέρωση του FM26. Οι επόμενες εκκινήσεις είναι το ίδιο γρήγορες όπως πριν.",
+  "Downloading Unity's libraries…": "Λήψη των βιβλιοθηκών της Unity…",
+  "Reading FM26's code…": "Ανάγνωση του κώδικα του FM26…",
+  "Building RegenerateFM's link to FM26…": "Δημιουργία της σύνδεσης μεταξύ RegenerateFM και FM26…",
+  "Starting FM26…": "Εκκίνηση του FM26…"
 }

@@ -299,5 +299,11 @@
   "{0} row that isn't staff RegenerateFM can read was left out.": "Пропущена строка ({0}), не содержащая доступных для RegenerateFM данных сотрудника.",
   "{0} rows that aren't players RegenerateFM can read were left out.": "Пропущено строк, не содержащих доступных для RegenerateFM игроков: {0}.",
   "{0} rows that aren't staff RegenerateFM can read were left out.": "Пропущено строк, не содержащих доступных для RegenerateFM сотрудников: {0}.",
-  "{0} staff": "сотрудники клуба {0}"
+  "{0} staff": "сотрудники клуба {0}",
+  "Preparing FM26 for RegenerateFM": "Подготовка FM26 для RegenerateFM",
+  "This happens once, the first time FM26 starts with RegenerateFM, and again after an FM26 update. Later starts are as quick as before.": "Это происходит только один раз: при первом запуске FM26 с RegenerateFM и ещё раз после обновления FM26. Следующие запуски будут такими же быстрыми, как раньше.",
+  "Downloading Unity's libraries…": "Загрузка библиотек Unity…",
+  "Reading FM26's code…": "Чтение кода FM26…",
+  "Building RegenerateFM's link to FM26…": "Создание связи между RegenerateFM и FM26…",
+  "Starting FM26…": "Запуск FM26…"
 }

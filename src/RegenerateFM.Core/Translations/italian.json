@@ -299,5 +299,11 @@
   "{0} row that isn't staff RegenerateFM can read was left out.": "{0} riga non corrispondente a un membro dello staff leggibile da RegenerateFM è stata esclusa.",
   "{0} rows that aren't players RegenerateFM can read were left out.": "{0} righe non corrispondenti a giocatori leggibili da RegenerateFM sono state escluse.",
   "{0} rows that aren't staff RegenerateFM can read were left out.": "{0} righe non corrispondenti a membri dello staff leggibili da RegenerateFM sono state escluse.",
-  "{0} staff": "membri dello staff di {0}"
+  "{0} staff": "membri dello staff di {0}",
+  "Preparing FM26 for RegenerateFM": "Preparazione di FM26 per RegenerateFM",
+  "This happens once, the first time FM26 starts with RegenerateFM, and again after an FM26 update. Later starts are as quick as before.": "Succede una sola volta: al primo avvio di FM26 con RegenerateFM, e di nuovo dopo un aggiornamento di FM26. Gli avvii successivi saranno rapidi come prima.",
+  "Downloading Unity's libraries…": "Download delle librerie di Unity…",
+  "Reading FM26's code…": "Lettura del codice di FM26…",
+  "Building RegenerateFM's link to FM26…": "Creazione del collegamento tra RegenerateFM e FM26…",
+  "Starting FM26…": "Avvio di FM26…"
 }

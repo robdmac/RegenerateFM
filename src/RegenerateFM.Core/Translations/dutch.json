@@ -299,5 +299,11 @@
  "{0} row that isn't staff RegenerateFM can read was left out.": "{0} rij die geen staflid bevat dat RegenerateFM kan lezen, is weggelaten.",
  "{0} rows that aren't players RegenerateFM can read were left out.": "{0} rijen die geen spelers bevatten die RegenerateFM kan lezen, zijn weggelaten.",
  "{0} rows that aren't staff RegenerateFM can read were left out.": "{0} rijen die geen stafleden bevatten die RegenerateFM kan lezen, zijn weggelaten.",
- "{0} staff": "stafleden van {0}"
+ "{0} staff": "stafleden van {0}",
+ "Preparing FM26 for RegenerateFM": "FM26 wordt voorbereid voor RegenerateFM",
+ "This happens once, the first time FM26 starts with RegenerateFM, and again after an FM26 update. Later starts are as quick as before.": "Dit gebeurt maar één keer: de eerste keer dat FM26 met RegenerateFM start, en opnieuw na een update van FM26. Daarna start FM26 weer net zo snel als voorheen.",
+ "Downloading Unity's libraries…": "Unity-bibliotheken downloaden…",
+ "Reading FM26's code…": "Code van FM26 lezen…",
+ "Building RegenerateFM's link to FM26…": "Koppeling tussen RegenerateFM en FM26 opbouwen…",
+ "Starting FM26…": "FM26 starten…"
 }

@@ -299,5 +299,11 @@
  "{0} row that isn't staff RegenerateFM can read was left out.": "有 {0} 行不是 RegenerateFM 可读取的职员记录，已被排除。",
  "{0} rows that aren't players RegenerateFM can read were left out.": "有 {0} 行不是 RegenerateFM 可读取的球员记录，已被排除。",
  "{0} rows that aren't staff RegenerateFM can read were left out.": "有 {0} 行不是 RegenerateFM 可读取的职员记录，已被排除。",
- "{0} staff": "{0}的职员"
+ "{0} staff": "{0}的职员",
+ "Preparing FM26 for RegenerateFM": "正在为 RegenerateFM 准备 FM26",
+ "This happens once, the first time FM26 starts with RegenerateFM, and again after an FM26 update. Later starts are as quick as before.": "此过程只需进行一次：FM26 首次搭配 RegenerateFM 启动时进行，FM26 更新后会再进行一次。之后的启动速度与以往相同。",
+ "Downloading Unity's libraries…": "正在下载 Unity 库…",
+ "Reading FM26's code…": "正在读取 FM26 的代码…",
+ "Building RegenerateFM's link to FM26…": "正在建立 RegenerateFM 与 FM26 的连接…",
+ "Starting FM26…": "正在启动 FM26…"
 }

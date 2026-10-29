@@ -31,11 +31,16 @@ def main() -> None:
     args.output.mkdir(parents=True, exist_ok=True)
     supported = json.loads(Path(__file__).with_name("supported_build.json").read_text())
     constants = []
-    for name, value in (("FM24_HASH_BYTES", bytes.fromhex(supported["sha256"])),
-                        ("FM24_HANDLER_BYTES", bytes.fromhex(supported["eventHandlerPrologue"]))):
-        constants.append(f"#define {name} {{" + ",".join(f"0x{byte:02x}" for byte in value) + "}")
-    for name, key in (("HANDLER_RVA", "eventHandlerRva"), ("VTABLE_SLOT_RVA", "eventVtableSlotRva"),
-                      ("FM24_TIMESTAMP", "timestamp"), ("FM24_IMAGE_SIZE", "imageSize")):
+    def braced(value):
+        return "{" + ",".join(f"0x{byte:02x}" for byte in value) + "}"
+    # The checked fm.exe builds (Steam's, then other stores'), which share every address.
+    builds = [supported] + supported.get("otherBuilds", [])
+    constants.append(f"#define FM24_BUILDS {len(builds)}")
+    constants.append("#define FM24_HASHES {" + ",".join(braced(bytes.fromhex(build["sha256"])) for build in builds) + "}")
+    constants.append("#define FM24_TIMESTAMPS {" + ",".join(f"{build['timestamp']}u" for build in builds) + "}")
+    constants.append("#define FM24_IMAGE_SIZES {" + ",".join(f"{build['imageSize']}u" for build in builds) + "}")
+    constants.append("#define FM24_HANDLER_BYTES " + braced(bytes.fromhex(supported["eventHandlerPrologue"])))
+    for name, key in (("HANDLER_RVA", "eventHandlerRva"), ("VTABLE_SLOT_RVA", "eventVtableSlotRva")):
         constants.append(f"#define {name} {supported[key]}u")
     # Functions of the validated build: FM24's own "reload current skin"
     # sequence, the Squad "Players" menu provider that the DLL extends, and

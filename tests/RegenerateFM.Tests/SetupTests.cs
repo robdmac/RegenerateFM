@@ -7,6 +7,7 @@ using System.Text;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using RegenerateFM.Desktop;
+using RegenerateFM.Desktop.Epic;
 using RegenerateFM.Desktop.FM24;
 using RegenerateFM.Desktop.FM24.Setup;
 using RegenerateFM.Desktop.Linux;
@@ -15,8 +16,9 @@ using Xunit;
 
 namespace RegenerateFM.Tests
 {
-    // Steam's launch options, FM24's setup and DLL install, and the Linux
-    // installer, against stand-in Steam folders, games and releases.
+    // Steam's launch options, what Epic starts, FM24's setup and DLL install,
+    // and the Linux installer, against stand-in Steam and Epic folders, games
+    // and releases.
     public class SetupTests : IDisposable
     {
         public const string Token = "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk";
@@ -32,8 +34,8 @@ namespace RegenerateFM.Tests
             "\t\t\t\t}\n\t\t\t}\n\t\t}\n\t}\n\t\"apps\"\n\t{\n\t\t\"3551340\"\t\t\"0123abcd\"\n\t}\n}\n";
 
         private readonly TempFolder _root = new TempFolder();
-        private readonly string _steam;
-        private bool _steamRunning;
+        private readonly string _steam, _epic;
+        private bool _steamRunning, _epicRunning;
 
         public SetupTests()
         {
@@ -41,13 +43,79 @@ namespace RegenerateFM.Tests
             Directory.CreateDirectory(Path.Combine(_steam, "steamapps"));
             SteamLaunch.Roots = () => new List<string> { _steam };
             SteamLaunch.Running = () => _steamRunning;
+            _epic = _root.Combine("epic-manifests");
+            EpicLaunch.ManifestsDir = () => _epic;
+            EpicLaunch.Running = () => _epicRunning;
         }
 
         public void Dispose()
         {
             SteamLaunch.Roots = SteamLaunch.DefaultRoots;
             SteamLaunch.Running = SteamLaunch.SteamRunning;
+            EpicLaunch.ManifestsDir = EpicLaunch.DefaultManifestsDir;
+            EpicLaunch.Running = EpicLaunch.EpicRunning;
             _root.Dispose();
+        }
+
+        // ---- What Epic starts ------------------------------------------------------
+
+        // Epic's record of a game installed in ``folder``, as the Mac launcher writes it.
+        private string EpicRecord(string folder, string program = Fm24Setup.MacProgram)
+        {
+            Directory.CreateDirectory(_epic);
+            string record = Path.Combine(_epic, "C58BCA963D445FD06E0DFC85EAF0C003.item");
+            File.WriteAllText(record, new JsonObject
+            {
+                ["FormatVersion"] = 0, ["LaunchCommand"] = "", ["LaunchExecutable"] = program,
+                ["InstallLocation"] = folder, ["AppName"] = "da2038ef19e94554898056d79168b3f8", ["bRequiresAuth"] = true,
+            }.ToJsonString());
+            return record;
+        }
+
+        private static string EpicProgram(string record) => (string)JsonNode.Parse(File.ReadAllText(record))!["LaunchExecutable"];
+
+        [Fact]
+        public void Fm24IsFoundWhereEpicInstalledItWhenSteamHasNone()
+        {
+            // Wherever the player chose, found by Epic's ID for the game, not its folder.
+            string game = _root.Combine("Games on another drive", "FM");
+            string executable = OperatingSystem.IsMacOS() ? Fm24Setup.MacProgram : "fm.exe";
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(game, executable)));
+            File.WriteAllText(Path.Combine(game, executable), "");
+            EpicRecord(game + "/");
+            Assert.Equal(game, Fm24Setup.FindGameDir());
+            Assert.Null(EpicLaunch.FindGameDir("e54a251079034694b55ab6289707bfa0", executable));  // FM26's ID
+            // Steam's copy comes first.
+            string steam = Path.Combine(_steam, "steamapps", "common", Fm24Setup.GameFolder);
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(steam, executable)));
+            File.WriteAllText(Path.Combine(steam, executable), "");
+            Assert.Equal(Path.Combine(SteamLaunch.Resolve(_steam), "steamapps", "common", Fm24Setup.GameFolder), Fm24Setup.FindGameDir());
+        }
+
+        [Fact]
+        public void EpicStartsTheLauncherOnlyWhileItIsClosedAndCanStartTheGameAgain()
+        {
+            string game = _root.Combine("Epic Games", Fm24Setup.EpicFolder);
+            string record = EpicRecord(game);
+            string original = File.ReadAllText(record);
+            Assert.True(EpicLaunch.NeedsChange(game, Fm24Setup.MacLauncher, Fm24Setup.MacProgram));
+            _epicRunning = true;
+            Assert.Contains("is running", EpicLaunch.Apply(game, Fm24Setup.MacLauncher, Fm24Setup.MacProgram));
+            Assert.Equal(original, File.ReadAllText(record));
+            _epicRunning = false;
+            Assert.StartsWith("Epic now starts the game with RegenerateFM", EpicLaunch.Apply(game, Fm24Setup.MacLauncher, Fm24Setup.MacProgram));
+            Assert.Equal(Fm24Setup.MacLauncher, EpicProgram(record));
+            var item = JsonNode.Parse(File.ReadAllText(record))!;
+            Assert.Equal(game, (string)item["InstallLocation"]);
+            Assert.True((bool)item["bRequiresAuth"]);
+            Assert.Equal(original, File.ReadAllText(record + EpicLaunch.BackupSuffix));
+            Assert.False(EpicLaunch.NeedsChange(game, Fm24Setup.MacLauncher, Fm24Setup.MacProgram));
+            Assert.Contains("already starts", EpicLaunch.Apply(game, Fm24Setup.MacLauncher, Fm24Setup.MacProgram));
+            Assert.StartsWith("Epic starts the game itself again", EpicLaunch.Apply(game, Fm24Setup.MacLauncher, Fm24Setup.MacProgram, remove: true));
+            Assert.Equal(Fm24Setup.MacProgram, EpicProgram(record));
+            // A game Epic didn't install has no Epic setting.
+            Assert.Null(EpicLaunch.Record(_root.Combine("Football Manager 2024")));
+            Assert.Contains("didn't install", EpicLaunch.Apply(_root.Combine("Football Manager 2024"), Fm24Setup.MacLauncher, Fm24Setup.MacProgram));
         }
 
         // ---- Steam's launch options ----------------------------------------------
@@ -205,6 +273,34 @@ namespace RegenerateFM.Tests
             Assert.Contains("FMFU", File.ReadAllText(Path.Combine(fm24.Skin, NativeInstall.PanelFiles["player"])));
             fm24.Remove();
             AssertSame(before, fm24.Snapshot());
+        }
+
+        [Fact]
+        public void RemovingOneOfTwoFm24sKeepsTheSkinTheyShare()
+        {
+            // Steam's and Epic's FM24 share the user-data folder and so the skin.
+            string executable = OperatingSystem.IsMacOS() ? Fm24Setup.MacProgram : "fm.exe";
+            string steam = Path.Combine(_steam, "steamapps", "common", Fm24Setup.GameFolder);
+            string epic = _root.Combine("Epic Games", Fm24Setup.EpicFolder);
+            foreach (string game in new[] { steam, epic })
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(game, executable)));
+                File.WriteAllText(Path.Combine(game, executable), "");
+            }
+            EpicRecord(epic);
+            Assert.False(Fm24Setup.OtherCopySetUp(epic));
+            File.WriteAllText(Path.Combine(steam, NativeInstall.Manifest), "{}");
+            Assert.True(Fm24Setup.OtherCopySetUp(epic));
+            Assert.False(Fm24Setup.OtherCopySetUp(steam));
+
+            var fm24 = new Fm24(_root);
+            fm24.Install();
+            string panel = Path.Combine(fm24.Skin, NativeInstall.PanelFiles["player"]);
+            string installed = File.ReadAllText(panel);
+            fm24.Native.Remove(fm24.Game, fm24.Skin, keepPanels: true);
+            Assert.Equal(installed, File.ReadAllText(panel));
+            Assert.False(File.Exists(Path.Combine(fm24.Game, NativeInstall.Manifest)));
+            Assert.Contains(fm24.Logged, line => line.Contains("kept for your other FM24"));
         }
 
         [Fact]
@@ -367,6 +463,36 @@ namespace RegenerateFM.Tests
             var fresh = new Fm24(new TempFolder());
             Setup(fresh).Install(fresh.Game, userData, null, launchOption: false);
             Assert.Matches("^[A-Za-z0-9_-]{43}$", Fm24Setup.InstalledToken(fresh.Game));
+        }
+
+        [Fact]
+        public void WithoutAGameFolderTheSetupDoesEveryFm24ItFinds()
+        {
+            var fm24 = new Fm24(_root);
+            string userData = _root.Combine("user");
+            Directory.CreateDirectory(userData);
+            string steam = Path.Combine(_steam, "steamapps", "common", Fm24Setup.GameFolder);
+            string epic = _root.Combine("Epic Games", Fm24Setup.EpicFolder);
+            foreach (string game in new[] { steam, epic })
+            {
+                // fm.exe as the checked build; on the Mac fm.app is what's looked for.
+                Directory.CreateDirectory(Path.Combine(game, "fm.app", "Contents", "MacOS"));
+                File.WriteAllText(Path.Combine(game, Fm24Setup.MacProgram), "");
+                File.Copy(Path.Combine(fm24.Game, "fm.exe"), Path.Combine(game, "fm.exe"));
+            }
+            EpicRecord(epic);
+            Assert.Equal(new[] { SteamLaunch.Resolve(steam), epic }, Fm24Setup.FindGameDirs());
+            var setup = Setup(fm24);
+            Assert.Equal(0, setup.Main(new[] { "--user-data-dir", userData, "--no-launch-option" }));
+            Assert.All(new[] { steam, epic }, game => Assert.True(File.Exists(Path.Combine(game, NativeInstall.Manifest))));
+            // Removing goes through the copies RegenerateFM is in.
+            File.Delete(Path.Combine(steam, NativeInstall.Manifest));
+            File.Delete(Path.Combine(steam, NativeInstall.Config));
+            File.Delete(Path.Combine(steam, "winmm.dll"));
+            Assert.Equal(0, setup.Main(new[] { "--user-data-dir", userData, "--no-launch-option", "--remove" }));
+            Assert.False(File.Exists(Path.Combine(epic, NativeInstall.Manifest)));
+            Assert.Contains("isn't set up for any FM24",
+                            Assert.Throws<SetupException>(() => setup.Main(new[] { "--user-data-dir", userData, "--no-launch-option", "--remove" })).Message);
         }
 
         [Fact]
@@ -598,6 +724,9 @@ namespace RegenerateFM.Tests
             Assert.Contains("\"REGENERATEFM24F %ld no\"", source);
             // The setup carries the same checked build as the DLL.
             Assert.Equal(supported["sha256"].GetValue<string>(), new NativeInstall(mac: false).Supported);
+            // And Epic's fm.exe, the same code packed differently, at the same addresses.
+            Assert.Equal(new[] { supported["sha256"].GetValue<string>(), "33e8a2e48c4986f2a15e11c4c93aca1199029d66b19bd765403eb22dea265378" },
+                         new NativeInstall(mac: false).SupportedBuilds());
         }
     }
 }

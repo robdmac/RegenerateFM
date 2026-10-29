@@ -154,15 +154,17 @@ static BOOL sibling_path(WCHAR *path, const WCHAR *name)
     return TRUE;
 }
 
-static BOOL supported_executable(void)
+/* Which checked build (supported_build.json: Steam's, then other stores')
+   fm.exe is, by its SHA-256, or -1. */
+static int supported_executable(void)
 {
-    static const unsigned char expected[32] = FM24_HASH_BYTES;
+    static const unsigned char expected[FM24_BUILDS][32] = FM24_HASHES;
     WCHAR path[MAX_PATH];
     unsigned char digest[32], buffer[65536];
     BCRYPT_ALG_HANDLE algorithm = NULL;
     BCRYPT_HASH_HANDLE hash = NULL;
     HANDLE file = INVALID_HANDLE_VALUE;
-    BOOL ok = FALSE;
+    int build = -1;
     DWORD read;
     DWORD size = GetModuleFileNameW(NULL, path, MAX_PATH);
     if (!size || size >= MAX_PATH) goto done;
@@ -176,12 +178,13 @@ static BOOL supported_executable(void)
         if (BCryptHashData(hash, buffer, read, 0) < 0) goto done;
     }
     if (BCryptFinishHash(hash, digest, sizeof(digest), 0) < 0) goto done;
-    ok = memcmp(expected, digest, sizeof(expected)) == 0;
+    for (int i = 0; i < FM24_BUILDS && build < 0; i++)
+        if (memcmp(expected[i], digest, sizeof(digest)) == 0) build = i;
 done:
     if (hash) BCryptDestroyHash(hash);
     if (algorithm) BCryptCloseAlgorithmProvider(algorithm, 0);
     if (file != INVALID_HANDLE_VALUE) CloseHandle(file);
-    return ok;
+    return build;
 }
 
 /* Wall-clock milliseconds since the Unix epoch, comparable with the
@@ -1562,11 +1565,13 @@ static void install_event_hook(void)
     bridge_token[length] = 0;
     bridge_port = (unsigned short)port;
     bridge_instance = unix_ms();
-    if (!supported_executable()) { log_line("REGENERATEFM24_UNSUPPORTED_EXECUTABLE"); return; }
+    int build = supported_executable();
+    if (build < 0) { log_line("REGENERATEFM24_UNSUPPORTED_EXECUTABLE"); return; }
+    static const DWORD timestamps[FM24_BUILDS] = FM24_TIMESTAMPS, image_sizes[FM24_BUILDS] = FM24_IMAGE_SIZES;
     unsigned char *base = game_base = (unsigned char *)GetModuleHandleW(NULL);
     IMAGE_DOS_HEADER *dos = (IMAGE_DOS_HEADER *)base;
     IMAGE_NT_HEADERS64 *nt = (IMAGE_NT_HEADERS64 *)(base + dos->e_lfanew);
-    if (nt->FileHeader.TimeDateStamp != FM24_TIMESTAMP || nt->OptionalHeader.SizeOfImage != FM24_IMAGE_SIZE) {
+    if (nt->FileHeader.TimeDateStamp != timestamps[build] || nt->OptionalHeader.SizeOfImage != image_sizes[build]) {
         log_line("REGENERATEFM24_UNSUPPORTED_IMAGE"); return;
     }
     static const unsigned char prologue[] = FM24_HANDLER_BYTES;

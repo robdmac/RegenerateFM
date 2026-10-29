@@ -68,3 +68,25 @@ class ModeAndFileTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ProgressWindowTests(unittest.TestCase):
+    def test_doorstop_starts_regeneratefm_start_and_keeps_the_rest_of_its_config(self):
+        config = (b"[General]\r\nenabled = true\r\ntarget_assembly = BepInEx\\core\\BepInEx.Unity.IL2CPP.dll\r\n"
+                  b"redirect_output_log = false\r\n")
+        with tempfile.TemporaryDirectory() as folder:
+            start, progress = Path(folder) / "RegenerateFM.Start.dll", Path(folder) / "regeneratefm-progress.exe"
+            start.write_bytes(b"start")
+            progress.write_bytes(b"progress")
+            saved = make_release.START_DLL, make_release.PROGRESS_BUILD
+            make_release.START_DLL, make_release.PROGRESS_BUILD = start, Path(folder)
+            try:
+                files = make_release.windows_progress_files({"doorstop_config.ini": (config, 0o644)})
+            finally:
+                make_release.START_DLL, make_release.PROGRESS_BUILD = saved
+        self.assertEqual(files["doorstop_config.ini"][0],
+                         config.replace(b"BepInEx.Unity.IL2CPP.dll", b"RegenerateFM.Start.dll"))
+        self.assertEqual(files["BepInEx/core/RegenerateFM.Start.dll"][0], b"start")
+        self.assertEqual(files["BepInEx/core/regeneratefm-progress.exe"], (b"progress", 0o755))
+        with self.assertRaises(SystemExit):
+            make_release.windows_progress_files({"doorstop_config.ini": (b"[General]\r\n", 0o644)})

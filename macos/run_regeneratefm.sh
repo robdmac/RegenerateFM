@@ -5,6 +5,9 @@
 # It lives in the game folder, beside fm.app, with the rest of the release's
 # FM26-macOS folder. The game's Steam launch option runs it:
 #   "/path/to/Football Manager 26/run_regeneratefm.sh" %command%
+# Epic's FM26 has no launch option: the installer makes it the program Epic
+# starts (LaunchExecutable in Epic's record of the game), and Epic passes the
+# player's sign-in as arguments, which go to FM26.
 #
 # BepInEx's macOS runtime (CoreCLR and its native helpers) is x86_64 only, so
 # the game runs under Rosetta 2. FM26 is a universal app, so nothing in fm.app
@@ -40,7 +43,8 @@ fi
 # quarantined library that isn't notarised ("libdoorstop.dylib" Not Opened),
 # which leaves FM26 waiting on that dialog. Clear it from the files this
 # folder adds; fm.app is left alone.
-for installed in "${BASEDIR}/libdoorstop.dylib" "${BASEDIR}/dotnet" "${BASEDIR}/BepInEx"; do
+for installed in "${BASEDIR}/libdoorstop.dylib" "${BASEDIR}/dotnet" "${BASEDIR}/BepInEx" "${BASEDIR}/clear-exception-ports" \
+                 "${BASEDIR}/regeneratefm-progress"; do
     /usr/bin/xattr -r -d com.apple.quarantine "$installed" 2>/dev/null || true
 done
 
@@ -50,8 +54,24 @@ if [ ! -e "${BASEDIR}/Data" ]; then
     ln -s "fm.app/Contents/Resources/Data" "${BASEDIR}/Data"
 fi
 
+# While BepInEx prepares FM26 (its first start, and its first after an FM26
+# update), regeneratefm-progress shows a progress window; on any other start
+# it exits by itself. It reads the copy of BepInEx's log that
+# RegenerateFM.Start.dll, Doorstop's target below, writes as BepInEx works. It
+# is given this shell's process ID, which becomes FM26's (or, for Epic, waits
+# for it), and runs without the libraries meant for the game.
+TARGET="${BASEDIR}/BepInEx/core/BepInEx.Unity.IL2CPP.dll"
+if [ -f "${BASEDIR}/BepInEx/core/RegenerateFM.Start.dll" ]; then
+    TARGET="${BASEDIR}/BepInEx/core/RegenerateFM.Start.dll"
+    if [ -x "${BASEDIR}/regeneratefm-progress" ]; then
+        /usr/bin/env -u DYLD_INSERT_LIBRARIES -u DYLD_LIBRARY_PATH "${BASEDIR}/regeneratefm-progress" \
+            --pid $$ --log "${BASEDIR}/BepInEx/RegenerateFM.progress.log" --name "$(/usr/bin/basename "$GAME")" \
+            < /dev/null > /dev/null 2>&1 &
+    fi
+fi
+
 export DOORSTOP_ENABLED=1
-export DOORSTOP_TARGET_ASSEMBLY="${BASEDIR}/BepInEx/core/BepInEx.Unity.IL2CPP.dll"
+export DOORSTOP_TARGET_ASSEMBLY="$TARGET"
 export DOORSTOP_BOOT_CONFIG_OVERRIDE=
 export DOORSTOP_IGNORE_DISABLED_ENV=0
 export DOORSTOP_CLR_RUNTIME_CORECLR_PATH="${BASEDIR}/dotnet/libcoreclr.dylib"
@@ -61,8 +81,23 @@ export BEPINEX_PRELOADER_LOG="${BASEDIR}/BepInEx/preloader-error.log"
 
 # arch is protected by System Integrity Protection, so it drops DYLD_*
 # variables unless they are passed with -e. Steam may already insert its
-# overlay library; keep it.
-exec /usr/bin/arch -x86_64 \
+# overlay library; keep it. Epic follows the process it started by its
+# program, so for Epic this shell waits for FM26 instead of becoming it.
+# Epic starts this script itself, so FM26 would inherit Epic's crash handler,
+# and BepInEx's first start then hangs under Rosetta: clear-exception-ports
+# starts it without (see macos/clear_exception_ports.c).
+case " $* " in
+    *" -EpicPortal "*) ;;
+    *) exec /usr/bin/arch -x86_64 \
+           -e DYLD_INSERT_LIBRARIES="${BASEDIR}/libdoorstop.dylib${DYLD_INSERT_LIBRARIES:+:${DYLD_INSERT_LIBRARIES}}" \
+           -e DYLD_LIBRARY_PATH="${BASEDIR}/fm.app/Contents/Frameworks" \
+           "$GAME" "$@" ;;
+esac
+CLEAR=
+if [ -x "${BASEDIR}/clear-exception-ports" ]; then
+    CLEAR="${BASEDIR}/clear-exception-ports"
+fi
+${CLEAR:+"$CLEAR"} /usr/bin/arch -x86_64 \
     -e DYLD_INSERT_LIBRARIES="${BASEDIR}/libdoorstop.dylib${DYLD_INSERT_LIBRARIES:+:${DYLD_INSERT_LIBRARIES}}" \
     -e DYLD_LIBRARY_PATH="${BASEDIR}/fm.app/Contents/Frameworks" \
     "$GAME" "$@"

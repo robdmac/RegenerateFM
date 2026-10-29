@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- RegenerateFM.Start.dll, in FM26's BepInEx/core on Windows (and Proton):
+       Doorstop's target before BepInEx, to start the progress window. -->
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <AssemblyName>RegenerateFM.Start</AssemblyName>
+    <RootNamespace>Doorstop</RootNamespace>
+    <CheckEolTargetFramework>false</CheckEolTargetFramework>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+</Project>

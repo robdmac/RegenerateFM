@@ -13,7 +13,9 @@ Layout of dist/RegenerateFM-Windows-Linux.zip, in regeneratefm-<version>/:
   source/      the public source, docs and tests
 
 It needs the FM26 plugin built first (see src/RegenerateFM.FM26/README.md: it
-is built against a game folder) and FM24's DLL (native/fm24/build.py). It
+is built against a game folder), FM24's DLL (native/fm24/build.py) and FM26's
+progress window for the Mac (native/fm26progress/build.py --macos, used by
+macos/make_installer.py). It
 publishes the companion and the Linux installer itself with dotnet, unless
 --no-publish. FM26 and FM24 on macOS are in RegenerateFM-macOS.dmg instead
 (macos/make_installer.py, which uses macos_files below).
@@ -48,6 +50,17 @@ BEPINEX_MACOS = ("https://builds.bepinex.dev/projects/bepinex_be/789/"
                  "BepInEx-Unity.IL2CPP-macos-x64-6.0.0-be.789%2B6cea286.zip",
                  "cc2341544d271f8bcea4e7415acad10766e968d236aaee30cdd79780ec7db00b")
 MACOS_BUILD = ROOT / "macos" / "build"
+# FM26's progress window while BepInEx prepares it (native/fm26progress/build.py),
+# and on Windows the assembly Doorstop starts it from, before BepInEx.
+PROGRESS_BUILD = ROOT / "native" / "fm26progress" / "build"
+START_PROJECT = ROOT / "src" / "RegenerateFM.FM26.Start"
+START_DLL = START_PROJECT / "bin" / "Release" / "net6.0" / "RegenerateFM.Start.dll"
+START_TARGET = "target_assembly = BepInEx\\core\\RegenerateFM.Start.dll"
+# Not on Windows yet: Epic's FM26 Demo in a Windows VM, started through
+# RegenerateFM.Start.dll, kept saying "The server is not reachable" (TODO.md,
+# "Progress window on Windows"), so Doorstop starts BepInEx directly there,
+# as before. The Mac's window is shipped.
+WINDOWS_PROGRESS = False
 MACOS_NATIVE = {"BepInEx/core/libfunchook.dylib": "libfunchook.dylib",
                 "BepInEx/core/Il2CppInterop.Runtime.dll": "Il2CppInterop.Runtime.dll",
                 "BepInEx/core/Il2CppInterop.Common.dll": "Il2CppInterop.Common.dll"}
@@ -132,7 +145,28 @@ def macos_files(archive: Path) -> dict[str, tuple[bytes, int]]:
         files[name] = ((MACOS_BUILD / built).read_bytes(), 0o644)
     files["BepInEx/config/BepInEx.cfg"] = ((ROOT / "macos/BepInEx.cfg").read_bytes(), 0o644)
     files["run_regeneratefm.sh"] = ((ROOT / "macos/run_regeneratefm.sh").read_bytes(), 0o755)
+    files["clear-exception-ports"] = ((MACOS_BUILD / "clear-exception-ports").read_bytes(), 0o755)
+    files["regeneratefm-progress"] = (prebuilt(PROGRESS_BUILD / "regeneratefm-progress", "native/fm26progress/build.py --macos"), 0o755)
+    files["BepInEx/core/RegenerateFM.Start.dll"] = (prebuilt(START_DLL, f"dotnet build {START_PROJECT.relative_to(ROOT)} -c Release"), 0o644)
     return files
+
+
+def prebuilt(path: Path, how: str) -> bytes:
+    if not path.is_file():
+        raise SystemExit(f"{path} is missing; build it with {how}.")
+    return path.read_bytes()
+
+
+def windows_progress_files(loader: dict[str, tuple[bytes, int]]) -> dict[str, tuple[bytes, int]]:
+    """FM26's progress window on Windows: the assembly Doorstop now starts, which
+    starts the window and then BepInEx, and the window itself."""
+    config = loader["doorstop_config.ini"][0].decode("utf-8")
+    updated, count = re.subn(r"(?m)^target_assembly = [^\r\n]*", lambda _: START_TARGET, config)
+    if count != 1:
+        raise SystemExit("BepInEx's doorstop_config.ini has no target_assembly line to change.")
+    return {"doorstop_config.ini": (updated.encode("utf-8"), loader["doorstop_config.ini"][1]),
+            "BepInEx/core/RegenerateFM.Start.dll": (prebuilt(START_DLL, f"dotnet build {START_PROJECT.relative_to(ROOT)} -c Release"), 0o644),
+            "BepInEx/core/regeneratefm-progress.exe": (prebuilt(PROGRESS_BUILD / "regeneratefm-progress.exe", "native/fm26progress/build.py --windows"), 0o755)}
 
 
 def publish(runtime: str) -> Path:
@@ -231,6 +265,11 @@ def main() -> None:
                          "git rm -r -q --cached . && git reset -q --hard).")
     modes = git_modes()
     loader = bepinex_files(bepinex_zip(BEPINEX, args.bepinex_zip), "winhttp.dll")
+    if WINDOWS_PROGRESS:
+        if not args.no_publish:
+            subprocess.run([shutil.which("dotnet") or str(Path.home() / ".local" / "dotnet" / "dotnet"), "build", str(START_PROJECT),
+                            "-c", "Release", "-v", "q", "-nologo"], check=True)
+        loader.update(windows_progress_files(loader))
     top = f"regeneratefm-{version}"
     plugin = PLUGIN_DLL.read_bytes()
     for name, data in (("the FM26 plugin", plugin), (COMPANION[1], programs[COMPANION[0]]),

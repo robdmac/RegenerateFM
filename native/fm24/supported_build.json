@@ -3,6 +3,15 @@
   "sha256": "e1059eee82fa7832188831521a3fa633ec3260dd98d03da48b16661147e3ab48",
   "timestamp": "0x67ff9a80",
   "imageSize": "0x1d807000",
+  "otherBuilds": [
+    {
+      "store": "Epic Games Store",
+      "sha256": "33e8a2e48c4986f2a15e11c4c93aca1199029d66b19bd765403eb22dea265378",
+      "timestamp": "0x67ff9c55",
+      "imageSize": "0x1d5eb000",
+      "note": "The same 24.4.2+2081827 code at the same addresses: only its copy-protection section (.arch) is packed differently, so the jumps into it, and its size and timestamp, differ. Every RVA here and every address in Layout.cs holds the same bytes as Steam's (compared 2026-10-29)."
+    }
+  ],
   "eventHandlerRva": "0x1f21c0",
   "eventVtableSlotRva": "0x5600760",
   "eventHandlerPrologue": "415741564154565755534881ec40010000",

@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
@@ -238,28 +240,45 @@ namespace RegenerateFM.Desktop.FM24
             return 0;
         }
 
-        // Double-clicked: sets FM24 up the first time (and after an update);
-        // FM24 then starts it. FM24's folder, or null.
-        private static string SetUpIfNeeded()
+        // Double-clicked: sets up every FM24 found (Steam's and Epic's) the
+        // first time (and after an update); FM24 then starts it. Their
+        // folders, or null.
+        private static List<string> SetUpIfNeeded()
         {
             var setup = new Fm24Setup();
-            string game, userData;
-            try
+            var games = Fm24Setup.FindGameDirs();
+            if (games.Count == 0)
             {
-                (game, userData) = setup.ResolveDirs(null, null);
-            }
-            catch (SetupException error)
-            {
-                Console.WriteLine(error.Message);
+                try
+                {
+                    setup.ResolveDirs(null, null);
+                }
+                catch (SetupException error)
+                {
+                    Console.WriteLine(error.Message);
+                }
                 return null;
             }
             string companion = Fm24Setup.PackagedCompanion();
-            if (!setup.IsSetUp(game, Path.Combine(userData, "skins", "regeneratefm"), companion))
+            var ready = new List<string>();
+            foreach (string found in games)
             {
-                Console.WriteLine("Setting up RegenerateFM for FM24 (one time only).");
-                setup.Install(game, userData, companion);
+                try
+                {
+                    var (game, userData) = setup.ResolveDirs(found, null);
+                    if (!setup.IsSetUp(game, Path.Combine(userData, "skins", "regeneratefm"), companion))
+                    {
+                        Console.WriteLine("Setting up RegenerateFM for FM24 in " + game + " (one time only).");
+                        setup.Install(game, userData, companion);
+                    }
+                    ready.Add(game);
+                }
+                catch (SetupException error)
+                {
+                    Console.WriteLine(error.Message);
+                }
             }
-            return game;
+            return ready.Count > 0 ? ready : null;
         }
 
         // Whether this program has its own console window (double-clicked), which
@@ -303,8 +322,8 @@ namespace RegenerateFM.Desktop.FM24
                 }
                 if (args.Length == 0)
                 {
-                    string game = SetUpIfNeeded();
-                    if (game == null)
+                    var games = SetUpIfNeeded();
+                    if (games == null)
                     {
                         if (pause)
                             Terminal.Pause();
@@ -312,7 +331,8 @@ namespace RegenerateFM.Desktop.FM24
                     }
                     if (!OperatingSystem.IsMacOS())
                         new Companion { ReloadPort = 0 }.AskForKeyInTerminal();
-                    if (!new NativeInstall(OperatingSystem.IsMacOS()).Running(game))
+                    string running = games.FirstOrDefault(new NativeInstall(OperatingSystem.IsMacOS()).Running);
+                    if (running == null)
                     {
                         Console.WriteLine("\nRegenerateFM is set up. It starts by itself whenever you start FM24, so there's nothing else to run.");
                         if (pause)
@@ -320,6 +340,7 @@ namespace RegenerateFM.Desktop.FM24
                         return 0;
                     }
                     // FM24 is already running; its companion normally is too.
+                    return Run(new[] { "--game-dir", running });
                 }
                 return Run(args);
             }

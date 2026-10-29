@@ -6,6 +6,9 @@
 # The companion's setup puts it in the Football Manager 2024 folder, beside fm.app.
 # FM24's Steam launch option runs it:
 #   "/path/to/Football Manager 2024/run_regeneratefm24.sh" %command%
+# Epic's FM24 has no launch option: the setup makes it the program Epic
+# starts (LaunchExecutable in Epic's record of the game), and Epic passes the
+# player's sign-in as arguments, which go to FM24.
 #
 # Nothing in fm.app is changed. FM24's own entitlements allow the library
 # (allow-dyld-environment-variables, disable-library-validation).
@@ -37,7 +40,7 @@ fi
 
 # Start RegenerateFM's companion, as the Windows DLL does: the setup records it
 # (companion=) in regeneratefm24.ini. It is given this shell's process ID,
-# which exec below hands to FM24, and stops when FM24 does, or at once if a
+# which exec below hands to FM24 (or, for Epic, which waits for it), and stops when FM24 does, or at once if a
 # companion is already running. It logs to regeneratefm-fm24.log beside itself;
 # its output goes there too, so a start-up failure before it opens the log is
 # kept. The size check is here, before that file is open in two places.
@@ -60,6 +63,15 @@ fi
 # Steam may already insert its overlay library; keep it. arch is protected
 # by System Integrity Protection and drops DYLD_* variables unless they are
 # passed with -e; -arm64 runs the native build even from a Rosetta shell.
-exec /usr/bin/arch -arm64 \
+# Epic follows the process it started by its program, so for Epic this shell
+# waits for FM24 instead of becoming it; Epic then sees the game running
+# until FM24 quits.
+case " $* " in
+    *" -EpicPortal "*) ;;
+    *) exec /usr/bin/arch -arm64 \
+           -e DYLD_INSERT_LIBRARIES="${LIBRARY}${DYLD_INSERT_LIBRARIES:+:${DYLD_INSERT_LIBRARIES}}" \
+           "$GAME" "$@" ;;
+esac
+/usr/bin/arch -arm64 \
     -e DYLD_INSERT_LIBRARIES="${LIBRARY}${DYLD_INSERT_LIBRARIES:+:${DYLD_INSERT_LIBRARIES}}" \
     "$GAME" "$@"

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the two native pieces BepInEx needs to run FM26 on macOS.
+"""Build the native pieces BepInEx needs to run FM26 on macOS.
 
 - libfunchook.dylib: funchook 1.1.3 for x86_64, with patches/funchook-rosetta.patch.
   BepInEx's default hooking library (Dobby) patches code in a way Rosetta 2
@@ -7,6 +7,8 @@
 - Il2CppInterop.Runtime.dll and Il2CppInterop.Common.dll: Il2CppInterop 1.5.3
   (the version in BepInEx 6.0.0-be.789), with patches/il2cppinterop-macos.patch
   so that class injection finds GameAssembly.dylib and FM26's clang-built code.
+- clear-exception-ports: clear_exception_ports.c, which run_regeneratefm.sh
+  starts FM26 through when the Epic Games Launcher started it.
 
 Each is cloned at a pinned commit, patched and built into --output. Needs git,
 CMake, Xcode's command-line tools and the .NET 8 SDK (Il2CppInterop pins it).
@@ -68,6 +70,11 @@ def build_il2cppinterop(work: Path, output: Path, dotnet: str) -> None:
                     output / "Il2CppInterop.Common.dll")
 
 
+def build_clear_exception_ports(output: Path) -> None:
+    run("xcrun", "clang", "-O2", "-Wall", "-arch", "arm64", "-arch", "x86_64", "-mmacosx-version-min=12.0",
+        "-o", output / "clear-exception-ports", HERE / "clear_exception_ports.c")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--output", type=Path, default=HERE / "build")
@@ -84,7 +91,8 @@ def main() -> None:
     with tempfile.TemporaryDirectory(prefix="regeneratefm-macos-") as scratch:
         build_funchook(Path(scratch), args.output)
         build_il2cppinterop(Path(scratch), args.output, dotnet)
-    for name in ("libfunchook.dylib", "Il2CppInterop.Runtime.dll", "Il2CppInterop.Common.dll"):
+    build_clear_exception_ports(args.output)
+    for name in ("libfunchook.dylib", "Il2CppInterop.Runtime.dll", "Il2CppInterop.Common.dll", "clear-exception-ports"):
         print(f"Built {args.output / name}")
 
 

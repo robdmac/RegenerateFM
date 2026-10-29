@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
+using RegenerateFM.Desktop.FM24.Setup;
 
 namespace RegenerateFM.Desktop.FM24.Memory
 {
@@ -30,13 +31,17 @@ namespace RegenerateFM.Desktop.FM24.Memory
             return LinuxProcess.Running();
         }
 
-        // FM24's executable: fm.exe in "Football Manager 2024" (not FM26's, also
-        // fm.exe), or fm.app's on the Mac.
-        public static bool IsFm24(string executable, string folder = "Football Manager 2024")
+        // FM24's executable: fm.exe in its game folder, "Football Manager 2024"
+        // (Steam's) or "FootballManager24" (Epic's), not FM26's, also fm.exe;
+        // or fm.app's on the Mac. ``folder`` checks for one folder instead.
+        public static bool IsFm24(string executable, string folder = null)
         {
             string path = (executable ?? "").Replace('\\', '/');
-            string suffix = "/" + folder + (OperatingSystem.IsMacOS() ? "/fm.app/Contents/MacOS/fm" : "/fm.exe");
-            return path.EndsWith(suffix, StringComparison.OrdinalIgnoreCase);
+            string program = OperatingSystem.IsMacOS() ? "/fm.app/Contents/MacOS/fm" : "/fm.exe";
+            foreach (string name in folder != null ? new[] { folder } : Fm24Setup.GameFolders)
+                if (path.EndsWith("/" + name + program, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            return false;
         }
 
         // The game in process ``pid``, the same object while that process runs,
