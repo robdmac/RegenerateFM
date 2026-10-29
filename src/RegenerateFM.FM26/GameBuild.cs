@@ -70,6 +70,15 @@ namespace RegenerateFM.FM26
                 if (HasHash(gameAssembly, "7ce3eb474dc6093df633f979e869e55b2ec7953fde2e732392a694d379ff7a0c")
                     && HasHash(gamePlugin, "eb6c86fab56e051fe41482c7b93d8cb0af716a1cc2c6197ce1babbff68372bb8"))
                     return true;
+                // FM27 27.0.0 for Windows (Steam), with its own user data.
+                if (HasHash(gameAssembly, "820d6618acafac7dffc1ef3b489582eddb84b0343d4f34d55fff9fb70881e00a")
+                    && HasHash(gamePlugin, "bc940e472418fc5c214208d7cf30fecf600f689b6f9d71c11ba19a2df0fe057f"))
+                {
+                    Fm27 = true;
+                    Text.GameName = "FM27";
+                    UserDataName = "Football Manager 27";
+                    return true;
+                }
                 // Epic's FM26 for Windows: GameAssembly.dll is the same code built
                 // again (only its build time and debug ID differ) with the same
                 // metadata; its game_plugin.dll, whose code the plugin doesn't

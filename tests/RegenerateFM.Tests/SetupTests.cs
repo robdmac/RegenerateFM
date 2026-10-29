@@ -184,6 +184,8 @@ namespace RegenerateFM.Tests
             string demo = "/Games/Football Manager 26 Demo", fm24 = "/Games/Football Manager 2024";
             Assert.Equal("\"" + Path.Combine(demo, "run_regeneratefm.sh") + "\"", SteamLaunch.Option("fm26demo", demo, "macos"));
             Assert.Equal("WINEDLLOVERRIDES=\"winhttp=n,b\"", SteamLaunch.Option("fm26demo", demo, "linux"));
+            Assert.Equal("4530370", SteamLaunch.Games["fm27"].App);
+            Assert.Equal("WINEDLLOVERRIDES=\"winhttp=n,b\"", SteamLaunch.Option("fm27", "/Games/Football Manager 27", "linux"));
             Assert.Equal("\"" + Path.Combine(fm24, "run_regeneratefm24.sh") + "\"", SteamLaunch.Option("fm24", fm24, "macos"));
             Assert.Equal("WINEDLLOVERRIDES=\"winmm=n,b\"", SteamLaunch.Option("fm24", fm24, "linux"));
             Assert.Null(SteamLaunch.Option("fm26", fm24, "windows"));

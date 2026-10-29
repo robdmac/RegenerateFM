@@ -42,10 +42,11 @@ namespace RegenerateFM.FM26
         // Il2CppInterop's hook passes with the Windows calling convention. Under
         // macOS's x64 System V convention the game then gets a broken handle,
         // throws "Attempting to use an invalid operation handle" and never
-        // finishes the reload, so there that method isn't hooked. FM26 calls
-        // RegisterResourceLocator (object arguments only) for each file of the
-        // folder as the enumeration completes; once those calls have stopped for
-        // LocatorsSettled, CheckRefreshTimeout refreshes the panels.
+        // finishes the reload, so there that method isn't hooked; FM27 has no
+        // such method. Both games call RegisterResourceLocator (object arguments
+        // only) for each file of the folder as the enumeration completes; once
+        // those calls have stopped for LocatorsSettled, CheckRefreshTimeout
+        // refreshes the panels.
         [HarmonyPatch(typeof(ResourcesSubsystem), "RegisterResourceLocator")]
         private static class LocatorPatch
         {
