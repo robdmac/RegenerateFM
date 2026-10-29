@@ -7,6 +7,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using RegenerateFM.Desktop.Epic;
 using RegenerateFM.Desktop.FM24.Memory;
 
 namespace RegenerateFM.Desktop.FM24.Setup
@@ -345,7 +346,7 @@ namespace RegenerateFM.Desktop.FM24.Setup
             }
             Log("Installed the FM24 native portrait menus and the Squad menu's \"Generate missing squad faces...\" item " +
                 "with an authenticated loopback bridge.");
-            if (Mac)
+            if (Mac && EpicLaunch.Record(game) == null)
                 Log("Steam launch option for FM24: \"" + Path.Combine(game, Launcher) + "\" %command%");
             else if (OperatingSystem.IsWindows())
                 Log("On Windows, FM24 loads the DLL from its folder; no launch option is needed.");
@@ -355,8 +356,9 @@ namespace RegenerateFM.Desktop.FM24.Setup
                 Log("Start the companion while you play (add --preview-only for no-charge tests).");
         }
 
-        // Removes the library, its settings and the launcher, and restores the panels.
-        public void Remove(string game, string skin)
+        // Removes the library, its settings and the launcher, and restores the
+        // panels unless ``keepPanels`` (another FM24 copy still uses the skin).
+        public void Remove(string game, string skin, bool keepPanels = false)
         {
             game = Path.GetFullPath(game);
             skin = Path.GetFullPath(skin);
@@ -366,8 +368,9 @@ namespace RegenerateFM.Desktop.FM24.Setup
             var transaction = NewTransaction();
             try
             {
-                foreach (var (name, entry) in metadata["panels"].AsObject())
-                    RestorePanel(skin, name, entry, transaction);
+                if (!keepPanels)
+                    foreach (var (name, entry) in metadata["panels"].AsObject())
+                        RestorePanel(skin, name, entry, transaction);
                 foreach (string file in new[] { Library, Config, Manifest, Launcher }.Where(file => file != null))
                     transaction.Remove(Path.Combine(game, file));
             }
@@ -376,7 +379,8 @@ namespace RegenerateFM.Desktop.FM24.Setup
                 Undo(transaction);
                 throw;
             }
-            Log("Removed the native library and configuration and restored the original RegenerateFM panels.");
+            Log(keepPanels ? "Removed the native library and configuration. The RegenerateFM skin's panels are kept for your other FM24."
+                           : "Removed the native library and configuration and restored the original RegenerateFM panels.");
         }
 
         private void Undo(Transaction transaction)

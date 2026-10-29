@@ -7,7 +7,9 @@
 // RegenerateFM folder and runs its setup, which installs the Mac library and
 // run_regeneratefm24.sh. It then sets the game's Steam launch option as the
 // desktop program's SteamLaunch does, so Play in Steam starts RegenerateFM.
-// fm.app itself is never changed. macos/make_installer.py builds, signs and
+// FM24 from the Epic Games Launcher is listed too; for it the companion's
+// setup makes run_regeneratefm24.sh the program Epic starts (Epic/
+// EpicLaunch.cs), as Epic has no launch options. fm.app itself is never changed. macos/make_installer.py builds, signs and
 // packs it.
 //
 // With --cli it runs one step without a window, for tests:
@@ -144,6 +146,8 @@ struct Game: Hashable {
     let folder: URL
 
     var isFM24: Bool { appID == Steam.fm24 }
+    /// Installed by the Epic Games Launcher, not Steam.
+    var isEpic: Bool { Epic.installs().contains(realPath(folder)) }
     var launcher: String { isFM24 ? "run_regeneratefm24.sh" : Installer.launcher }
 }
 
@@ -153,6 +157,32 @@ func realPath(_ url: URL) -> URL {
     guard let resolved = realpath(url.path, nil) else { return url.standardizedFileURL }
     defer { free(resolved) }
     return URL(fileURLWithPath: String(cString: resolved))
+}
+
+/// The Epic Games Launcher's installed games, from its records (as
+/// src/RegenerateFM.Desktop/Epic/EpicLaunch.cs reads them).
+enum Epic {
+    static var manifests: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/Epic/EpicGamesLauncher/Data/Manifests")
+    }
+
+    /// Every game folder Epic has installed.
+    static func installs() -> [URL] {
+        let records = (try? FileManager.default.contentsOfDirectory(at: manifests, includingPropertiesForKeys: nil)) ?? []
+        return records.filter { $0.pathExtension == "item" }.sorted { $0.path < $1.path }.compactMap { record in
+            guard let data = try? Data(contentsOf: record),
+                  let item = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let location = item["InstallLocation"] as? String, !location.isEmpty else { return nil }
+            return realPath(URL(fileURLWithPath: location))
+        }
+    }
+
+    /// FM24 among them: its data is beside fm.app (FM26's is inside it).
+    static func installedGames() -> [Game] {
+        installs().filter { FileManager.default.fileExists(atPath: $0.appendingPathComponent("data/game/panels.fmf").path) }
+            .map { Game(name: "Football Manager 2024 (Epic)", appID: Steam.fm24, folder: $0) }
+    }
 }
 
 enum Steam {
@@ -369,14 +399,17 @@ enum Installer {
                 removexattr(target.appendingPathComponent(name).path, "com.apple.quarantine", XATTR_NOFOLLOW)
             }
         }
-        return try runCompanion(folder, ["setup", "--game-dir", folder.path, "--no-launch-option"])
+        // The setup sets what Epic starts; Steam's launch option is set here.
+        let epic = Epic.installs().contains(realPath(folder))
+        return try runCompanion(folder, ["setup", "--game-dir", folder.path] + (epic ? [] : ["--no-launch-option"]))
     }
 
     /// FM24: the companion's setup --remove (the library, launcher and
     /// skin panels), then the companion itself.
     static func removeFM24(from folder: URL) throws -> String {
         if FileManager.default.fileExists(atPath: companion(folder).path) {
-            _ = try runCompanion(folder, ["setup", "--game-dir", folder.path, "--remove", "--no-launch-option"])
+            let epic = Epic.installs().contains(realPath(folder))
+            _ = try runCompanion(folder, ["setup", "--game-dir", folder.path, "--remove"] + (epic ? [] : ["--no-launch-option"]))
         }
         let ours = folder.appendingPathComponent("RegenerateFM")
         if FileManager.default.fileExists(atPath: ours.path) { try FileManager.default.removeItem(at: ours) }
@@ -498,12 +531,12 @@ final class Model: ObservableObject {
     init() { refresh() }
 
     func refresh() {
-        games = Steam.installedGames()
+        games = Steam.installedGames() + Epic.installedGames()
         if chosen == nil || !games.contains(chosen!) && !FileManager.default.fileExists(atPath: chosen!.folder.path) {
             chosen = games.first
         }
         if chosen == nil {
-            message = "Neither Football Manager 26 nor Football Manager 2024 was found in your Steam libraries. Choose the game's folder (in Steam: Manage > Browse local files)."
+            message = "Neither Football Manager 26 nor Football Manager 2024 was found in your Steam libraries or Epic's games. Choose the game's folder (in Steam: Manage > Browse local files)."
         }
     }
 
@@ -522,6 +555,7 @@ final class Model: ObservableObject {
         let demo = folder.lastPathComponent.localizedCaseInsensitiveContains("demo")
         let (name, appID) = Steam.games[fm24 ? 2 : demo ? 1 : 0]
         chosen = Game(name: name, appID: appID, folder: folder)
+        if let epic = Epic.installedGames().first(where: { $0.folder == realPath(folder) }) { chosen = epic }
         if !games.contains(chosen!) { games.append(chosen!) }
         message = ""
     }
@@ -569,7 +603,9 @@ final class Model: ObservableObject {
     private func finishInstall(_ game: Game, note: String? = nil) {
         var text = "RegenerateFM \(Installer.version) is installed in \(game.name)."
         if let note = note, !note.hasPrefix("Downloaded") { text += " " + note }
-        if !Steam.needsChange(game, remove: false) {
+        if game.isEpic {
+            text += " Epic now starts it with RegenerateFM: press Launch in the Epic Games Launcher. After an Epic update or Verify, click Install again."
+        } else if !Steam.needsChange(game, remove: false) {
             text += " Its Steam launch option is already set: press Play in Steam."
         } else if Steam.running() {
             text += " To finish, quit Steam (Steam > Quit Steam) and click Install again, so the installer can set the game's launch option. Or set it yourself in Steam (\(game.name) > Properties > General > Launch Options):"
@@ -597,8 +633,9 @@ final class Model: ObservableObject {
         guard let game = chosen else { return }
         if Installer.gameRunning(game.folder) { message = "Quit \(game.name) first."; return }
         manual = nil
-        // Without the launcher, Steam couldn't start the game with the option still set.
-        if Steam.needsChange(game, remove: true) {
+        // Without the launcher, Steam couldn't start the game with the option
+        // still set. For Epic's FM24 the companion's setup puts fm.app back.
+        if !game.isEpic && Steam.needsChange(game, remove: true) {
             if Steam.running() {
                 message = "Quit Steam first (Steam > Quit Steam), so the installer can take RegenerateFM out of the game's launch option, then click Uninstall again."
                 return
@@ -726,7 +763,9 @@ func runCommandLine(_ arguments: [String]) -> Int32 {
             let game = Game(name: Steam.games[0].0, appID: Steam.games[0].1, folder: URL(fileURLWithPath: arguments[1]))
             print(Steam.needsChange(game, remove: arguments.contains("--remove")))
         case "games":
-            for game in Steam.installedGames() { print("\(game.appID) \(game.folder.path)") }
+            for game in Steam.installedGames() + Epic.installedGames() {
+                print("\(game.appID) \(game.folder.path)\(game.isEpic ? " epic" : "")")
+            }
         default:
             FileHandle.standardError.write(Data("Unknown command\n".utf8))
             return 2

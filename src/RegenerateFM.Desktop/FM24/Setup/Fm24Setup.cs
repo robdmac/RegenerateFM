@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
+using RegenerateFM.Desktop.Epic;
 using RegenerateFM.Desktop.Steam;
 
 namespace RegenerateFM.Desktop.FM24.Setup
@@ -19,8 +20,11 @@ namespace RegenerateFM.Desktop.FM24.Setup
     {
         public const string AppId = "2252570";
         public const string GameFolder = "Football Manager 2024";
+        public const string EpicFolder = "FootballManager24";
         // The game's install folder: Steam's (as the user-data folder), then Epic's.
-        public static readonly string[] GameFolders = { GameFolder, "FootballManager24" };
+        public static readonly string[] GameFolders = { GameFolder, EpicFolder };
+        // On the Mac, what Epic starts: the game's own program, or RegenerateFM's launcher.
+        public const string MacProgram = "fm.app/Contents/MacOS/fm", MacLauncher = "run_regeneratefm24.sh";
         public static readonly Dictionary<string, string> Panels = new Dictionary<string, string>
         {
             ["player"] = "/panels/player/player overview panel.xml",
@@ -28,6 +32,8 @@ namespace RegenerateFM.Desktop.FM24.Setup
         };
         public const string QuitSteam = "Steam is running. Quit Steam first (Steam > Exit, not just closing its window), then run the " +
                                         "RegenerateFM setup again: Steam only keeps a game's launch option set while it is closed.";
+        public const string QuitEpic = "The Epic Games Launcher is running. Quit it first (Epic Games Launcher > Quit Epic Games Launcher), " +
+                                       "then run the RegenerateFM setup again: RegenerateFM only changes what Epic starts while it is closed.";
 
         public Fm24Setup(NativeInstall native = null)
         {
@@ -52,7 +58,12 @@ namespace RegenerateFM.Desktop.FM24.Setup
         // Wine's Z: drive on Linux.
         public string WindowsPath(string companion) => Proton ? "Z:" + companion.Replace('/', '\\') : companion;
 
-        public static string FindGameDir() => SteamLaunch.FindGameDir("fm24", OperatingSystem.IsMacOS() ? "fm.app/Contents/MacOS/fm" : "fm.exe");
+        // FM24's folder in a Steam library, else where Epic installed it.
+        public static string FindGameDir()
+        {
+            string executable = OperatingSystem.IsMacOS() ? MacProgram : "fm.exe";
+            return SteamLaunch.FindGameDir("fm24", executable) ?? EpicLaunch.FindGameDir(EpicFolder, executable);
+        }
 
         // FM24's user-data folder (the one with skins and graphics), not the game folder.
         public string FindUserDataDir(string game)
@@ -166,25 +177,39 @@ namespace RegenerateFM.Desktop.FM24.Setup
             }
         }
 
-        // On Linux and macOS, FM24's launch option can only be set with Steam closed.
-        public void CheckSteamClosed(string game, bool remove = false)
+        // On Linux and macOS, FM24's launch option can only be set with Steam
+        // closed, and on macOS what Epic starts with Epic closed.
+        public void CheckLauncherClosed(string game, bool remove = false)
         {
-            if (!OperatingSystem.IsWindows() && SteamLaunch.Running() && SteamLaunch.NeedsChange("fm24", game, remove))
+            if (OperatingSystem.IsWindows())
+                return;
+            if (EpicLaunch.Record(game) != null)
+            {
+                if (OperatingSystem.IsMacOS() && EpicLaunch.Running() && EpicLaunch.NeedsChange(game, MacLauncher, MacProgram, remove))
+                    throw new SetupException(QuitEpic);
+            }
+            else if (SteamLaunch.Running() && SteamLaunch.NeedsChange("fm24", game, remove))
                 throw new SetupException(QuitSteam);
         }
 
-        // Steam's launch option for FM24 (macOS and Proton), so Play starts RegenerateFM.
+        // So Play starts RegenerateFM: Steam's launch option for FM24 (macOS and
+        // Proton), or on macOS the program Epic starts for Epic's FM24. On
+        // Windows FM24 loads the DLL however it is started.
         private void LaunchOption(string game, bool remove = false)
         {
-            if (!OperatingSystem.IsWindows())
+            if (OperatingSystem.IsWindows())
+                return;
+            if (EpicLaunch.Record(game) == null)
                 Log(SteamLaunch.Apply("fm24", game, remove));
+            else if (OperatingSystem.IsMacOS())
+                Log(EpicLaunch.Apply(game, MacLauncher, MacProgram, remove));
         }
 
         public void Install(string game, string userData, string companion = null, bool launchOption = true)
         {
             string skinDir = Path.Combine(userData, "skins", "regeneratefm");
             if (launchOption)
-                CheckSteamClosed(game);
+                CheckLauncherClosed(game);
             if (IsSetUp(game, skinDir, companion))
             {
                 Log("RegenerateFM is already set up for FM24.");
@@ -226,18 +251,30 @@ namespace RegenerateFM.Desktop.FM24.Setup
         public void Remove(string game, string userData, bool launchOption = true)
         {
             if (launchOption)
-                CheckSteamClosed(game, remove: true);
+                CheckLauncherClosed(game, remove: true);
             Native.Log = Log;
-            Native.Remove(game, Path.Combine(userData, "skins", "regeneratefm"));
+            Native.Remove(game, Path.Combine(userData, "skins", "regeneratefm"), keepPanels: OtherCopySetUp(game));
             if (launchOption)
                 LaunchOption(game, remove: true);
+        }
+
+        // Whether RegenerateFM is also set up in another FM24 (Steam's and
+        // Epic's share the user-data folder, and so the skin).
+        public static bool OtherCopySetUp(string game)
+        {
+            string executable = OperatingSystem.IsMacOS() ? MacProgram : "fm.exe";
+            foreach (string other in new[] { SteamLaunch.FindGameDir("fm24", executable), EpicLaunch.FindGameDir(EpicFolder, executable) })
+                if (other != null && SteamLaunch.Resolve(other) != SteamLaunch.Resolve(game) &&
+                    File.Exists(Path.Combine(other, NativeInstall.Manifest)))
+                    return true;
+            return false;
         }
 
         public (string Game, string UserData) ResolveDirs(string gameDir, string userDataDir)
         {
             string game = gameDir != null ? SteamLaunch.Resolve(gameDir) : FindGameDir();
             if (game == null || !File.Exists(Path.Combine(game, Native.Executable)))
-                throw new SetupException("RegenerateFM couldn't find FM24 in your Steam libraries. Run the setup again with " +
+                throw new SetupException("RegenerateFM couldn't find FM24 in your Steam libraries or Epic's games. Run the setup again with " +
                                          "--game-dir \"<path to Football Manager 2024>\".");
             string userData = userDataDir != null ? SteamLaunch.Resolve(userDataDir) : FindUserDataDir(game);
             if (userData == null || !Directory.Exists(userData))
