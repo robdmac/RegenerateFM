@@ -25,7 +25,7 @@ The images come from OpenAI's image API, and each face is one paid image request
 | **FM26 Demo** 26.3.2 | Supported | Supported | Supported (runs under Rosetta 2) |
 | **FM24** 24.4.2 | Supported | Supported | Supported |
 
-The Steam and Epic Games Store versions are both supported (the FM26 Demo from Steam only).
+The Steam and Epic Games Store versions are both supported.
 
 Each supported combination has been checked in game; see [Platform support](#platform-support). RegenerateFM is pinned to these builds and turns itself off on any other version until it is checked.
 

@@ -164,8 +164,9 @@ func realPath(_ url: URL) -> URL {
 /// The Epic Games Launcher's installed games, from its records (as
 /// src/RegenerateFM.Desktop/Epic/EpicLaunch.cs reads them).
 enum Epic {
-    /// Epic's IDs (AppName) for FM24 and FM26.
-    static let fm24 = "da2038ef19e94554898056d79168b3f8", fm26 = "e54a251079034694b55ab6289707bfa0"
+    /// Epic's IDs (AppName) for FM24, FM26 and the FM26 Demo.
+    static let fm24 = "da2038ef19e94554898056d79168b3f8", fm26 = "e54a251079034694b55ab6289707bfa0",
+               fm26Demo = "4bec350f11854ea1b6c76969ac88976e"
     static let backupSuffix = ".regeneratefm-backup"
 
     static var manifests: URL {
@@ -196,6 +197,7 @@ enum Epic {
             switch entry.app {
             case fm24: return Game(name: "Football Manager 2024 (Epic)", appID: Steam.fm24, folder: entry.folder)
             case fm26: return Game(name: "Football Manager 26 (Epic)", appID: Steam.games[0].1, folder: entry.folder)
+            case fm26Demo: return Game(name: "Football Manager 26 Demo (Epic)", appID: Steam.games[1].1, folder: entry.folder)
             default: return nil
             }
         }
