@@ -57,7 +57,8 @@ namespace RegenerateFM.FM26
                     profile.Name = value;
                     break;
                 }
-            profile.Position = FirstText(FindNamed(banner, "Frame 1000003901")) ?? CompactPosition(banner);
+            profile.Position = FirstText(FindNamed(banner, "Frame 1000003901")) ?? CompactPosition(banner) ??
+                               (Fm27 ? BoundText(banner, Fm27PositionPath) : null);
             profile.Club = FirstText(FindNamed(header, "PlayingTeam"));
             profile.Gender = HeaderGender(header, playerId);
             profile.Relatives = HeaderRelatives(header, playerId);
@@ -393,8 +394,13 @@ namespace RegenerateFM.FM26
             return attributes != null && attributes.worldBound.width > 500;
         }
 
+        // What FM27's player header binds its position to, in the player's language.
+        private const string Fm27PositionPath = "person.PositionCombinedStringLong";
+
         private static bool IsPlayerHeader(VisualElement header)
         {
+            if (Fm27 && BoundText(header, Fm27PositionPath) != null)
+                return true;
             foreach (var value in TextValues(header))
                 if (PositionPattern.IsMatch(value))
                     return true;

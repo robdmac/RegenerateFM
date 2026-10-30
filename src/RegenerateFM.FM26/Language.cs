@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
+using Il2CppInterop.Runtime;
 using SI.Bindable;
 using SI.Translation;
 using SI.VisualScripting;
@@ -150,10 +151,16 @@ namespace RegenerateFM.FM26
                 var inputs = binding.VisualFunction.Inputs;
                 for (int i = 0; i < inputs.Count; i++)
                 {
+                    if (Fm27)
+                    {
+                        if (inputs[i] != null && ListedArgs(inputs[i].Pointer).Exists(arg =>
+                            string.Equals(arg.Binding.ToString(), "Person.Age", StringComparison.OrdinalIgnoreCase)))
+                            return true;
+                        continue;
+                    }
                     var list = inputs[i]?.TryCast<VisualArg<SI.Core.StructList<TranslationArg>>>();
                     if (list == null)
                         continue;
-                    // m_value, not Get(): FM27's VisualArg has no Get().
                     var items = list.m_value;
                     for (int j = 0; j < items.Count; j++)
                     {
@@ -170,6 +177,57 @@ namespace RegenerateFM.FM26
             return false;
         }
 
+        // The text of the first shown label under element that is bound straight
+        // to this path, in the player's language, or null.
+        private static string BoundText(VisualElement element, string path)
+        {
+            if (element == null || element.worldBound.width <= 0)
+                return null;
+            var label = element.TryCast<SIText>();
+            if (label != null && !string.IsNullOrEmpty(label.text))
+            {
+                try
+                {
+                    var binding = label.m_textBinding;
+                    if (binding.Kind == BindingMethodKind.Direct &&
+                        string.Equals(binding.Direct?.Path.ToString(), path, StringComparison.OrdinalIgnoreCase))
+                        return WebUtility.HtmlDecode(Tags.Replace(label.text, "")).Trim();
+                }
+                catch (Exception error)
+                {
+                    Instance?.Log.LogWarning("An FM26 label's binding could not be read: " + error.Message);
+                }
+            }
+            for (int i = 0; i < element.hierarchy.childCount; i++)
+                if (BoundText(element.hierarchy.ElementAt(i), path) is string text)
+                    return text;
+            return null;
+        }
+
+        // The arguments of an FM27 label's text, when this input holds them: a
+        // StructListVisualArg<TranslationArg>, whose m_items array Il2CppInterop
+        // doesn't wrap, so each element is boxed from the array's memory.
+        private static unsafe List<TranslationArg> ListedArgs(IntPtr input)
+        {
+            var args = new List<TranslationArg>();
+            var items = IL2CPP.il2cpp_class_get_field_from_name(IL2CPP.il2cpp_object_get_class(input), "m_items");
+            if (items == IntPtr.Zero)
+                return args;
+            var array = *(IntPtr*)((byte*)input + IL2CPP.il2cpp_field_get_offset(items));
+            if (array == IntPtr.Zero)
+                return args;
+            var arrayType = IL2CPP.il2cpp_object_get_class(array);
+            var element = IL2CPP.il2cpp_class_get_element_class(arrayType);
+            if (element != Il2CppClassPointerStore<TranslationArg>.NativeClassPtr)
+                return args;
+            int size = IL2CPP.il2cpp_class_array_element_size(arrayType);
+            // An IL2CPP array's elements follow its class, monitor, bounds and length.
+            byte* first = (byte*)array + IntPtr.Size * 4;
+            for (long j = 0; j < IL2CPP.il2cpp_array_length(array); j++)
+                args.Add(new TranslationArg(IL2CPP.il2cpp_value_box(element, (IntPtr)(first + j * size))));
+            return args;
+        }
+
         // The translation ID of the text an FM26 label shows, or 0.
         private static int LabelId(VisualElement element)
         {
@@ -184,13 +242,30 @@ namespace RegenerateFM.FM26
                 var inputs = binding.VisualFunction.Inputs;
                 for (int i = 0; i < inputs.Count; i++)
                     if (inputs[i]?.TryCast<VisualArg<TranslationID>>() is VisualArg<TranslationID> id)
-                        return id.m_value.GameID;
+                        return Fm27 ? TranslationGameId(id.Pointer) : id.m_value.GameID;
             }
             catch (Exception error)
             {
                 Instance?.Log.LogWarning("An FM26 label's binding could not be read: " + error.Message);
             }
             return 0;
+        }
+
+        // The GameID of a VisualArg<TranslationID>'s value, read at the field
+        // offsets this game's IL2CPP gives: FM27's labels hold a
+        // GenericVisualArg<TranslationID>, whose m_value Il2CppInterop reads
+        // from the wrong bytes.
+        private static unsafe int TranslationGameId(IntPtr arg)
+        {
+            IntPtr value = IntPtr.Zero;
+            for (var type = IL2CPP.il2cpp_object_get_class(arg); type != IntPtr.Zero && value == IntPtr.Zero; type = IL2CPP.il2cpp_class_get_parent(type))
+                value = IL2CPP.il2cpp_class_get_field_from_name(type, "m_value");
+            var gameId = IL2CPP.il2cpp_class_get_field_from_name(Il2CppClassPointerStore<TranslationID>.NativeClassPtr, "GameID");
+            if (value == IntPtr.Zero || gameId == IntPtr.Zero)
+                return 0;
+            // A struct's field offsets count the object header before its fields.
+            int offset = (int)IL2CPP.il2cpp_field_get_offset(value) + (int)IL2CPP.il2cpp_field_get_offset(gameId) - IntPtr.Size * 2;
+            return *(int*)((byte*)arg + offset);
         }
 
         // The attribute panel's column headings by section ("Technical",
