@@ -26,7 +26,7 @@ The images come from OpenAI's image API, and each face is one paid image request
 | **FM26 Demo** 26.3.2 | Supported | Supported | Supported (runs under Rosetta 2) |
 | **FM24** 24.4.2 | Supported | Supported | Supported |
 
-The Steam and Epic Games Store versions are both supported. With Epic, if FM27 says "The server is not reachable" the first time it starts with RegenerateFM, start it once without RegenerateFM and allow it access to your Epic account when Epic asks (on Windows: rename `winhttp.dll` in the game folder, start FM27 from Epic, allow access, quit, and rename it back).
+The Steam and Epic Games Store versions are both supported. With Epic, FM27 asks the first time it starts for access to your Epic account, and on Windows it can't ask while RegenerateFM is installed: FM27 then stays signed out (it may say "The server is not reachable"). Start it once without RegenerateFM and allow access: rename `winhttp.dll` in the game folder, start FM27 from Epic, choose **Allow**, quit, and rename it back. Later starts with RegenerateFM sign in as usual.
 
 Each supported combination has been checked in game; see [Platform support](#platform-support). RegenerateFM is pinned to these builds and turns itself off on any other version until it is checked.
 
