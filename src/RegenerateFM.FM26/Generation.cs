@@ -436,7 +436,11 @@ namespace RegenerateFM.FM26
         // The game's folder under Sports Interactive; SupportedGameBuild sets it for the Demo.
         private static string UserDataName = "Football Manager 26";
 
-        private bool Refresh()
+        // ``purge``: a face was taken off, not replaced. FM27 keeps the folder's
+        // old entries when it is registered again, so a removed face's name
+        // still points at its missing file (a newgen then shows a blank instead
+        // of FM's 3D face); the folder's entries are dropped first.
+        private bool Refresh(bool purge = false)
         {
             if (WaitingForGraphics)
             {
@@ -460,6 +464,12 @@ namespace RegenerateFM.FM26
                 WaitingForGraphics = true;
                 _lastLocatorUtc = null;
                 _refreshStartedUtc = System.DateTime.UtcNow;
+                // By name: FM26 has no PurgeLocalPath.
+                if (purge && typeof(ResourcesSubsystem).GetMethod("PurgeLocalPath") is System.Reflection.MethodInfo purgePath)
+                {
+                    purgePath.Invoke(resources[0], new object[] { folder });
+                    Log.LogInfo("Dropped FM's entries for the RegenerateFM graphics folder");
+                }
                 // By name: FM27's returns a LocalPathScan, FM26's nothing, so a call
                 // compiled against FM26's is a missing method in FM27.
                 typeof(ResourcesSubsystem).GetMethod(nameof(ResourcesSubsystem.RegisterLocalPath))

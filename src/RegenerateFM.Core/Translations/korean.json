@@ -305,5 +305,9 @@
  "Downloading Unity's libraries…": "Unity 라이브러리를 다운로드하는 중…",
  "Reading FM26's code…": "FM26의 코드를 읽는 중…",
  "Building RegenerateFM's link to FM26…": "RegenerateFM과 FM26의 연결을 만드는 중…",
- "Starting FM26…": "FM26을 시작하는 중…"
+ "Starting FM26…": "FM26을 시작하는 중…",
+ "Previous face": "이전 얼굴 사진",
+ "Remove face": "얼굴 사진 삭제",
+ "No earlier face to go back to": "되돌릴 이전 얼굴 사진이 없습니다",
+ "No RegenerateFM face to remove": "삭제할 RegenerateFM 얼굴 사진이 없습니다"
 }

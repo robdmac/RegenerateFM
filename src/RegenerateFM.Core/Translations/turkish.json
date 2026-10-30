@@ -305,5 +305,9 @@
   "Downloading Unity's libraries…": "Unity kütüphaneleri indiriliyor…",
   "Reading FM26's code…": "FM26'nın kodu okunuyor…",
   "Building RegenerateFM's link to FM26…": "RegenerateFM ile FM26 arasındaki bağlantı kuruluyor…",
-  "Starting FM26…": "FM26 başlatılıyor…"
+  "Starting FM26…": "FM26 başlatılıyor…",
+  "Previous face": "Önceki yüz",
+  "Remove face": "Yüzü kaldır",
+  "No earlier face to go back to": "Geri dönülecek önceki yüz yok",
+  "No RegenerateFM face to remove": "Kaldırılacak RegenerateFM yüzü yok"
 }

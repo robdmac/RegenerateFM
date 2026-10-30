@@ -103,20 +103,20 @@ namespace RegenerateFM.FM26
                 int rows = -1;
                 bool shown = false;
                 // Found once: a hidden row has no size, so FindText can't find it again.
-                VisualElement generate = null, update = null;
+                var ours = new VisualElement[MenuLabels.Length];
                 IVisualElementScheduledItem check = null;
                 check = menu.schedule.Execute((Il2CppSystem.Action)(System.Action)(() =>
                 {
                     var now = System.DateTime.UtcNow;
-                    generate = generate ?? MenuRow(menu, Text.T("Generate face"));
-                    update = update ?? MenuRow(menu, Text.T("Update face"));
-                    if (generate == null || update == null || generate.parent != update.parent)
+                    for (int i = 0; i < ours.Length; i++)
+                        ours[i] = ours[i] ?? MenuRow(menu, Text.T(MenuLabels[i]));
+                    var view = ours[0]?.parent;
+                    if (Array.Exists(ours, row => row == null || row.parent != view))
                     {
                         if (now - opened > MenuSettle + MenuSettle)
                             check?.Pause();
                         return;
                     }
-                    var view = update.parent;
                     if (view.childCount != rows)
                     {
                         rows = view.childCount;
@@ -125,19 +125,20 @@ namespace RegenerateFM.FM26
                     bool settled = now - lastChange >= MenuSettle || now - opened >= MenuGiveUp;
                     if (!settled && !shown)
                     {
-                        generate.style.display = DisplayStyle.None;
-                        update.style.display = DisplayStyle.None;
+                        foreach (var row in ours)
+                            row.style.display = DisplayStyle.None;
                         return;
                     }
-                    if (view.IndexOf(update) != view.childCount - 1 || view.IndexOf(generate) != view.childCount - 2)
-                    {
-                        generate.BringToFront();
-                        update.BringToFront();
-                    }
+                    bool last = true;
+                    for (int i = 0; i < ours.Length; i++)
+                        last &= view.IndexOf(ours[i]) == view.childCount - ours.Length + i;
+                    if (!last)
+                        foreach (var row in ours)
+                            row.BringToFront();
                     if (!shown)
                     {
-                        generate.style.display = DisplayStyle.Flex;
-                        update.style.display = DisplayStyle.Flex;
+                        foreach (var row in ours)
+                            row.style.display = DisplayStyle.Flex;
                         shown = true;
                         Instance.Log.LogInfo("RegenerateFM actions shown at the bottom of the Actions menu after " +
                                              (now - opened).TotalSeconds.ToString("0.00") + " s");
@@ -148,6 +149,9 @@ namespace RegenerateFM.FM26
                 }));
                 check.Every(0);
             }
+
+            // RegenerateFM's rows, in their order at the bottom of the menu.
+            private static readonly string[] MenuLabels = { "Generate face", "Update face", "Previous face", "Remove face" };
 
             // How long FM's own rows must stop arriving before ours are shown, and
             // the longest the menu waits for that.
@@ -193,6 +197,15 @@ namespace RegenerateFM.FM26
                 // While the picture is still loading, leave it enabled; the click checks again.
                 if (FaceState(FindNamed(header, "PersonPicture")) == false)
                     context.Description.SetEnabled(update, false);
+                var previous = context.Description.AddItem(parent, Text.T("Previous face"),
+                    (Il2CppSystem.Action)(System.Action)(() => Instance.ChangeFace(personId, false)));
+                var remove = context.Description.AddItem(parent, Text.T("Remove face"),
+                    (Il2CppSystem.Action)(System.Action)(() => Instance.ChangeFace(personId, true)));
+                var choices = personId.HasValue ? FaceChoices(personId.Value, ShownName(header)) : (Previous: true, Remove: true);
+                if (!choices.Previous)
+                    context.Description.SetEnabled(previous, false);
+                if (!choices.Remove)
+                    context.Description.SetEnabled(remove, false);
                 _bound = true;
                 Instance.Log.LogInfo("RegenerateFM actions contributed to the Actions menu for " +
                                      (personId?.ToString() ?? "a profile still loading"));

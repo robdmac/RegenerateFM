@@ -305,5 +305,9 @@
  "Downloading Unity's libraries…": "Unity のライブラリをダウンロードしています…",
  "Reading FM26's code…": "FM26 のコードを読み込んでいます…",
  "Building RegenerateFM's link to FM26…": "RegenerateFM と FM26 の連携を構築しています…",
- "Starting FM26…": "FM26 を起動しています…"
+ "Starting FM26…": "FM26 を起動しています…",
+ "Previous face": "前の顔写真",
+ "Remove face": "顔写真を削除",
+ "No earlier face to go back to": "戻せる前の顔写真がありません",
+ "No RegenerateFM face to remove": "削除する RegenerateFM の顔写真がありません"
 }
