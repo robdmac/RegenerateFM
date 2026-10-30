@@ -244,15 +244,28 @@ namespace RegenerateFM.FM26
                 if (top.name == "ClubAllStaffTool" && FindLabel(top, "All Staff", AllStaffTab) is VisualElement tab && ClickButtonAbove(tab))
                     return "opened the All Staff tab";
                 // The Staff tile is ClubStaff, or at some clubs (Barnsley's)
-                // ClubAllStaffAI, a carousel whose shown page has the title.
+                // ClubAllStaffAI, a carousel whose shown page has the title;
+                // in FM27, ClubAllStaff.
                 if (top.name == "ClubSite" && (FindNamed(FindNamed(top, "ClubStaff"), "title-text-alt") ??
-                                               FindNamed(FindNamed(top, "ClubAllStaffAI"), "title-text")) is VisualElement staff)
+                                               FindNamed(FindNamed(top, "ClubAllStaffAI"), "title-text") ??
+                                               FindNamed(FindNamed(top, "ClubAllStaff"), "title-text")) is VisualElement staff &&
+                    staff.worldBound.width > 0)
                 {
                     PointerClick(staff);
                     return "opened Club Site's Staff";
                 }
+                // FM27's Club Site can have its tiles hidden, the Staff tile with
+                // them; Show Tiles is there only while they are.
+                if (top.name == "ClubSite" && Fm27 && FindNamed(top, "ShowTilesButton") is VisualElement tiles &&
+                    tiles.worldBound.width > 0)
+                {
+                    PointerClick(tiles);
+                    return "showed Club Site's tiles";
+                }
             }
-            else if (top.name == "ClubSite" && FindNamed(FindNamed(top, "FirstTeam"), "title-text") is VisualElement team)
+            // FM27's first team tile has its title as a link, primary-text.
+            else if (top.name == "ClubSite" && FindNamed(top, "FirstTeam") is VisualElement firstTeam &&
+                     (FindNamed(firstTeam, "title-text") ?? FindNamed(firstTeam, "primary-text")) is VisualElement team)
             {
                 PointerClick(team);
                 return "opened Club Site's first team";
