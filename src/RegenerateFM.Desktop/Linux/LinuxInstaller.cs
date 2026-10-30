@@ -28,11 +28,11 @@ namespace RegenerateFM.Desktop.Linux
         public static readonly string[] AllGames = { "fm27", "fm26", "fm26demo", "fm24" };
         public const string Plugin = "BepInEx/plugins/RegenerateFM";
         // What the FM26 folder adds beside fm.exe. Faces and settings are in
-        // FM26's user-data folder, so removing these keeps them.
+        // the game's user-data folder, so removing these keeps them.
         public static readonly string[] Fm26Added = { "BepInEx", "dotnet", "winhttp.dll", "doorstop_config.ini", ".doorstop_version" };
         public const string Companion = "regeneratefm-fm24.exe";
-        // What to expect from FM26's first start after installing (as the macOS installer says).
-        public const string FirstStartNote = "The first time FM26 starts with RegenerateFM, it takes a few minutes longer (up to about 10 on a slower computer) while BepInEx prepares the game, with no progress shown; let it finish. This happens once: later starts are as quick as before. It happens once more after an FM26 update.";
+        // What to expect from the game's first start after installing (as the macOS installer says).
+        public const string FirstStartNote = "The first time the game starts with RegenerateFM, it takes a few minutes longer (up to about 10 on a slower computer) while BepInEx prepares the game, with no progress shown; let it finish. This happens once: later starts are as quick as before. It happens once more after a game update.";
         public const string QuitSteam = "Steam is running. Quit Steam first (Steam > Exit, not just closing its window), then run " +
                                         "install-linux.sh again: Steam only keeps a game's launch option set while it is closed.";
         public const string Usage =
@@ -121,7 +121,7 @@ namespace RegenerateFM.Desktop.Linux
             }
             foreach (string added in Fm26Added)
                 Delete(Path.Combine(folder, added));
-            return new List<string> { "Removed RegenerateFM from " + Path.GetFileName(folder) + ". Your faces are kept in FM26's user-data folder." };
+            return new List<string> { "Removed RegenerateFM from " + Path.GetFileName(folder) + ". Your faces are kept in the game's user-data folder." };
         }
 
         private void RunFm24Setup(string[] args)
