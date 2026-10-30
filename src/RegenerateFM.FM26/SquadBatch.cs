@@ -337,7 +337,15 @@ namespace RegenerateFM.FM26
                     return expected;
             }
             var texts = TextValues(table.parent);
-            // In another language: the count under the team's name ("Kadergröße: 23"),
+            // In another language, FM27 may give the count in brackets after the
+            // team's name, full-width in Chinese and Japanese ("トップチーム選手（23）").
+            for (int i = 0; i < Math.Min(3, texts.Count); i++)
+            {
+                var bracketed = Regex.Match(texts[i], @"[(（]\s*([0-9]+)\s*[)）]$");
+                if (bracketed.Success && int.TryParse(bracketed.Groups[1].Value, out int counted))
+                    return counted;
+            }
+            // Otherwise the count under the team's name ("Kadergröße: 23"),
             // its only number. FM27 shows the team's heading ("Erste Mannschaft")
             // above its name.
             int under = Fm27 ? 2 : 1;
