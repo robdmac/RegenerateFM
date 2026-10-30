@@ -71,6 +71,11 @@ namespace RegenerateFM.FM26
             if (string.IsNullOrWhiteSpace(profile.Club) &&
                 FirstText(FindNamed(header, "Frame 1000003767")) is string contract && Prompts.NoClub(contract))
                 profile.Club = contract.Trim();
+            // FM27 says so where the club would be, in the player's language
+            // (a player with a club has their league there instead).
+            if (Fm27 && string.IsNullOrWhiteSpace(profile.Club) && FindNamed(header, "PlayingTeam") == null &&
+                FirstText(FindNamed(header, "FreeAgentCheck")) != null)
+                profile.Club = "Free Agent";
             profile.Nationality = FirstText(FindNamed(header, "Frame 1000003766")) ?? CompactNation(header) ?? HeaderNation(header);
             foreach (var value in TextValues(banner))
             {
