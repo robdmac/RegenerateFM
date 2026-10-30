@@ -494,6 +494,20 @@ namespace RegenerateFM.FM26
         // template, which opens the player when clicked like a staff name.
         private const string Fm27NameTemplate = "player-name-button-template";
 
+        // The link that opens the player: the row's click stops here, so the row
+        // isn't ticked as well.
+        private static VisualElement NavigableLinkIn(VisualElement element)
+        {
+            if (element == null)
+                return null;
+            if (element.GetIl2CppType().Name == "NavigableLink")
+                return element;
+            for (int i = 0; i < element.hierarchy.childCount; i++)
+                if (NavigableLinkIn(element.hierarchy.ElementAt(i)) is VisualElement link)
+                    return link;
+            return null;
+        }
+
         private static VisualElement RowName(VisualElement row) => FindNamed(row, "NameButton") ?? FindNamed(row, Fm27NameTemplate);
 
         private static SquadCandidate ReadSquadCandidate(VisualElement row)
@@ -905,7 +919,7 @@ namespace RegenerateFM.FM26
                 if (button != null)
                     button.clickable.SimulateSingleClick(null);
                 else
-                    PointerClick(FindNamed(link, "primary-text") ?? link);
+                    PointerClick(FindNamed(link, "primary-text") ?? link, NavigableLinkIn(link));
                 Log.LogInfo("Opened missing player " + target.Name + " from squad row");
                 return;
             }

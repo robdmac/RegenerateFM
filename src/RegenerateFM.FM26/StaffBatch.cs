@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Il2CppInterop.Runtime;
 using SI.Bindable;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -151,10 +152,24 @@ namespace RegenerateFM.FM26
         // A click where the element is, as the pointer would make it: a staff
         // row's name isn't a Button, and opens the person when clicked. FM26
         // routes it to what's under the pointer, so RegenerateFM's dialog lets it
-        // through meanwhile.
-        private static void PointerClick(VisualElement element)
+        // through meanwhile. With stopAt, the click goes no further than that
+        // element: FM27's squad rows also tick themselves when their name is clicked.
+        private static void PointerClick(VisualElement element, VisualElement stopAt = null)
         {
             var center = element.worldBound.center;
+            var stopDown = Stopper<PointerDownEvent>();
+            var stopUp = Stopper<PointerUpEvent>();
+            var stopClick = Stopper<ClickEvent>();
+            var stopMouseDown = Stopper<MouseDownEvent>();
+            var stopMouseUp = Stopper<MouseUpEvent>();
+            if (stopAt != null)
+            {
+                stopAt.RegisterCallback(stopDown);
+                stopAt.RegisterCallback(stopUp);
+                stopAt.RegisterCallback(stopClick);
+                stopAt.RegisterCallback(stopMouseDown);
+                stopAt.RegisterCallback(stopMouseUp);
+            }
             var dialog = Instance?._squadDialog;
             var picking = new List<(VisualElement, PickingMode)>();
             void LetThrough(VisualElement e)
@@ -183,8 +198,19 @@ namespace RegenerateFM.FM26
             {
                 foreach (var (e, mode) in picking)
                     e.pickingMode = mode;
+                if (stopAt != null)
+                {
+                    stopAt.UnregisterCallback(stopDown);
+                    stopAt.UnregisterCallback(stopUp);
+                    stopAt.UnregisterCallback(stopClick);
+                    stopAt.UnregisterCallback(stopMouseDown);
+                    stopAt.UnregisterCallback(stopMouseUp);
+                }
             }
         }
+
+        private static EventCallback<T> Stopper<T>() where T : EventBase<T>, new() =>
+            DelegateSupport.ConvertDelegate<EventCallback<T>>(new Action<T>(e => e.StopPropagation()));
 
         private static bool ClickButtonAbove(VisualElement element)
         {
