@@ -906,7 +906,9 @@ namespace RegenerateFM.FM26
                         }
                     }
                     SetBatchStage(batch, SquadStage.AwaitProfile);
-                    PointerClick(name);
+                    // FM27's staff rows tick themselves too; an owner's name,
+                    // which isn't a link, would leave the row ticked.
+                    PointerClick(name, Fm27 ? name : null);
                     batch.StaffClicked++;
                     Log.LogInfo("Opened missing member of staff " + target.Name + " from the staff list" +
                                 (batch.StaffClicked > 1 ? " (click " + batch.StaffClicked + ")" : ""));
