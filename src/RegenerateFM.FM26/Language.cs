@@ -201,7 +201,7 @@ namespace RegenerateFM.FM26
                     var list = inputs[i]?.TryCast<VisualArg<SI.Core.StructList<TranslationArg>>>();
                     if (list == null)
                         continue;
-                    var items = list.m_value;
+                    var items = Fm26Value(list);
                     for (int j = 0; j < items.Count; j++)
                     {
                         // "Person.Age" on a player's header, "person.age" on a staff member's.
@@ -282,7 +282,7 @@ namespace RegenerateFM.FM26
                 var inputs = binding.VisualFunction.Inputs;
                 for (int i = 0; i < inputs.Count; i++)
                     if (inputs[i]?.TryCast<VisualArg<TranslationID>>() is VisualArg<TranslationID> id)
-                        return Fm27 ? TranslationGameId(id.Pointer) : id.m_value.GameID;
+                        return Fm27 ? TranslationGameId(id.Pointer) : Fm26Value(id).GameID;
             }
             catch (Exception error)
             {
@@ -290,6 +290,11 @@ namespace RegenerateFM.FM26
             }
             return 0;
         }
+
+        // A label argument's value as FM26 itself reads it. Only compiled on
+        // FM26: FM27's VisualArg has no Get, and its m_value is misread.
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        private static T Fm26Value<T>(VisualArg<T> arg) => arg.Get();
 
         // The GameID of a VisualArg<TranslationID>'s value, read at the field
         // offsets this game's IL2CPP gives: FM27's labels hold a
