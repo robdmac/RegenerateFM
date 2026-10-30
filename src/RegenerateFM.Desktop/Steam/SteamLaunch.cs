@@ -38,6 +38,9 @@ namespace RegenerateFM.Desktop.Steam
             // The FM26 Demo is its own Steam app and folder, set up as FM26.
             ["fm26demo"] = new Game { App = "3551360", Folder = "Football Manager 26 Demo", Launcher = "run_regeneratefm.sh",
                                       Proton = "WINEDLLOVERRIDES=\"winhttp=n,b\"" },
+            // FM27 is set up as FM26: the same BepInEx and plugin.
+            ["fm27"] = new Game { App = "4530370", Folder = "Football Manager 27", Launcher = "run_regeneratefm.sh",
+                                  Proton = "WINEDLLOVERRIDES=\"winhttp=n,b\"" },
         };
         private static readonly string[] AppsPath = { "userlocalconfigstore", "software", "valve", "steam", "apps" };
         public const string Command = "%command%";

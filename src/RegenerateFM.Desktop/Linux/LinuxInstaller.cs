@@ -8,11 +8,11 @@ using RegenerateFM.Desktop.Steam;
 
 namespace RegenerateFM.Desktop.Linux
 {
-    // Installs or removes RegenerateFM on Linux (Steam/Proton): FM26, the FM26
+    // Installs or removes RegenerateFM on Linux (Steam/Proton): FM27, FM26, the FM26
     // Demo and FM24. The release's install-linux.sh runs it. With Steam quit
     // and the games closed, it:
     //
-    //   FM26, FM26 Demo  copies the release's FM26 folder (BepInEx and the
+    //   FM27, FM26, Demo copies the release's FM26 folder (BepInEx and the
     //                    plugin) into the game folder, downloads the Unity
     //                    libraries BepInEx needs (UnityLibraries), and sets
     //                    the launch option that makes Proton load BepInEx's
@@ -25,7 +25,7 @@ namespace RegenerateFM.Desktop.Linux
     // Proton prefixes.
     public sealed class LinuxInstaller
     {
-        public static readonly string[] AllGames = { "fm26", "fm26demo", "fm24" };
+        public static readonly string[] AllGames = { "fm27", "fm26", "fm26demo", "fm24" };
         public const string Plugin = "BepInEx/plugins/RegenerateFM";
         // What the FM26 folder adds beside fm.exe. Faces and settings are in
         // FM26's user-data folder, so removing these keeps them.
@@ -36,7 +36,7 @@ namespace RegenerateFM.Desktop.Linux
         public const string QuitSteam = "Steam is running. Quit Steam first (Steam > Exit, not just closing its window), then run " +
                                         "install-linux.sh again: Steam only keeps a game's launch option set while it is closed.";
         public const string Usage =
-            "install-linux.sh [fm26] [fm26demo] [fm24] [--game-dir DIR] [--remove]\n\n" +
+            "install-linux.sh [fm27] [fm26] [fm26demo] [fm24] [--game-dir DIR] [--remove]\n\n" +
             "Sets up every game it finds in the Steam libraries, or the ones named; --remove uninstalls\n" +
             "RegenerateFM and its launch options (your faces are kept). --game-dir names the folder of the one game named.";
 
@@ -192,13 +192,13 @@ namespace RegenerateFM.Desktop.Linux
                         return 0;
                     default:
                         if (args[i].StartsWith("-") || !AllGames.Contains(args[i]))
-                            throw new SetupException("Unknown game " + args[i] + ": name fm26, fm26demo or fm24.\n\n" + Usage);
+                            throw new SetupException("Unknown game " + args[i] + ": name fm27, fm26, fm26demo or fm24.\n\n" + Usage);
                         games.Add(args[i]);
                         break;
                 }
             }
             if (gameDir != null && games.Count != 1)
-                throw new SetupException("--game-dir needs exactly one game: fm26, fm26demo or fm24.");
+                throw new SetupException("--game-dir needs exactly one game: fm27, fm26, fm26demo or fm24.");
             release = Path.GetFullPath(release);
 
             var found = new Dictionary<string, string>();
@@ -211,7 +211,7 @@ namespace RegenerateFM.Desktop.Linux
                     throw new SetupException("Couldn't find " + Name(game) + " in your Steam libraries; pass --game-dir.");
             }
             if (found.Count == 0)
-                throw new SetupException("Couldn't find FM26, the FM26 Demo or FM24 in your Steam libraries. Name the game and " +
+                throw new SetupException("Couldn't find FM27, FM26, the FM26 Demo or FM24 in your Steam libraries. Name the game and " +
                                          "pass --game-dir \"<its folder>\".");
             if (remove)
             {

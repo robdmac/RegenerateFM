@@ -8,9 +8,11 @@ Checked on FM26 26.3.2 (Steam, universal `fm.app`) on an Apple M2 with macOS 26:
 
 | File | What it is |
 |---|---|
-| `BepInEx/`, `dotnet/`, `libdoorstop.dylib`, `.doorstop_version` | [BepInEx 6.0.0-be.789 Unity IL2CPP macOS x64](https://builds.bepinex.dev/projects/bepinex_be/), pinned by SHA-256, without its `run_bepinex.sh` |
+| `BepInEx/`, `dotnet/` | [BepInEx 6.0.0-be.789 Unity IL2CPP macOS x64](https://builds.bepinex.dev/projects/bepinex_be/), pinned by SHA-256, without its `run_bepinex.sh` |
+| `libdoorstop.dylib`, `.doorstop_version` | Doorstop 4.6.0, from BepInEx be.791 (pinned by SHA-256). be.789's Doorstop 4.5.0 can't read FM27's `UnityPlayer`, whose Mach-O uses chained fixups, so BepInEx never starts in FM27 |
 | `BepInEx/core/libfunchook.dylib` | funchook 1.1.3 with `patches/funchook-rosetta.patch`, built by `build.py` |
-| `BepInEx/core/Il2CppInterop.Runtime.dll`, `Il2CppInterop.Common.dll` | Il2CppInterop 1.5.3 (be.789's version) with `patches/il2cppinterop-macos.patch`, built by `build.py` |
+| `BepInEx/core/Il2CppInterop.Runtime.dll`, `Il2CppInterop.Common.dll`, `Il2CppInterop.Generator.dll` | Il2CppInterop 1.5.3 (be.789's version) with `patches/il2cppinterop-macos.patch`, built by `build.py`. The Generator's part of the patch lets it make FM27's interop assemblies |
+| `BepInEx/core/LibCpp2IL.dll` | LibCpp2IL from Cpp2IL commit 558ddd98 with `patches/libcpp2il-macho-fixups.patch`, built by `build.py`, so it can read FM27's `GameAssembly.dylib` |
 | `BepInEx/config/BepInEx.cfg` | Only `[Detours] DetourProviderType = Funchook`; BepInEx adds the rest |
 | `BepInEx/plugins/RegenerateFM/` | The plugin |
 | `run_regeneratefm.sh` | The launcher, used as FM26's Steam launch option: `"<game folder>/run_regeneratefm.sh" %command%`. For Epic's FM26 the installer makes it the program Epic starts (Epic has no launch options) |

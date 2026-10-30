@@ -67,8 +67,8 @@ final class Progress: NSObject {
     var milestoneAt = Date()
     var closingAt: Date?
 
-    init(language: String, log: String?, pid: pid_t) {
-        texts = Progress.texts(for: language)
+    init(language: String, log: String?, pid: pid_t, gameName: String) {
+        texts = Progress.texts(for: language).map { $0.replacingOccurrences(of: "FM26", with: gameName) }
         rightToLeft = (language.components(separatedBy: " (").first ?? language) == "arabic"
         self.log = log
         self.pid = pid
@@ -233,7 +233,9 @@ enum Main {
 
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
-        let progress = Progress(language: demo?.language ?? readLanguage(userData), log: log, pid: pid)
+        // "Football Manager 27" is FM27; FM26 and its Demo keep FM26's name.
+        let gameName = userData.hasPrefix("Football Manager 27") ? "FM27" : "FM26"
+        let progress = Progress(language: demo?.language ?? readLanguage(userData), log: log, pid: pid, gameName: gameName)
         if let demo = demo {
             progress.show()
             progress.setProgress(demo.fraction, Text(rawValue: Text.download.rawValue + demo.stage) ?? .build)

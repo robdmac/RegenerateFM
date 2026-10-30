@@ -179,7 +179,8 @@ def main() -> None:
         raise SystemExit("Build these first (the FM26 plugin; python3 macos/build.py; python3 native/fm24/build_macos.py and "
                          "dotnet publish src/RegenerateFM.Desktop -c Release -r osx-arm64 -o dist/publish/osx-arm64): " +
                          ", ".join(missing))
-    payload = make_release.macos_files(make_release.bepinex_zip(make_release.BEPINEX_MACOS, args.bepinex_macos_zip))
+    payload = make_release.macos_files(make_release.bepinex_zip(make_release.BEPINEX_MACOS, args.bepinex_macos_zip),
+                                       make_release.bepinex_zip(make_release.DOORSTOP_MACOS, None))
     payload[make_release.PLUGIN_FOLDER + "/RegenerateFM.dll"] = (plugin.read_bytes(), 0o644)
     version = make_release.plugin_version()
     with tempfile.TemporaryDirectory() as temporary:

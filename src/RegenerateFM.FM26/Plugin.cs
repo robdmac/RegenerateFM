@@ -121,8 +121,9 @@ namespace RegenerateFM.FM26
             });
             _menuContributor = new FaceMenuContributor();
             _harmony = new Harmony("fm.regenerate");
-            // See LocatorPatch: on macOS the reload is followed another way.
-            if (OperatingSystem.IsMacOS())
+            // See LocatorPatch: on macOS the reload is followed another way, and
+            // so in FM27, which has no EnumerateLocalAssetsComplete.
+            if (OperatingSystem.IsMacOS() || Fm27)
                 _harmony.PatchAll(typeof(LocatorPatch));
             else
                 _harmony.PatchAll(typeof(AssetLoadPatch));

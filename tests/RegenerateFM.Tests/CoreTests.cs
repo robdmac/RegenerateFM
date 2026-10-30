@@ -58,6 +58,26 @@ namespace RegenerateFM.Tests
         }
 
         [Fact]
+        public void TheGameIsNamedAsTheOneRunning()
+        {
+            var language = Text.Language;
+            try
+            {
+                Text.Language = "english";
+                Text.GameName = "FM27";
+                Assert.Equal("Restart FM27 to load it.", Text.T("Restart FM26 to load it."));
+                Assert.Equal("FM27 2", Text.T("FM26 {0}", 2));
+                Text.GameName = null;
+                Assert.Equal("Restart FM26 to load it.", Text.T("Restart FM26 to load it."));
+            }
+            finally
+            {
+                Text.GameName = null;
+                Text.Language = language;
+            }
+        }
+
+        [Fact]
         public void PortraitsAreScaledToFmsSizeKeepingTransparency()
         {
             var fitted = ImageApi.FitPortrait(Pngs.Make(1024));

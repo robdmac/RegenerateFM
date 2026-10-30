@@ -241,8 +241,14 @@ namespace RegenerateFM.FM26
             root = TopPage(root) ?? root;
             if (FindNamed(root, "TeamSquadReport") is VisualElement report && FindNamed(report, "playertable") is VisualElement teamTable)
                 return teamTable;
-            if (FindNamed(root, "SquadScreen") != null && FindNamed(root, "PlayerTableContainer") is VisualElement table)
-                return table;
+            if (FindNamed(root, "SquadScreen") is VisualElement screen)
+            {
+                if (FindNamed(root, "PlayerTableContainer") is VisualElement table)
+                    return table;
+                // FM27's Overview has a "playertable" of its own, in its FirstTeamOverview.
+                if (Fm27 && FindNamed(screen, "playertable") is VisualElement overviewTable)
+                    return overviewTable;
+            }
             return null;
         }
 
@@ -272,7 +278,7 @@ namespace RegenerateFM.FM26
             if (element == null)
                 return null;
             var scroll = element.TryCast<ScrollView>();
-            if (scroll != null && FindNamed(scroll, "NameButton") != null)
+            if (scroll != null && (FindNamed(scroll, "NameButton") != null || FindNamed(scroll, Fm27NameTemplate) != null))
                 return scroll;
             for (int i = 0; i < element.hierarchy.childCount; i++)
             {
@@ -331,11 +337,22 @@ namespace RegenerateFM.FM26
                     return expected;
             }
             var texts = TextValues(table.parent);
-            // In another language: the count under the team's name ("Kadergröße: 23"),
-            // its only number.
-            if (texts.Count > 1 && Regex.Matches(texts[1], @"\d+") is var numbers && numbers.Count == 1 &&
-                int.TryParse(numbers[0].Value, out int shown))
-                return shown;
+            // In another language, FM27 may give the count in brackets after the
+            // team's name, full-width in Chinese and Japanese ("トップチーム選手（23）").
+            for (int i = 0; i < Math.Min(3, texts.Count); i++)
+            {
+                var bracketed = Regex.Match(texts[i], @"[(（]\s*([0-9]+)\s*[)）]$");
+                if (bracketed.Success && int.TryParse(bracketed.Groups[1].Value, out int counted))
+                    return counted;
+            }
+            // Otherwise the count under the team's name ("Kadergröße: 23"),
+            // its only number. On Squad > Overview, FM27 shows the team's heading
+            // ("Erste Mannschaft") above its name; a team's own page doesn't, and
+            // its third text ("Kaderinfo") has no number.
+            foreach (int under in Fm27 ? new[] { 2, 1 } : new[] { 1 })
+                if (texts.Count > under && Regex.Matches(texts[under], @"\d+") is var numbers && numbers.Count == 1 &&
+                    int.TryParse(numbers[0].Value, out int shown))
+                    return shown;
             Log.LogWarning("Squad player count was not found near the table; texts: " +
                 string.Join(" | ", texts.GetRange(0, Math.Min(40, texts.Count))));
             return 0;
@@ -474,9 +491,29 @@ namespace RegenerateFM.FM26
                    full.EndsWith(" " + rest, StringComparison.OrdinalIgnoreCase);
         }
 
+        // A squad row's player name: FM26's NameButton; in FM27 a link in this
+        // template, which opens the player when clicked like a staff name.
+        private const string Fm27NameTemplate = "player-name-button-template";
+
+        // The link that opens the player: the row's click stops here, so the row
+        // isn't ticked as well.
+        private static VisualElement NavigableLinkIn(VisualElement element)
+        {
+            if (element == null)
+                return null;
+            if (element.GetIl2CppType().Name == "NavigableLink")
+                return element;
+            for (int i = 0; i < element.hierarchy.childCount; i++)
+                if (NavigableLinkIn(element.hierarchy.ElementAt(i)) is VisualElement link)
+                    return link;
+            return null;
+        }
+
+        private static VisualElement RowName(VisualElement row) => FindNamed(row, "NameButton") ?? FindNamed(row, Fm27NameTemplate);
+
         private static SquadCandidate ReadSquadCandidate(VisualElement row)
         {
-            var name = FirstText(FindNamed(row, "NameButton"));
+            var name = FirstText(RowName(row));
             var image = FindNamed(row, "PersonImage")?.TryCast<SI.UI.Image>();
             if (string.IsNullOrWhiteSpace(name) || image == null)
                 return null;
@@ -869,17 +906,23 @@ namespace RegenerateFM.FM26
                         }
                     }
                     SetBatchStage(batch, SquadStage.AwaitProfile);
-                    PointerClick(name);
+                    // FM27's staff rows tick themselves too; an owner's name,
+                    // which isn't a link, would leave the row ticked.
+                    PointerClick(name, Fm27 ? name : null);
                     batch.StaffClicked++;
                     Log.LogInfo("Opened missing member of staff " + target.Name + " from the staff list" +
                                 (batch.StaffClicked > 1 ? " (click " + batch.StaffClicked + ")" : ""));
                     return;
                 }
                 var button = FindNamed(row, "NameButton")?.TryCast<Button>();
-                if (button == null)
+                var link = button == null ? FindNamed(row, Fm27NameTemplate) : null;
+                if (button == null && link == null)
                     throw new InvalidOperationException("Player link missing for " + target.Name);
                 SetBatchStage(batch, SquadStage.AwaitProfile);
-                button.clickable.SimulateSingleClick(null);
+                if (button != null)
+                    button.clickable.SimulateSingleClick(null);
+                else
+                    PointerClick(FindNamed(link, "primary-text") ?? link, NavigableLinkIn(link));
                 Log.LogInfo("Opened missing player " + target.Name + " from squad row");
                 return;
             }
@@ -959,6 +1002,9 @@ namespace RegenerateFM.FM26
                 throw new InvalidOperationException("Opened profile does not match " + target.Name + "; no image requested");
             }
             var address = FindNamed(picture, "PersonImage")?.TryCast<SI.UI.Image>()?.m_imageAddressableID?.ToString();
+            // The picture's address can arrive after the rest of the profile.
+            if (string.IsNullOrEmpty(address) && System.DateTime.UtcNow - batch.StageStartedUtc < ProfileBindTimeout)
+                return;
             if (!IsDefaultPortrait(address))
             {
                 Log.LogInfo("Skipping " + target.Name + ": profile portrait is not missing (" + address + ")");
@@ -968,6 +1014,9 @@ namespace RegenerateFM.FM26
             // Gender arrives through its own binding; give it a moment, then go
             // without (the prompt then rules out facial hair).
             if (profile.Gender == null && System.DateTime.UtcNow - batch.StageStartedUtc < GenderWait)
+                return;
+            // So does an FM27 staff member's nation name (CaptureStaff).
+            if (Fm27 && !asPlayer && !NationById.ContainsKey(personId) && System.DateTime.UtcNow - batch.StageStartedUtc < GenderWait)
                 return;
             if (profile.BiographyHeadline == null && _biographyCache.TryGetValue(personId, out string biography))
                 profile.BiographyHeadline = biography;

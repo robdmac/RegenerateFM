@@ -33,7 +33,7 @@ namespace RegenerateFM.FM26
             root = null;
             var documents = Resources.FindObjectsOfTypeAll<UIDocument>();
             foreach (var document in documents)
-                if (document.name == "PanelManager")
+                if (Array.IndexOf(MainDocumentNames, document.name) >= 0)
                     root = document.rootVisualElement;
             if (root == null)
                 throw new InvalidOperationException(Text.T("FM26 player UI was not found."));
@@ -49,14 +49,16 @@ namespace RegenerateFM.FM26
             if (banner == null)
                 banner = header;
             var profile = new ProfileSnapshot();
-            var nameBox = FindNamed(banner, "Frame 1000003381");
+            // FM26's name box; FM27's frames have no numbers, and its name is the banner's first text.
+            var nameBox = FindNamed(banner, "Frame 1000003381") ?? (Fm27 ? banner : null);
             foreach (var value in TextValues(nameBox))
                 if (!value.StartsWith("(ID:", StringComparison.OrdinalIgnoreCase))
                 {
                     profile.Name = value;
                     break;
                 }
-            profile.Position = FirstText(FindNamed(banner, "Frame 1000003901")) ?? CompactPosition(banner);
+            profile.Position = FirstText(FindNamed(banner, "Frame 1000003901")) ?? CompactPosition(banner) ??
+                               (Fm27 ? BoundText(banner, Fm27PositionPath) : null);
             profile.Club = FirstText(FindNamed(header, "PlayingTeam"));
             profile.Gender = HeaderGender(header, playerId);
             profile.Relatives = HeaderRelatives(header, playerId);
@@ -69,7 +71,12 @@ namespace RegenerateFM.FM26
             if (string.IsNullOrWhiteSpace(profile.Club) &&
                 FirstText(FindNamed(header, "Frame 1000003767")) is string contract && Prompts.NoClub(contract))
                 profile.Club = contract.Trim();
-            profile.Nationality = FirstText(FindNamed(header, "Frame 1000003766")) ?? CompactNation(header);
+            // FM27 says so where the club would be, in the player's language
+            // (a player with a club has their league there instead).
+            if (Fm27 && string.IsNullOrWhiteSpace(profile.Club) && FindNamed(header, "PlayingTeam") == null &&
+                FirstText(FindNamed(header, "FreeAgentCheck")) != null)
+                profile.Club = "Free Agent";
+            profile.Nationality = FirstText(FindNamed(header, "Frame 1000003766")) ?? CompactNation(header) ?? HeaderNation(header);
             foreach (var value in TextValues(banner))
             {
                 var match = AgePattern.Match(value);
@@ -235,6 +242,39 @@ namespace RegenerateFM.FM26
             return string.Join(", ", parts);
         }
 
+        // The nation as the header's nation links show it, the longest of them:
+        // a code by the age ("ENG") and the name in full ("England"). FM27's
+        // frames have no numbered names to find the full one by.
+        private static string HeaderNation(VisualElement header)
+        {
+            string nation = null;
+            foreach (var link in NamedElements(header, "NationLink"))
+            {
+                var name = FirstText(link);
+                if (!string.IsNullOrWhiteSpace(name) && (nation == null || name.Length > nation.Length))
+                    nation = name;
+            }
+            return nation;
+        }
+
+        // FM27's staff header has no numbered frames: its texts are the name, the
+        // preferred job, the nation code and the age, then "Actions", the club
+        // and the job at the club.
+        private static void ReadFm27StaffHeader(VisualElement header, ProfileSnapshot profile)
+        {
+            var texts = TextValues(header);
+            if (string.IsNullOrWhiteSpace(profile.Name) && texts.Count > 0)
+                profile.Name = texts[0];
+            int actions = texts.FindIndex(value => IsLabel(value, "Actions", ActionsLabel));
+            if (actions >= 0 && actions + 2 < texts.Count)
+            {
+                profile.Club ??= texts[actions + 1];
+                profile.JobTitle = texts[actions + 2];
+            }
+            else if (string.IsNullOrWhiteSpace(profile.JobTitle) && texts.Count > 1)
+                profile.JobTitle = texts[1];
+        }
+
         private static string CompactNation(VisualElement header) =>
             FirstText(FindNamed(FindNamed(header, "Frame 1000003900"), "not-null"));
 
@@ -294,6 +334,8 @@ namespace RegenerateFM.FM26
             // has the job at the club.
             profile.JobTitle = FirstText(FindNamed(contract, "Frame 1000003768")) ??
                                FirstText(FindNamed(contract, "Frame 1000003771")) ?? profile.JobTitle;
+            if (Fm27)
+                ReadFm27StaffHeader(header, profile);
             // Its nation is shown twice, as a code by the age ("ENG") and in full
             // ("England"); the compact header has only the code.
             foreach (var nation in NamedElements(header, "Frame 1000003766"))
@@ -304,6 +346,10 @@ namespace RegenerateFM.FM26
             }
             if (compact)
                 profile.Nationality ??= FirstText(FindNamed(header, "NationCell_12px--unpacked"));
+            profile.Nationality ??= HeaderNation(header);
+            WatchNation(header, personId);
+            if (NationById.TryGetValue(personId, out string nationName))
+                profile.Nationality = nationName;
             foreach (var value in bannerTexts)
             {
                 var match = AgePattern.Match(value);
@@ -336,10 +382,13 @@ namespace RegenerateFM.FM26
             return profile;
         }
 
+        // The UI document FM draws its screens in: FM26's, then FM27's.
+        private static readonly string[] MainDocumentNames = { "PanelManager", "MainUIDocument" };
+
         private static VisualElement CurrentRoot()
         {
             foreach (var document in Resources.FindObjectsOfTypeAll<UIDocument>())
-                if (document.name == "PanelManager")
+                if (Array.IndexOf(MainDocumentNames, document.name) >= 0)
                     return document.rootVisualElement;
             return null;
         }
@@ -350,8 +399,13 @@ namespace RegenerateFM.FM26
             return attributes != null && attributes.worldBound.width > 500;
         }
 
+        // What FM27's player header binds its position to, in the player's language.
+        private const string Fm27PositionPath = "person.PositionCombinedStringLong";
+
         private static bool IsPlayerHeader(VisualElement header)
         {
+            if (Fm27 && BoundText(header, Fm27PositionPath) != null)
+                return true;
             foreach (var value in TextValues(header))
                 if (PositionPattern.IsMatch(value))
                     return true;
@@ -363,14 +417,35 @@ namespace RegenerateFM.FM26
         // so that preference isn't needed. Skins that print "(ID:n)" still work.
         private static bool HeaderId(VisualElement header, out long id)
         {
-            return BoundObjectId(header, out id) || TextId(TextValues(header), out id);
+            if (BoundObjectId(header, out id) || TextId(TextValues(header), out id))
+                return true;
+            if (!Fm27 || !PersonNodeByMapping(header, out var bindings, out var person))
+                return false;
+            if (PersonUniqueId(person, out id))
+                return true;
+            // Nothing on screen binds it: bind it once (as the gender is), and it
+            // is there on a later read (a menu item reads the ID again on click).
+            var personKey = person.Key;
+            // By the node, not its Key (whose ToString is the same for every person).
+            if (UniqueIdBound.Add(((Il2CppInterop.Runtime.InteropTypes.Il2CppObjectBase)person).Pointer))
+            {
+                try
+                {
+                    BindingPaths.Bind(bindings, personKey, "UniqueId", UniqueIdCallback);
+                }
+                catch (Exception error)
+                {
+                    Instance?.Log.LogWarning("The staff member's ID could not be bound: " + error.Message);
+                }
+            }
+            return false;
         }
 
         private static bool BoundObjectId(VisualElement header, out long id)
         {
             id = 0;
             var remapper = ObjectIdRemapper(header);
-            var view = remapper?.TryCast<IBindableElement>()?.GetView();
+            var view = BindableView(remapper);
             if (view == null || !GameSubsystems.TryGet<Bindings>(out var bindings) || bindings == null)
                 return false;
             var key = view.Key;
@@ -383,6 +458,74 @@ namespace RegenerateFM.FM26
                     return value != null && !value.IsNull && long.TryParse(value.AsString(), out id) && id > 0;
                 }
             return false;
+        }
+
+        // FM27's staff header has no objectID mapping; one of its remappers maps
+        // a name to a property of "person" ({nation -> person.nation}), whose
+        // alias's parent is the Person node. Its UniqueId is the person's ID.
+        private static bool PersonNodeByMapping(VisualElement header, out Bindings bindings, out IReadOnlyNode person)
+        {
+            person = null;
+            bindings = null;
+            if (header == null || !GameSubsystems.TryGet<Bindings>(out bindings) || bindings == null)
+                return false;
+            foreach (var element in AllElements(header))
+            {
+                var remapper = element.TryCast<BindingRemapper>();
+                if (remapper?.Mappings == null)
+                    continue;
+                foreach (var mapping in remapper.Mappings)
+                {
+                    if (!(mapping.to ?? "").StartsWith("person.", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    var view = BindableView(remapper);
+                    if (view == null)
+                        break;
+                    var key = view.Key;
+                    if (!bindings.TryGetNode(ref key, out var node) || node == null)
+                        break;
+                    // The node's children are capitalised ("Nation" for the mapping's "nation").
+                    for (var child = node.FirstChild; child != null; child = child.NextSibling)
+                    {
+                        if (string.Equals(child.Name, mapping.from, StringComparison.OrdinalIgnoreCase))
+                        {
+                            var alias = child.Alias;
+                            if (bindings.TryGetNode(ref alias, out var target) && target?.Parent != null)
+                            {
+                                person = target.Parent;
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+
+        private static readonly HashSet<IntPtr> UniqueIdBound = new HashSet<IntPtr>();
+        private static readonly Bindings.ValueChangedCallback UniqueIdCallback =
+            new Action<Bindings.Key, SI.Core.TypedValue>((_, _) => { });
+
+        private static bool PersonUniqueId(IReadOnlyNode person, out long id)
+        {
+            id = 0;
+            for (var child = person?.FirstChild; child != null; child = child.NextSibling)
+                if (string.Equals(child.Name, "UniqueId", StringComparison.OrdinalIgnoreCase))
+                {
+                    var value = child.Value;
+                    return value != null && !value.IsNull && long.TryParse(value.AsString(), out id) && id > 0;
+                }
+            return false;
+        }
+
+        private static IEnumerable<VisualElement> AllElements(VisualElement element)
+        {
+            if (element == null)
+                yield break;
+            yield return element;
+            for (int i = 0; i < element.hierarchy.childCount; i++)
+                foreach (var child in AllElements(element.hierarchy.ElementAt(i)))
+                    yield return child;
         }
 
         // FM26 binds a person's gender as Person.IsPersonFemale. The header's
@@ -398,9 +541,11 @@ namespace RegenerateFM.FM26
         {
             var root = CurrentRoot();
             var header = root == null ? null : FindNamed(root, "ReportHeader");
-            if (header != null && BoundObjectId(header, out long id))
+            // FM27's staff header has no objectID; HeaderId finds its person.
+            if (header != null && (BoundObjectId(header, out long id) || Fm27 && HeaderId(header, out id)))
             {
                 WatchGender(header, id);
+                WatchNation(header, id);
                 WatchFavoured(header, id);
                 WatchNewgenLook(header, id);
             }
@@ -447,11 +592,53 @@ namespace RegenerateFM.FM26
             BindingPaths.Bind(bindings, personKey, GenderProperty, callback);
         }
 
+        // FM27's staff header shows only the nation's code ("CHI", Chile), so
+        // its name is bound as a player's header binds it, Person.Nation.Name,
+        // and kept by person ID as the gender is.
+        private static readonly Dictionary<long, string> NationById = new Dictionary<long, string>();
+        private static readonly Dictionary<long, Bindings.ValueChangedCallback> NationCallbacks =
+            new Dictionary<long, Bindings.ValueChangedCallback>();
+        private const string NationNameProperty = "Nation.Name";
+
+        private static void WatchNation(VisualElement header, long id)
+        {
+            if (!Fm27 || NationById.ContainsKey(id) || NationCallbacks.ContainsKey(id) ||
+                !PersonNodeKey(header, out var bindings, out var personKey))
+                return;
+            Bindings.ValueChangedCallback callback = null;
+            callback = new Action<Bindings.Key, SI.Core.TypedValue>((key, value) =>
+            {
+                string name = value == null || value.IsNull ? null : LinkedText(value.AsString())?.Trim();
+                if (string.IsNullOrEmpty(name))
+                    return;
+                NationById[id] = name;
+                if (NationCallbacks.Remove(id) && GameSubsystems.TryGet<Bindings>(out var current) && current != null)
+                {
+                    var unbindKey = key;
+                    try { current.Unbind(ref unbindKey, callback); }
+                    catch (Exception) { }
+                }
+            });
+            NationCallbacks[id] = callback;
+            BindingPaths.Bind(bindings, personKey, NationNameProperty, callback);
+        }
+
+        // A linked name as FM27 binds it, "\u0001<link data>\u0002Chile\u0001":
+        // its shown text. Other text is returned as it is.
+        private static readonly Regex Link = new Regex("\u0001[^\u0002\u0001]*\u0002([^\u0001]*)\u0001", RegexOptions.Compiled);
+
+        private static string LinkedText(string value) => value == null ? null : Link.Replace(value, "$1");
+
         private static bool PersonNodeKey(VisualElement header, out Bindings bindings, out Bindings.Key personKey)
         {
             personKey = default;
             bindings = null;
-            var view = ObjectIdRemapper(header)?.TryCast<IBindableElement>()?.GetView();
+            var view = BindableView(ObjectIdRemapper(header));
+            if (view == null && Fm27 && PersonNodeByMapping(header, out bindings, out var person))
+            {
+                personKey = person.Key;
+                return true;
+            }
             if (view == null || !GameSubsystems.TryGet<Bindings>(out bindings) || bindings == null)
                 return false;
             var key = view.Key;
@@ -593,13 +780,31 @@ namespace RegenerateFM.FM26
         // contents, which is what FM26's code expects.
         private static class BindingPaths
         {
-            private static IntPtr Method(string name) => (IntPtr)typeof(Bindings)
-                .GetField("NativeMethodInfoPtr_" + name, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)
-                .GetValue(null);
+            // The first of these generated method fields the game's Bindings has.
+            private static IntPtr Method(params string[] names)
+            {
+                foreach (string name in names)
+                {
+                    var field = typeof(Bindings).GetField("NativeMethodInfoPtr_" + name,
+                                                          System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+                    if (field != null)
+                        return (IntPtr)field.GetValue(null);
+                }
+                throw new MissingFieldException(nameof(Bindings), names[0]);
+            }
 
             private static readonly IntPtr ExistsMethod = Method("Exists_Public_Boolean_byref_Key_byref_ReadOnlySpan_1_Char_0");
             private static readonly IntPtr GetMethod = Method("Get_Public_TypedValue_byref_Key_byref_ReadOnlySpan_1_Char_0");
-            private static readonly IntPtr BindMethod = Method("Bind_Public_Key_byref_Key_byref_ReadOnlySpan_1_Char_ValueChangedCallback_0");
+            // FM27's Bind takes an owner before the callback, which it records, so
+            // it can't be null: one object, kept for the plugin's life.
+            private static readonly Il2CppSystem.Object BindOwner = new Il2CppSystem.Object();
+            private static readonly bool BindTakesObject = !Fm26BindMethodExists();
+            private static readonly IntPtr BindMethod = Method("Bind_Public_Key_byref_Key_byref_ReadOnlySpan_1_Char_ValueChangedCallback_0",
+                                                               "Bind_Public_Key_byref_Key_byref_ReadOnlySpan_1_Char_Object_ValueChangedCallback_0");
+
+            private static bool Fm26BindMethodExists() =>
+                typeof(Bindings).GetField("NativeMethodInfoPtr_Bind_Public_Key_byref_Key_byref_ReadOnlySpan_1_Char_ValueChangedCallback_0",
+                                          System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static) != null;
             private static readonly IntPtr UnbindMethod = Method("Unbind_Public_Void_byref_Key_byref_ReadOnlySpan_1_Char_ValueChangedCallback_0");
             private static readonly IntPtr SetMethod = Method("Set_Public_Key_byref_ReadOnlySpan_1_Char_TypedValue_NodeFlags_SetFlags_0");
 
@@ -638,7 +843,8 @@ namespace RegenerateFM.FM26
             public static unsafe Bindings.Key Bind(Bindings bindings, Bindings.Key root, string path, Bindings.ValueChangedCallback callback)
             {
                 var key = *(Bindings.Key*)IL2CPP.il2cpp_object_unbox(
-                    Invoke(BindMethod, bindings, &root, path, IL2CPP.Il2CppObjectBaseToPtr(callback)));
+                    BindTakesObject ? Invoke(BindMethod, bindings, &root, path, IL2CPP.Il2CppObjectBaseToPtrNotNull(BindOwner), IL2CPP.Il2CppObjectBaseToPtr(callback))
+                                    : Invoke(BindMethod, bindings, &root, path, IL2CPP.Il2CppObjectBaseToPtr(callback)));
                 GC.KeepAlive(callback);
                 return key;
             }
@@ -660,6 +866,31 @@ namespace RegenerateFM.FM26
                 return key;
             }
         }
+
+        // An element's bindable view: IBindableElement's in FM26; in FM27 GetView
+        // is IBindableComponent's, which FM26's interop assemblies (that this is
+        // built against) don't have, so it is found by name in the game's.
+        private static IView BindableView(BindingRemapper element)
+        {
+            if (element == null)
+                return null;
+            if (!Fm27)
+                return Fm26BindableView(element);
+            if (_bindableComponentGetView == null)
+            {
+                var component = typeof(IBindableElement).Assembly.GetType("SI.Bindable.IBindableComponent", true);
+                _bindableComponentTryCast = typeof(Il2CppInterop.Runtime.InteropTypes.Il2CppObjectBase).GetMethod("TryCast").MakeGenericMethod(component);
+                _bindableComponentGetView = component.GetMethod("GetView", Type.EmptyTypes);
+            }
+            var bindable = _bindableComponentTryCast.Invoke(element, null);
+            return bindable == null ? null : (IView)_bindableComponentGetView.Invoke(bindable, null);
+        }
+
+        private static System.Reflection.MethodInfo _bindableComponentTryCast, _bindableComponentGetView;
+
+        // Only compiled on FM26: FM27's IBindableElement has no GetView.
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        private static IView Fm26BindableView(BindingRemapper element) => element.TryCast<IBindableElement>()?.GetView();
 
         private static BindingRemapper ObjectIdRemapper(VisualElement element)
         {
@@ -719,43 +950,63 @@ namespace RegenerateFM.FM26
             return paragraph.Length <= 600 ? paragraph : paragraph.Substring(0, 600).TrimEnd();
         }
 
+        // Each frame's checks, from StaffWatcher's Update.
+        private float _nextScan;
+        private string _lastFrameError;
+
+        private void RunFrame()
+        {
+            try
+            {
+                Frame();
+            }
+            catch (Exception error)
+            {
+                // Unity's log may not reach BepInEx's (FM27's doesn't), so each new failure is logged here.
+                string text = error.ToString();
+                if (text != _lastFrameError)
+                    Log.LogError("RegenerateFM's per-frame checks failed: " + text);
+                _lastFrameError = text;
+            }
+        }
+
+        private void Frame()
+        {
+            CheckRefreshTimeout();
+            RefillEmptyContent();
+            PollGeneration();
+            PollKeyCheck();
+            PollCreditsSignIn();
+            PollKeyTyping();
+            try { ReadMatchEthnicities(); }
+            catch (Exception error) { Log.LogWarning("Match appearance scan failed: " + error.Message); }
+            try { PollScoutingRetry(); }
+            catch (Exception error) { Log.LogWarning("Profile check failed: " + error.Message); }
+            if (Time.unscaledTime < _nextScan)
+                return;
+            _nextScan = Time.unscaledTime + 0.5f;
+            SyncLanguage();
+            try { CheckUiDumpFlag(); }
+            catch (Exception error) { Log.LogWarning("UI dump failed: " + error.Message); }
+            try { CheckGender(); }
+            catch (Exception error) { Log.LogWarning("Gender scan failed: " + error.Message); }
+            try { CheckBiographyCache(); }
+            catch (Exception error) { Log.LogWarning("Biography scan failed: " + error.Message); }
+            try { CheckPortraitTrigger(); }
+            catch (Exception error) { Log.LogWarning("Portrait menu setup failed: " + error.Message); }
+            try { CheckDialogPage(); }
+            catch (Exception error) { Log.LogWarning("Dialog check failed: " + error.Message); }
+            try { CheckSquadMenu(); CheckStaffMenu(); PollSquadScan(); }
+            catch (Exception error) { Log.LogWarning("Squad scan failed: " + error); CancelSquadScan(); }
+            try { PollSquadBatch(); }
+            catch (Exception error) { StopSquadBatch(Text.T("Squad generation stopped: {0}", error.Message)); }
+        }
+
         public sealed class StaffWatcher : MonoBehaviour
         {
-            private float _nextScan;
-
             public StaffWatcher(IntPtr pointer) : base(pointer) { }
 
-            private void Update()
-            {
-                var plugin = Instance;
-                if (plugin == null)
-                    return;
-                plugin.CheckRefreshTimeout();
-                plugin.PollGeneration();
-                plugin.PollKeyCheck();
-                plugin.PollCreditsSignIn();
-                plugin.PollKeyTyping();
-                try { plugin.ReadMatchEthnicities(); }
-                catch (Exception error) { plugin.Log.LogWarning("Match appearance scan failed: " + error.Message); }
-                try { plugin.PollScoutingRetry(); }
-                catch (Exception error) { plugin.Log.LogWarning("Profile check failed: " + error.Message); }
-                if (Time.unscaledTime < _nextScan)
-                    return;
-                _nextScan = Time.unscaledTime + 0.5f;
-                plugin.SyncLanguage();
-                try { plugin.CheckGender(); }
-                catch (Exception error) { plugin.Log.LogWarning("Gender scan failed: " + error.Message); }
-                try { plugin.CheckBiographyCache(); }
-                catch (Exception error) { plugin.Log.LogWarning("Biography scan failed: " + error.Message); }
-                try { plugin.CheckPortraitTrigger(); }
-                catch (Exception error) { plugin.Log.LogWarning("Portrait menu setup failed: " + error.Message); }
-                try { plugin.CheckDialogPage(); }
-                catch (Exception error) { plugin.Log.LogWarning("Dialog check failed: " + error.Message); }
-                try { plugin.CheckSquadMenu(); plugin.CheckStaffMenu(); plugin.PollSquadScan(); }
-                catch (Exception error) { plugin.Log.LogWarning("Squad scan failed: " + error); plugin.CancelSquadScan(); }
-                try { plugin.PollSquadBatch(); }
-                catch (Exception error) { plugin.StopSquadBatch(Text.T("Squad generation stopped: {0}", error.Message)); }
-            }
+            private void Update() => Instance?.RunFrame();
         }
     }
 }

@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
+using Il2CppInterop.Runtime;
 using SI.Bindable;
 using SI.Translation;
 using SI.VisualScripting;
@@ -37,7 +39,10 @@ namespace RegenerateFM.FM26
                 string language = Text.Language;
                 Text.Language = TranslationManager.CurrentLanguage;
                 if (Text.Language != language)
+                {
                     GameTexts.Clear();
+                    _gameFont = null;
+                }
             }
             catch (Exception error)
             {
@@ -66,14 +71,50 @@ namespace RegenerateFM.FM26
             return text;
         }
 
-        // RegenerateFM's elements, with their text written right to left in
-        // Arabic: UI Toolkit's advanced text generator joins and orders its
-        // letters, as FM26 does for its own text. Applied to every element, as
-        // the generator style isn't inherited. Text set to start at the left
-        // (a menu item's) starts at the right instead, as FM26's own does.
+        // RegenerateFM's elements, in FM's font for the player's language: UI
+        // Toolkit's default font has no Chinese, Japanese or Korean letters,
+        // and FM27 draws them as nothing. The font is inherited by the
+        // element's children.
         internal static VisualElement Directed(VisualElement element)
         {
-            if (element == null || !Text.RightToLeft)
+            if (element == null)
+                return null;
+            _gameFont ??= GameFont(CurrentRoot());
+            if (_gameFont is not null)
+                element.style.unityFontDefinition = new StyleFontDefinition(_gameFont);
+            return RightToLeft(element);
+        }
+
+        // FM's font for its own text in the player's language, or null.
+        private static FontDefinition _gameFont;
+
+        // The font of the first shown FM text under element with words in it
+        // (an icon's text has none), or null.
+        private static FontDefinition GameFont(VisualElement element)
+        {
+            if (element == null || element.worldBound.width <= 0)
+                return null;
+            var label = element.TryCast<SIText>();
+            if (label != null && Tags.Replace(label.text ?? "", "").Count(char.IsLetter) >= 3)
+            {
+                var font = label.resolvedStyle.unityFontDefinition;
+                if (!font.IsEmpty())
+                    return font;
+            }
+            for (int i = 0; i < element.hierarchy.childCount; i++)
+                if (GameFont(element.hierarchy.ElementAt(i)) is FontDefinition font)
+                    return font;
+            return null;
+        }
+
+        // In Arabic, the element's text is written right to left: UI Toolkit's
+        // advanced text generator joins and orders its letters, as FM26 does
+        // for its own text. Applied to every element, as the generator style
+        // isn't inherited. Text set to start at the left (a menu item's) starts
+        // at the right instead, as FM26's own does.
+        private static VisualElement RightToLeft(VisualElement element)
+        {
+            if (!Text.RightToLeft)
                 return element;
             element.languageDirection = LanguageDirection.RTL;
             element.style.unityTextGenerator = UnityEngine.TextGeneratorType.Advanced;
@@ -86,7 +127,7 @@ namespace RegenerateFM.FM26
                 element.style.paddingRight = left;
             }
             for (int i = 0; i < element.hierarchy.childCount; i++)
-                Directed(element.hierarchy.ElementAt(i));
+                RightToLeft(element.hierarchy.ElementAt(i));
             return element;
         }
 
@@ -150,10 +191,17 @@ namespace RegenerateFM.FM26
                 var inputs = binding.VisualFunction.Inputs;
                 for (int i = 0; i < inputs.Count; i++)
                 {
+                    if (Fm27)
+                    {
+                        if (inputs[i] != null && ListedArgs(inputs[i].Pointer).Exists(arg =>
+                            string.Equals(arg.Binding.ToString(), "Person.Age", StringComparison.OrdinalIgnoreCase)))
+                            return true;
+                        continue;
+                    }
                     var list = inputs[i]?.TryCast<VisualArg<SI.Core.StructList<TranslationArg>>>();
                     if (list == null)
                         continue;
-                    var items = list.Get();
+                    var items = list.m_value;
                     for (int j = 0; j < items.Count; j++)
                     {
                         // "Person.Age" on a player's header, "person.age" on a staff member's.
@@ -167,6 +215,57 @@ namespace RegenerateFM.FM26
                 Instance?.Log.LogWarning("An FM26 label's binding could not be read: " + error.Message);
             }
             return false;
+        }
+
+        // The text of the first shown label under element that is bound straight
+        // to this path, in the player's language, or null.
+        private static string BoundText(VisualElement element, string path)
+        {
+            if (element == null || element.worldBound.width <= 0)
+                return null;
+            var label = element.TryCast<SIText>();
+            if (label != null && !string.IsNullOrEmpty(label.text))
+            {
+                try
+                {
+                    var binding = label.m_textBinding;
+                    if (binding.Kind == BindingMethodKind.Direct &&
+                        string.Equals(binding.Direct?.Path.ToString(), path, StringComparison.OrdinalIgnoreCase))
+                        return WebUtility.HtmlDecode(Tags.Replace(label.text, "")).Trim();
+                }
+                catch (Exception error)
+                {
+                    Instance?.Log.LogWarning("An FM26 label's binding could not be read: " + error.Message);
+                }
+            }
+            for (int i = 0; i < element.hierarchy.childCount; i++)
+                if (BoundText(element.hierarchy.ElementAt(i), path) is string text)
+                    return text;
+            return null;
+        }
+
+        // The arguments of an FM27 label's text, when this input holds them: a
+        // StructListVisualArg<TranslationArg>, whose m_items array Il2CppInterop
+        // doesn't wrap, so each element is boxed from the array's memory.
+        private static unsafe List<TranslationArg> ListedArgs(IntPtr input)
+        {
+            var args = new List<TranslationArg>();
+            var items = IL2CPP.il2cpp_class_get_field_from_name(IL2CPP.il2cpp_object_get_class(input), "m_items");
+            if (items == IntPtr.Zero)
+                return args;
+            var array = *(IntPtr*)((byte*)input + IL2CPP.il2cpp_field_get_offset(items));
+            if (array == IntPtr.Zero)
+                return args;
+            var arrayType = IL2CPP.il2cpp_object_get_class(array);
+            var element = IL2CPP.il2cpp_class_get_element_class(arrayType);
+            if (element != Il2CppClassPointerStore<TranslationArg>.NativeClassPtr)
+                return args;
+            int size = IL2CPP.il2cpp_class_array_element_size(arrayType);
+            // An IL2CPP array's elements follow its class, monitor, bounds and length.
+            byte* first = (byte*)array + IntPtr.Size * 4;
+            for (long j = 0; j < IL2CPP.il2cpp_array_length(array); j++)
+                args.Add(new TranslationArg(IL2CPP.il2cpp_value_box(element, (IntPtr)(first + j * size))));
+            return args;
         }
 
         // The translation ID of the text an FM26 label shows, or 0.
@@ -183,13 +282,30 @@ namespace RegenerateFM.FM26
                 var inputs = binding.VisualFunction.Inputs;
                 for (int i = 0; i < inputs.Count; i++)
                     if (inputs[i]?.TryCast<VisualArg<TranslationID>>() is VisualArg<TranslationID> id)
-                        return id.Get().GameID;
+                        return Fm27 ? TranslationGameId(id.Pointer) : id.m_value.GameID;
             }
             catch (Exception error)
             {
                 Instance?.Log.LogWarning("An FM26 label's binding could not be read: " + error.Message);
             }
             return 0;
+        }
+
+        // The GameID of a VisualArg<TranslationID>'s value, read at the field
+        // offsets this game's IL2CPP gives: FM27's labels hold a
+        // GenericVisualArg<TranslationID>, whose m_value Il2CppInterop reads
+        // from the wrong bytes.
+        private static unsafe int TranslationGameId(IntPtr arg)
+        {
+            IntPtr value = IntPtr.Zero;
+            for (var type = IL2CPP.il2cpp_object_get_class(arg); type != IntPtr.Zero && value == IntPtr.Zero; type = IL2CPP.il2cpp_class_get_parent(type))
+                value = IL2CPP.il2cpp_class_get_field_from_name(type, "m_value");
+            var gameId = IL2CPP.il2cpp_class_get_field_from_name(Il2CppClassPointerStore<TranslationID>.NativeClassPtr, "GameID");
+            if (value == IntPtr.Zero || gameId == IntPtr.Zero)
+                return 0;
+            // A struct's field offsets count the object header before its fields.
+            int offset = (int)IL2CPP.il2cpp_field_get_offset(value) + (int)IL2CPP.il2cpp_field_get_offset(gameId) - IntPtr.Size * 2;
+            return *(int*)((byte*)arg + offset);
         }
 
         // The attribute panel's column headings by section ("Technical",
@@ -279,7 +395,7 @@ namespace RegenerateFM.FM26
             {
                 var bounds = list.worldBound;
                 if (bounds.width >= 100 && Math.Abs(bounds.x - squad.worldBound.x) < 60 &&
-                    bounds.y >= squad.worldBound.y && bounds.y < squad.worldBound.yMax + 60 && list.childCount >= 8)
+                    bounds.y >= squad.worldBound.y && bounds.y < squad.worldBound.yMax + 60 && list.childCount >= (Fm27 ? 5 : 8))
                     return list;
             }
             return null;

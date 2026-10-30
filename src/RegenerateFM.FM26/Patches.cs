@@ -42,10 +42,11 @@ namespace RegenerateFM.FM26
         // Il2CppInterop's hook passes with the Windows calling convention. Under
         // macOS's x64 System V convention the game then gets a broken handle,
         // throws "Attempting to use an invalid operation handle" and never
-        // finishes the reload, so there that method isn't hooked. FM26 calls
-        // RegisterResourceLocator (object arguments only) for each file of the
-        // folder as the enumeration completes; once those calls have stopped for
-        // LocatorsSettled, CheckRefreshTimeout refreshes the panels.
+        // finishes the reload, so there that method isn't hooked; FM27 has no
+        // such method. Both games call RegisterResourceLocator (object arguments
+        // only) for each file of the folder as the enumeration completes; once
+        // those calls have stopped for LocatorsSettled, CheckRefreshTimeout
+        // refreshes the panels.
         [HarmonyPatch(typeof(ResourcesSubsystem), "RegisterResourceLocator")]
         private static class LocatorPatch
         {
@@ -71,7 +72,12 @@ namespace RegenerateFM.FM26
                     // The ID is read again on click: just after a profile opens the
                     // header can be drawn before its data is bound.
                     if (header == null || !IsActionTarget(context.Target, header))
+                    {
+                        // Why a menu got no face commands, for a game whose screens have changed.
+                        Instance.Log.LogDebug("Not a profile's Actions menu (header " + (header == null ? "not found" : "found") +
+                                              "): " + Ancestry(context.Target));
                         return;
+                    }
                     var contributor = Instance._menuContributor.TryCast<IMenuContributor>();
                     context.AddContributor(contributor);
                 }
@@ -173,7 +179,11 @@ namespace RegenerateFM.FM26
                 var root = CurrentRoot();
                 var header = FindNamed(root, "ReportHeader");
                 if (header == null || !IsActionTarget(context.Target, header))
+                {
+                    Instance.Log.LogDebug("No face commands for this menu (header " + (header == null ? "not found" : "found") +
+                                          "): " + Ancestry(context.Target));
                     return;
+                }
                 long? personId = HeaderId(header, out long shownId) ? shownId : (long?)null;
                 context.Description.AddItem(parent, Text.T("Generate face"),
                     (Il2CppSystem.Action)(System.Action)(() => Instance.GenerateOpenProfile(personId, false)));

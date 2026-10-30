@@ -27,6 +27,9 @@ namespace RegenerateFM.FM26
     // other build the plugin turns itself off. FM27 will need its own.
     public sealed partial class Plugin
     {
+        // FM27 rather than FM26, whose few changed APIs Profiles.cs calls by name.
+        internal static bool Fm27;
+
         private bool SupportedGameBuild()
         {
             try
@@ -39,6 +42,15 @@ namespace RegenerateFM.FM26
                     if (HasHash(macAssembly, "7886b66692c18504de32ad3973fe4c9afc3edfe12a6941b44e83627cb9563e26")
                         && HasHash(macPlugin, "de6b048ab1a95fd4ae683a7d751a33645183a9a570fa1c2fba32fd308ca87979"))
                         return true;
+                    // FM27 27.0.0 (Steam), with its own user data.
+                    if (HasHash(macAssembly, "266d02a57471b44f381b7b647828c58fd394e8222c3083613324a93a9db09dd7")
+                        && HasHash(macPlugin, "2e915b0f264920ae1205b111f45d50e354ac0e7d0b6e136b99189c24b265f431"))
+                    {
+                        Fm27 = true;
+                        Text.GameName = "FM27";
+                        UserDataName = "Football Manager 27";
+                        return true;
+                    }
                     // Epic's FM26 for Mac: the same 26.3.2 code built again, so
                     // only its build IDs, build times and signatures differ.
                     if (HasHash(macAssembly, "a34a3cd631653867136eb8c7728242d73a64735f77dcc24b3bcf1f541d23d2e2")
@@ -58,6 +70,18 @@ namespace RegenerateFM.FM26
                 if (HasHash(gameAssembly, "7ce3eb474dc6093df633f979e869e55b2ec7953fde2e732392a694d379ff7a0c")
                     && HasHash(gamePlugin, "eb6c86fab56e051fe41482c7b93d8cb0af716a1cc2c6197ce1babbff68372bb8"))
                     return true;
+                // FM27 27.0.0 for Windows (Steam), with its own user data. Epic's FM27
+                // Launch Preview has the same GameAssembly.dll and a game_plugin.dll
+                // packed differently, as Epic's FM26 does.
+                if (HasHash(gameAssembly, "820d6618acafac7dffc1ef3b489582eddb84b0343d4f34d55fff9fb70881e00a")
+                    && (HasHash(gamePlugin, "bc940e472418fc5c214208d7cf30fecf600f689b6f9d71c11ba19a2df0fe057f")
+                        || HasHash(gamePlugin, "55725511227555e3950cd2a58dd86d9f70969cf6d7566140fa1a4af560485ba8")))
+                {
+                    Fm27 = true;
+                    Text.GameName = "FM27";
+                    UserDataName = "Football Manager 27";
+                    return true;
+                }
                 // Epic's FM26 for Windows: GameAssembly.dll is the same code built
                 // again (only its build time and debug ID differ) with the same
                 // metadata; its game_plugin.dll, whose code the plugin doesn't

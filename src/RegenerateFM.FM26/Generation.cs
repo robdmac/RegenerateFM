@@ -460,7 +460,10 @@ namespace RegenerateFM.FM26
                 WaitingForGraphics = true;
                 _lastLocatorUtc = null;
                 _refreshStartedUtc = System.DateTime.UtcNow;
-                resources[0].RegisterLocalPath(folder, null);
+                // By name: FM27's returns a LocalPathScan, FM26's nothing, so a call
+                // compiled against FM26's is a missing method in FM27.
+                typeof(ResourcesSubsystem).GetMethod(nameof(ResourcesSubsystem.RegisterLocalPath))
+                    .Invoke(resources[0], new object[] { folder, null });
                 Log.LogInfo("Requested RegenerateFM graphics reload from " + folder);
                 return true;
             }
@@ -494,6 +497,34 @@ namespace RegenerateFM.FM26
             Log.LogWarning("RegenerateFM graphics reload timed out after 30 seconds; refresh lock released");
         }
 
+        // FM27's ReloadPanels leaves a profile's attributes block (an ExpandableContentElement,
+        // which FM26 doesn't have) blank, its children hidden, until the next tab;
+        // RefreshVisibleElements shows them. Called by name: the plugin builds against FM26.
+        private static readonly System.TimeSpan RefillContentDelay = System.TimeSpan.FromSeconds(0.5);
+        private System.DateTime? _refillContentUtc;
+
+        private void RefillEmptyContent()
+        {
+            if (!_refillContentUtc.HasValue || System.DateTime.UtcNow < _refillContentUtc.Value)
+                return;
+            _refillContentUtc = null;
+            var root = CurrentRoot();
+            var type = System.Type.GetType("SI.Bindable.ExpandableContentElement, SI.Bindable");
+            var refresh = type?.GetMethod("RefreshVisibleElements", System.Type.EmptyTypes);
+            if (root == null || refresh == null)
+                return;
+            foreach (var element in AllElements(root).ToList())
+            {
+                if (element.GetIl2CppType().Name != "ExpandableContentElement" || element.worldBound.width <= 0)
+                    continue;
+                bool hidden = true;
+                for (int i = 0; i < element.hierarchy.childCount && hidden; i++)
+                    hidden = element.hierarchy.ElementAt(i).worldBound.width <= 0;
+                if (hidden && element.hierarchy.childCount > 0)
+                    refresh.Invoke(System.Activator.CreateInstance(type, element.Pointer), null);
+            }
+        }
+
         private void GraphicsLoaded()
         {
             try
@@ -503,6 +534,8 @@ namespace RegenerateFM.FM26
                     throw new InvalidOperationException("Expected one PanelManager; found " + panels.Length);
                 panels[0].ReloadPanels();
                 _graphicsLoadSerial++;
+                if (Fm27)
+                    _refillContentUtc = System.DateTime.UtcNow + RefillContentDelay;
                 if (_refreshOverlay != null && _refreshOverlay.parent != null)
                     _refreshOverlay.RemoveFromHierarchy();
                 Log.LogInfo("RegenerateFM graphics loaded and panels refreshed");
