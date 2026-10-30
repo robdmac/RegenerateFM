@@ -341,6 +341,9 @@ namespace RegenerateFM.FM26
             if (compact)
                 profile.Nationality ??= FirstText(FindNamed(header, "NationCell_12px--unpacked"));
             profile.Nationality ??= HeaderNation(header);
+            WatchNation(header, personId);
+            if (NationById.TryGetValue(personId, out string nationName))
+                profile.Nationality = nationName;
             foreach (var value in bannerTexts)
             {
                 var match = AgePattern.Match(value);
@@ -527,9 +530,11 @@ namespace RegenerateFM.FM26
         {
             var root = CurrentRoot();
             var header = root == null ? null : FindNamed(root, "ReportHeader");
-            if (header != null && BoundObjectId(header, out long id))
+            // FM27's staff header has no objectID; HeaderId finds its person.
+            if (header != null && (BoundObjectId(header, out long id) || Fm27 && HeaderId(header, out id)))
             {
                 WatchGender(header, id);
+                WatchNation(header, id);
                 WatchFavoured(header, id);
                 WatchNewgenLook(header, id);
             }
@@ -575,6 +580,43 @@ namespace RegenerateFM.FM26
             GenderCallbacks[id] = callback;
             BindingPaths.Bind(bindings, personKey, GenderProperty, callback);
         }
+
+        // FM27's staff header shows only the nation's code ("CHI", Chile), so
+        // its name is bound as a player's header binds it, Person.Nation.Name,
+        // and kept by person ID as the gender is.
+        private static readonly Dictionary<long, string> NationById = new Dictionary<long, string>();
+        private static readonly Dictionary<long, Bindings.ValueChangedCallback> NationCallbacks =
+            new Dictionary<long, Bindings.ValueChangedCallback>();
+        private const string NationNameProperty = "Nation.Name";
+
+        private static void WatchNation(VisualElement header, long id)
+        {
+            if (!Fm27 || NationById.ContainsKey(id) || NationCallbacks.ContainsKey(id) ||
+                !PersonNodeKey(header, out var bindings, out var personKey))
+                return;
+            Bindings.ValueChangedCallback callback = null;
+            callback = new Action<Bindings.Key, SI.Core.TypedValue>((key, value) =>
+            {
+                string name = value == null || value.IsNull ? null : LinkedText(value.AsString())?.Trim();
+                if (string.IsNullOrEmpty(name))
+                    return;
+                NationById[id] = name;
+                if (NationCallbacks.Remove(id) && GameSubsystems.TryGet<Bindings>(out var current) && current != null)
+                {
+                    var unbindKey = key;
+                    try { current.Unbind(ref unbindKey, callback); }
+                    catch (Exception) { }
+                }
+            });
+            NationCallbacks[id] = callback;
+            BindingPaths.Bind(bindings, personKey, NationNameProperty, callback);
+        }
+
+        // A linked name as FM27 binds it, "\u0001<link data>\u0002Chile\u0001":
+        // its shown text. Other text is returned as it is.
+        private static readonly Regex Link = new Regex("\u0001[^\u0002\u0001]*\u0002([^\u0001]*)\u0001", RegexOptions.Compiled);
+
+        private static string LinkedText(string value) => value == null ? null : Link.Replace(value, "$1");
 
         private static bool PersonNodeKey(VisualElement header, out Bindings bindings, out Bindings.Key personKey)
         {

@@ -985,6 +985,9 @@ namespace RegenerateFM.FM26
             // without (the prompt then rules out facial hair).
             if (profile.Gender == null && System.DateTime.UtcNow - batch.StageStartedUtc < GenderWait)
                 return;
+            // So does an FM27 staff member's nation name (CaptureStaff).
+            if (Fm27 && !asPlayer && !NationById.ContainsKey(personId) && System.DateTime.UtcNow - batch.StageStartedUtc < GenderWait)
+                return;
             if (profile.BiographyHeadline == null && _biographyCache.TryGetValue(personId, out string biography))
                 profile.BiographyHeadline = biography;
             // A silhouette is a real person, unless RegenerateFM saw them as a newgen.
