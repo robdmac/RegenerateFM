@@ -338,8 +338,10 @@ namespace RegenerateFM.FM26
             }
             var texts = TextValues(table.parent);
             // In another language: the count under the team's name ("Kadergröße: 23"),
-            // its only number.
-            if (texts.Count > 1 && Regex.Matches(texts[1], @"\d+") is var numbers && numbers.Count == 1 &&
+            // its only number. FM27 shows the team's heading ("Erste Mannschaft")
+            // above its name.
+            int under = Fm27 ? 2 : 1;
+            if (texts.Count > under && Regex.Matches(texts[under], @"\d+") is var numbers && numbers.Count == 1 &&
                 int.TryParse(numbers[0].Value, out int shown))
                 return shown;
             Log.LogWarning("Squad player count was not found near the table; texts: " +

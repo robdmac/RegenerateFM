@@ -24,8 +24,8 @@ namespace RegenerateFM
         public static string DefaultPath => Path.Combine(KeyStore.Folder, FileName);
 
         private const string Template =
-            "; RegenerateFM settings, shared by FM26 and FM24 on this computer. They are read\n" +
-            "; again before each face, so a change applies without restarting the game.\n" +
+            "; RegenerateFM settings, shared by FM27, FM26 and FM24 on this computer. They are\n" +
+            "; read again before each face, so a change applies without restarting the game.\n" +
             "\n" +
             "[OpenAI]\n" +
             "; The OpenAI image model.\n" +

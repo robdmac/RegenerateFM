@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using Il2CppInterop.Runtime;
 using SI.Bindable;
@@ -38,7 +39,10 @@ namespace RegenerateFM.FM26
                 string language = Text.Language;
                 Text.Language = TranslationManager.CurrentLanguage;
                 if (Text.Language != language)
+                {
                     GameTexts.Clear();
+                    _gameFont = null;
+                }
             }
             catch (Exception error)
             {
@@ -67,14 +71,50 @@ namespace RegenerateFM.FM26
             return text;
         }
 
-        // RegenerateFM's elements, with their text written right to left in
-        // Arabic: UI Toolkit's advanced text generator joins and orders its
-        // letters, as FM26 does for its own text. Applied to every element, as
-        // the generator style isn't inherited. Text set to start at the left
-        // (a menu item's) starts at the right instead, as FM26's own does.
+        // RegenerateFM's elements, in FM's font for the player's language: UI
+        // Toolkit's default font has no Chinese, Japanese or Korean letters,
+        // and FM27 draws them as nothing. The font is inherited by the
+        // element's children.
         internal static VisualElement Directed(VisualElement element)
         {
-            if (element == null || !Text.RightToLeft)
+            if (element == null)
+                return null;
+            _gameFont ??= GameFont(CurrentRoot());
+            if (_gameFont is not null)
+                element.style.unityFontDefinition = new StyleFontDefinition(_gameFont);
+            return RightToLeft(element);
+        }
+
+        // FM's font for its own text in the player's language, or null.
+        private static FontDefinition _gameFont;
+
+        // The font of the first shown FM text under element with words in it
+        // (an icon's text has none), or null.
+        private static FontDefinition GameFont(VisualElement element)
+        {
+            if (element == null || element.worldBound.width <= 0)
+                return null;
+            var label = element.TryCast<SIText>();
+            if (label != null && Tags.Replace(label.text ?? "", "").Count(char.IsLetter) >= 3)
+            {
+                var font = label.resolvedStyle.unityFontDefinition;
+                if (!font.IsEmpty())
+                    return font;
+            }
+            for (int i = 0; i < element.hierarchy.childCount; i++)
+                if (GameFont(element.hierarchy.ElementAt(i)) is FontDefinition font)
+                    return font;
+            return null;
+        }
+
+        // In Arabic, the element's text is written right to left: UI Toolkit's
+        // advanced text generator joins and orders its letters, as FM26 does
+        // for its own text. Applied to every element, as the generator style
+        // isn't inherited. Text set to start at the left (a menu item's) starts
+        // at the right instead, as FM26's own does.
+        private static VisualElement RightToLeft(VisualElement element)
+        {
+            if (!Text.RightToLeft)
                 return element;
             element.languageDirection = LanguageDirection.RTL;
             element.style.unityTextGenerator = UnityEngine.TextGeneratorType.Advanced;
@@ -87,7 +127,7 @@ namespace RegenerateFM.FM26
                 element.style.paddingRight = left;
             }
             for (int i = 0; i < element.hierarchy.childCount; i++)
-                Directed(element.hierarchy.ElementAt(i));
+                RightToLeft(element.hierarchy.ElementAt(i));
             return element;
         }
 
