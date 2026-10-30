@@ -779,6 +779,9 @@ struct InstallerView: View {
                     }
                 }
                 .disabled(model.games.isEmpty)
+                // The menu keeps its items' titles while the games stay the same,
+                // so it is made again when one is installed or removed.
+                .id(model.games.map { Installer.isInstalled($0) })
                 Button("Choose folder…") { model.choose() }
             }
             if let game = model.chosen {
