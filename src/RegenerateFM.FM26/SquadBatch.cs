@@ -346,12 +346,13 @@ namespace RegenerateFM.FM26
                     return counted;
             }
             // Otherwise the count under the team's name ("Kadergröße: 23"),
-            // its only number. FM27 shows the team's heading ("Erste Mannschaft")
-            // above its name.
-            int under = Fm27 ? 2 : 1;
-            if (texts.Count > under && Regex.Matches(texts[under], @"\d+") is var numbers && numbers.Count == 1 &&
-                int.TryParse(numbers[0].Value, out int shown))
-                return shown;
+            // its only number. On Squad > Overview, FM27 shows the team's heading
+            // ("Erste Mannschaft") above its name; a team's own page doesn't, and
+            // its third text ("Kaderinfo") has no number.
+            foreach (int under in Fm27 ? new[] { 2, 1 } : new[] { 1 })
+                if (texts.Count > under && Regex.Matches(texts[under], @"\d+") is var numbers && numbers.Count == 1 &&
+                    int.TryParse(numbers[0].Value, out int shown))
+                    return shown;
             Log.LogWarning("Squad player count was not found near the table; texts: " +
                 string.Join(" | ", texts.GetRange(0, Math.Min(40, texts.Count))));
             return 0;
@@ -999,6 +1000,9 @@ namespace RegenerateFM.FM26
                 throw new InvalidOperationException("Opened profile does not match " + target.Name + "; no image requested");
             }
             var address = FindNamed(picture, "PersonImage")?.TryCast<SI.UI.Image>()?.m_imageAddressableID?.ToString();
+            // The picture's address can arrive after the rest of the profile.
+            if (string.IsNullOrEmpty(address) && System.DateTime.UtcNow - batch.StageStartedUtc < ProfileBindTimeout)
+                return;
             if (!IsDefaultPortrait(address))
             {
                 Log.LogInfo("Skipping " + target.Name + ": profile portrait is not missing (" + address + ")");
