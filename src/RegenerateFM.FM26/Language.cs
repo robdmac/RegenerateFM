@@ -397,8 +397,13 @@ namespace RegenerateFM.FM26
             var anchors = new List<VisualElement>();
             if (FindNamed(root, "SquadButton") is VisualElement squad)
                 anchors.Add(squad);
-            if (Fm27 && SquadPageTeam(root) is string team && FindText(FindNamed(root, "SecondaryNavigationTabs"), team) is VisualElement tab)
-                anchors.Add(tab);
+            if (Fm27 && SquadPageTeam(root) is string team && FindNamed(root, "SecondaryNavigationTabs") is VisualElement nav)
+            {
+                // English clubs label youth tabs by age ("Under 21s" for "Arsenal U21s").
+                var age = System.Text.RegularExpressions.Regex.Match(team, @"\bU(\d{2})s?$");
+                if ((FindText(nav, team) ?? (age.Success ? FindText(nav, "Under " + age.Groups[1].Value + "s") : null)) is VisualElement tab)
+                    anchors.Add(tab);
+            }
             var lists = new List<VisualElement>();
             CollectNamed(floating, "View", lists);
             foreach (var anchor in anchors)
