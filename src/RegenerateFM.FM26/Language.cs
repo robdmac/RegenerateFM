@@ -387,22 +387,28 @@ namespace RegenerateFM.FM26
         }
 
         // The open dropdown of FM26's Squad navigation button, found by where it
-        // opens: under SquadButton, whatever the language.
+        // opens: under SquadButton, whatever the language. In FM27, a reserve or
+        // youth team's page has its own dropdown, under the team's tab.
         private static VisualElement SquadDropdownList(VisualElement root)
         {
-            var squad = FindNamed(root, "SquadButton");
             var floating = FindNamed(root, "floating-element-root");
-            if (squad == null || floating == null)
+            if (floating == null)
                 return null;
+            var anchors = new List<VisualElement>();
+            if (FindNamed(root, "SquadButton") is VisualElement squad)
+                anchors.Add(squad);
+            if (Fm27 && SquadPageTeam(root) is string team && FindText(FindNamed(root, "SecondaryNavigationTabs"), team) is VisualElement tab)
+                anchors.Add(tab);
             var lists = new List<VisualElement>();
             CollectNamed(floating, "View", lists);
-            foreach (var list in lists)
-            {
-                var bounds = list.worldBound;
-                if (bounds.width >= 100 && Math.Abs(bounds.x - squad.worldBound.x) < 60 &&
-                    bounds.y >= squad.worldBound.y && bounds.y < squad.worldBound.yMax + 60 && list.childCount >= (Fm27 ? 5 : 8))
-                    return list;
-            }
+            foreach (var anchor in anchors)
+                foreach (var list in lists)
+                {
+                    var bounds = list.worldBound;
+                    if (bounds.width >= 100 && Math.Abs(bounds.x - anchor.worldBound.x) < 60 &&
+                        bounds.y >= anchor.worldBound.y && bounds.y < anchor.worldBound.yMax + 60 && list.childCount >= (Fm27 ? 5 : 8))
+                        return list;
+                }
             return null;
         }
     }
