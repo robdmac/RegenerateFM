@@ -412,7 +412,7 @@ enum Installer {
     static func copyFiles(from payload: URL, to folder: URL) throws -> Int {
         let manager = FileManager.default
         guard manager.fileExists(atPath: folder.appendingPathComponent("fm.app").path) else {
-            throw SteamConfig.ConfigError(errorDescription: "\(folder.path) has no fm.app. Choose the folder that holds FM26's fm.app.")
+            throw SteamConfig.ConfigError(errorDescription: "\(folder.path) has no fm.app. Choose the folder that holds the game's fm.app.")
         }
         guard let walker = manager.enumerator(at: payload, includingPropertiesForKeys: [.isDirectoryKey]) else {
             throw SteamConfig.ConfigError(errorDescription: "The installer's files are missing.")
@@ -504,13 +504,13 @@ enum Installer {
     /// UnityLibraries does). What happened, or nil if the zip was there.
     static func fetchUnityLibraries(_ folder: URL) -> String? {
         guard let version = unityVersion(folder) else {
-            return "Couldn't read FM26's Unity version, so BepInEx will download Unity's libraries itself when FM26 first starts."
+            return "Couldn't read the game's Unity version, so BepInEx will download Unity's libraries itself when the game first starts."
         }
         let zip = folder.appendingPathComponent("BepInEx/unity-libs/\(version).zip")
         if FileManager.default.fileExists(atPath: zip.path) { return nil }
         let source = (ProcessInfo.processInfo.environment["REGENERATEFM_UNITY_LIBS_SOURCE"]
             ?? "https://unity.bepinex.dev/libraries/{VERSION}.zip").replacingOccurrences(of: "{VERSION}", with: version)
-        let failed = "BepInEx tries again when FM26 starts; if RegenerateFM's commands are missing in FM26, click Install again later."
+        let failed = "BepInEx tries again when the game starts; if RegenerateFM's commands are missing in it, click Update again later."
         guard let url = URL(string: source) else { return "Couldn't download Unity's libraries for BepInEx from \(source). \(failed)" }
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForResource = 60
@@ -530,7 +530,7 @@ enum Installer {
         do {
             let data = try result.get()
             guard data.starts(with: [0x50, 0x4b, 3, 4]) else {
-                return "Unity's libraries from \(source) aren't a ZIP file, so BepInEx will download them itself when FM26 first starts."
+                return "Unity's libraries from \(source) aren't a ZIP file, so BepInEx will download them itself when the game first starts."
             }
             try FileManager.default.createDirectory(at: zip.deletingLastPathComponent(), withIntermediateDirectories: true)
             try data.write(to: zip, options: .atomic)
@@ -689,17 +689,17 @@ final class Model: ObservableObject {
             // FM24's companion setup has already set what Epic starts.
             if !game.isFM24 && Epic.needsChange(game, remove: false) {
                 if Epic.running() {
-                    return text + " To finish, quit the Epic Games Launcher (Epic Games Launcher > Quit Epic Games Launcher) and click Install again, so the installer can make Epic start RegenerateFM."
+                    return text + " To finish, quit the Epic Games Launcher (Epic Games Launcher > Quit Epic Games Launcher) and click Update again, so the installer can make Epic start RegenerateFM."
                 }
                 do { try Epic.update(game, remove: false) } catch {
                     return text + " Epic's setting for the game couldn't be changed (\(error.localizedDescription)), so Launch in Epic starts it without RegenerateFM."
                 }
             }
-            text += " Epic now starts it with RegenerateFM: press Launch in the Epic Games Launcher. After an Epic update or Verify, click Install again."
+            text += " Epic now starts it with RegenerateFM: press Launch in the Epic Games Launcher. After an Epic update or Verify, click Update again."
         } else if !Steam.needsChange(game, remove: false) {
             text += " Its Steam launch option is already set: press Play in Steam."
         } else if Steam.running() {
-            text += " To finish, quit Steam (Steam > Quit Steam) and click Install again, so the installer can set the game's launch option. Or set it yourself in Steam (\(game.name) > Properties > General > Launch Options):"
+            text += " To finish, quit Steam (Steam > Quit Steam) and click Update again, so the installer can set the game's launch option. Or set it yourself in Steam (\(game.name) > Properties > General > Launch Options):"
             manual = Steam.manualText(game)
         } else {
             do {
@@ -779,6 +779,9 @@ struct InstallerView: View {
                     }
                 }
                 .disabled(model.games.isEmpty)
+                // The menu keeps its items' titles while the games stay the same,
+                // so it is made again when one is installed or removed.
+                .id(model.games.map { Installer.isInstalled($0) })
                 Button("Choose folder…") { model.choose() }
             }
             if let game = model.chosen {
