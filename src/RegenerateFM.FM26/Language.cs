@@ -201,7 +201,7 @@ namespace RegenerateFM.FM26
                     var list = inputs[i]?.TryCast<VisualArg<SI.Core.StructList<TranslationArg>>>();
                     if (list == null)
                         continue;
-                    var items = list.m_value;
+                    var items = Fm26Value(list);
                     for (int j = 0; j < items.Count; j++)
                     {
                         // "Person.Age" on a player's header, "person.age" on a staff member's.
@@ -282,7 +282,7 @@ namespace RegenerateFM.FM26
                 var inputs = binding.VisualFunction.Inputs;
                 for (int i = 0; i < inputs.Count; i++)
                     if (inputs[i]?.TryCast<VisualArg<TranslationID>>() is VisualArg<TranslationID> id)
-                        return Fm27 ? TranslationGameId(id.Pointer) : id.m_value.GameID;
+                        return Fm27 ? TranslationGameId(id.Pointer) : Fm26Value(id).GameID;
             }
             catch (Exception error)
             {
@@ -290,6 +290,11 @@ namespace RegenerateFM.FM26
             }
             return 0;
         }
+
+        // A label argument's value as FM26 itself reads it. Only compiled on
+        // FM26: FM27's VisualArg has no Get, and its m_value is misread.
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        private static T Fm26Value<T>(VisualArg<T> arg) => arg.Get();
 
         // The GameID of a VisualArg<TranslationID>'s value, read at the field
         // offsets this game's IL2CPP gives: FM27's labels hold a
@@ -382,20 +387,39 @@ namespace RegenerateFM.FM26
         }
 
         // The open dropdown of FM26's Squad navigation button, found by where it
-        // opens: under SquadButton, whatever the language.
+        // opens: under SquadButton, whatever the language. In FM27, a reserve or
+        // youth team's page has its own dropdown, under the team's tab.
         private static VisualElement SquadDropdownList(VisualElement root)
         {
-            var squad = FindNamed(root, "SquadButton");
             var floating = FindNamed(root, "floating-element-root");
-            if (squad == null || floating == null)
+            if (floating == null)
                 return null;
             var lists = new List<VisualElement>();
             CollectNamed(floating, "View", lists);
+            // Another club's team has four entries: its squad, staff, fixtures and competitions.
+            lists.RemoveAll(list => list.worldBound.width < 100 || list.childCount < (Fm27 ? 4 : 8));
+            // Usually no dropdown is open; the team's tab is only looked for when one is.
+            if (lists.Count == 0)
+                return null;
+            if (DropdownUnder(FindNamed(root, "SquadButton"), lists) is VisualElement found)
+                return found;
+            if (!Fm27 || SquadPageTeam(root) is not string team || FindNamed(root, "SecondaryNavigationTabs") is not VisualElement nav)
+                return null;
+            // English clubs label youth tabs by age ("Under 21s" for "Arsenal U21s").
+            var age = System.Text.RegularExpressions.Regex.Match(team, @"\bU(\d{2})s?$");
+            // Another club's first team is under its First Team tab, not its name.
+            return DropdownUnder(FindText(nav, team) ?? (age.Success ? FindText(nav, "Under " + age.Groups[1].Value + "s") : null) ??
+                                 SquadTabs(nav).FirstTeam, lists);
+        }
+
+        private static VisualElement DropdownUnder(VisualElement anchor, List<VisualElement> lists)
+        {
+            if (anchor == null)
+                return null;
             foreach (var list in lists)
             {
                 var bounds = list.worldBound;
-                if (bounds.width >= 100 && Math.Abs(bounds.x - squad.worldBound.x) < 60 &&
-                    bounds.y >= squad.worldBound.y && bounds.y < squad.worldBound.yMax + 60 && list.childCount >= (Fm27 ? 5 : 8))
+                if (Math.Abs(bounds.x - anchor.worldBound.x) < 60 && bounds.y >= anchor.worldBound.y && bounds.y < anchor.worldBound.yMax + 60)
                     return list;
             }
             return null;

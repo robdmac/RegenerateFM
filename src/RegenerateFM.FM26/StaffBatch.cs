@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Il2CppInterop.Runtime;
 using SI.Bindable;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -151,10 +152,24 @@ namespace RegenerateFM.FM26
         // A click where the element is, as the pointer would make it: a staff
         // row's name isn't a Button, and opens the person when clicked. FM26
         // routes it to what's under the pointer, so RegenerateFM's dialog lets it
-        // through meanwhile.
-        private static void PointerClick(VisualElement element)
+        // through meanwhile. With stopAt, the click goes no further than that
+        // element: FM27's squad rows also tick themselves when their name is clicked.
+        private static void PointerClick(VisualElement element, VisualElement stopAt = null)
         {
             var center = element.worldBound.center;
+            var stopDown = Stopper<PointerDownEvent>();
+            var stopUp = Stopper<PointerUpEvent>();
+            var stopClick = Stopper<ClickEvent>();
+            var stopMouseDown = Stopper<MouseDownEvent>();
+            var stopMouseUp = Stopper<MouseUpEvent>();
+            if (stopAt != null)
+            {
+                stopAt.RegisterCallback(stopDown);
+                stopAt.RegisterCallback(stopUp);
+                stopAt.RegisterCallback(stopClick);
+                stopAt.RegisterCallback(stopMouseDown);
+                stopAt.RegisterCallback(stopMouseUp);
+            }
             var dialog = Instance?._squadDialog;
             var picking = new List<(VisualElement, PickingMode)>();
             void LetThrough(VisualElement e)
@@ -183,8 +198,19 @@ namespace RegenerateFM.FM26
             {
                 foreach (var (e, mode) in picking)
                     e.pickingMode = mode;
+                if (stopAt != null)
+                {
+                    stopAt.UnregisterCallback(stopDown);
+                    stopAt.UnregisterCallback(stopUp);
+                    stopAt.UnregisterCallback(stopClick);
+                    stopAt.UnregisterCallback(stopMouseDown);
+                    stopAt.UnregisterCallback(stopMouseUp);
+                }
             }
         }
+
+        private static EventCallback<T> Stopper<T>() where T : EventBase<T>, new() =>
+            DelegateSupport.ConvertDelegate<EventCallback<T>>(new Action<T>(e => e.StopPropagation()));
 
         private static bool ClickButtonAbove(VisualElement element)
         {
@@ -218,15 +244,28 @@ namespace RegenerateFM.FM26
                 if (top.name == "ClubAllStaffTool" && FindLabel(top, "All Staff", AllStaffTab) is VisualElement tab && ClickButtonAbove(tab))
                     return "opened the All Staff tab";
                 // The Staff tile is ClubStaff, or at some clubs (Barnsley's)
-                // ClubAllStaffAI, a carousel whose shown page has the title.
+                // ClubAllStaffAI, a carousel whose shown page has the title;
+                // in FM27, ClubAllStaff.
                 if (top.name == "ClubSite" && (FindNamed(FindNamed(top, "ClubStaff"), "title-text-alt") ??
-                                               FindNamed(FindNamed(top, "ClubAllStaffAI"), "title-text")) is VisualElement staff)
+                                               FindNamed(FindNamed(top, "ClubAllStaffAI"), "title-text") ??
+                                               FindNamed(FindNamed(top, "ClubAllStaff"), "title-text")) is VisualElement staff &&
+                    staff.worldBound.width > 0)
                 {
                     PointerClick(staff);
                     return "opened Club Site's Staff";
                 }
+                // FM27's Club Site can have its tiles hidden, the Staff tile with
+                // them; Show Tiles is there only while they are.
+                if (top.name == "ClubSite" && Fm27 && FindNamed(top, "ShowTilesButton") is VisualElement tiles &&
+                    tiles.worldBound.width > 0)
+                {
+                    PointerClick(tiles);
+                    return "showed Club Site's tiles";
+                }
             }
-            else if (top.name == "ClubSite" && FindNamed(FindNamed(top, "FirstTeam"), "title-text") is VisualElement team)
+            // FM27's first team tile has its title as a link, primary-text.
+            else if (top.name == "ClubSite" && FindNamed(top, "FirstTeam") is VisualElement firstTeam &&
+                     (FindNamed(firstTeam, "title-text") ?? FindNamed(firstTeam, "primary-text")) is VisualElement team)
             {
                 PointerClick(team);
                 return "opened Club Site's first team";
