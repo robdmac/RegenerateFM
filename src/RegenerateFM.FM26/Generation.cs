@@ -470,6 +470,8 @@ namespace RegenerateFM.FM26
                     purgePath.Invoke(resources[0], new object[] { folder });
                     Log.LogInfo("Dropped FM's entries for the RegenerateFM graphics folder");
                 }
+                else if (purge)
+                    Log.LogInfo("Dropped FM26's entries for " + DropLocalKeys(resources[0], folder) + " pictures in the RegenerateFM graphics folder");
                 // By name: FM27's returns a LocalPathScan, FM26's nothing, so a call
                 // compiled against FM26's is a missing method in FM27.
                 typeof(ResourcesSubsystem).GetMethod(nameof(ResourcesSubsystem.RegisterLocalPath))
@@ -483,6 +485,37 @@ namespace RegenerateFM.FM26
                 Log.LogError("Could not register RegenerateFM graphics: " + error);
                 return false;
             }
+        }
+
+        // FM26's PurgeLocalPath. Registering the folder again only adds to FM26's
+        // resource map, so a face no longer mapped would still be shown. The
+        // keys with a picture in the folder are taken out instead; FM then
+        // finds the person's picture again (its photo or its 3D face) when it
+        // is next shown, as it does the first time.
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        private static int DropLocalKeys(ResourcesSubsystem resources, string folder)
+        {
+            var map = resources.m_resourceMap;
+            if (map == null)
+                return 0;
+            string inFolder = folder.Replace('\\', '/').TrimEnd('/') + "/";
+            var keys = new List<Il2CppSystem.Object>();
+            foreach (var entry in map)
+            {
+                var list = entry.Value;
+                for (int i = 0; list != null && i < list.Count; i++)
+                {
+                    string id = list[i]?.InternalId;
+                    if (id != null && id.Replace('\\', '/').StartsWith(inFolder, StringComparison.OrdinalIgnoreCase))
+                    {
+                        keys.Add(entry.Key);
+                        break;
+                    }
+                }
+            }
+            foreach (var key in keys)
+                map.Remove(key);
+            return keys.Count;
         }
 
         private void CheckRefreshTimeout()

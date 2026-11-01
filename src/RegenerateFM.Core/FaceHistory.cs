@@ -278,7 +278,10 @@ namespace RegenerateFM
                 var shown = faces.FirstOrDefault(face => face.Stem == stem);
                 if (shown == null)
                     faces.Add(shown = new Face { Stem = stem, Made = File.GetLastWriteTimeUtc(Current(directory, stem)) });
-                shown.Removed = true;
+                // All of theirs: Claim then brings none back, until they choose one.
+                foreach (var face in faces)
+                    if (face == shown || shown.Owner != null && SameOwner(face.Owner, shown.Owner))
+                        face.Removed = true;
                 Store(directory, personId, faces, stem);
                 Retire(directory, personId, null);
                 return true;

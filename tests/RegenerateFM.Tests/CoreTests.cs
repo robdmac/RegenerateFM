@@ -157,15 +157,24 @@ namespace RegenerateFM.Tests
             using var folder = new TempFolder();
             string graphics = folder.Combine("graphics");
             Assert.False(FaceHistory.Remove(graphics, "5"));
-            Portraits.SavePortrait(graphics, "5", Pngs.Make(64, 10), owner: "Sean Winton");
+            var made = new DateTime(2026, 10, 30, 12, 0, 0, DateTimeKind.Utc);
+            Portraits.SavePortrait(graphics, "5", Pngs.Make(64, 10), owner: "Sean Winton", made: made);
+            Portraits.SavePortrait(graphics, "5", Pngs.Make(64, 20), owner: "Sean Winton", made: made.AddMinutes(1));
             Assert.True(FaceHistory.Remove(graphics, "5"));
             Assert.Null(Portraits.CurrentPortrait(graphics, "5"));
             Assert.Empty(Directory.GetFiles(graphics, "5-*.png"));
             Assert.DoesNotContain("person/5/", File.ReadAllText(Path.Combine(graphics, "config.xml")));
-            // Seeing the person again doesn't bring a face they took off back.
+            // Seeing the person again (in a later session) brings back none of
+            // their faces: they took the face off, not just the one shown.
             Assert.False(FaceHistory.Claim(graphics, "5", "Sean Winton"));
+            Assert.Null(Portraits.CurrentPortrait(graphics, "5"));
             Assert.NotNull(FaceHistory.Previous(graphics, "5", "Sean Winton"));
-            Assert.Equal(Pngs.Make(64, 10), Portraits.CurrentPortrait(graphics, "5"));
+            Assert.Equal(Pngs.Make(64, 20), Portraits.CurrentPortrait(graphics, "5"));
+            // The face they chose again is theirs to keep: another save's
+            // person moves it aside, and seeing them again brings it back.
+            Assert.True(FaceHistory.Claim(graphics, "5", "Gerardo Morales"));
+            Assert.True(FaceHistory.Claim(graphics, "5", "Sean Winton"));
+            Assert.Equal(Pngs.Make(64, 20), Portraits.CurrentPortrait(graphics, "5"));
         }
 
         [Fact]
