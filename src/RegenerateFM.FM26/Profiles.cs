@@ -423,12 +423,17 @@ namespace RegenerateFM.FM26
                 return false;
             if (PersonUniqueId(person, out id))
                 return true;
-            // Nothing on screen binds it: bind it once (as the gender is), and it
-            // is there on a later read (a menu item reads the ID again on click).
+            // Nothing on screen binds it: bind it (as the gender is), and it is
+            // there on a later read (a menu item reads the ID again on click).
             var personKey = person.Key;
             // By the node, not its Key (whose ToString is the same for every person).
-            if (UniqueIdBound.Add(((Il2CppInterop.Runtime.InteropTypes.Il2CppObjectBase)person).Pointer))
+            // FM27 reuses a freed node's memory for another person's node, so a
+            // node bound a while ago whose ID still hasn't arrived is a new one:
+            // it is bound again, or that profile would never be recognised.
+            var pointer = ((Il2CppInterop.Runtime.InteropTypes.Il2CppObjectBase)person).Pointer;
+            if (!UniqueIdBound.TryGetValue(pointer, out var boundAt) || System.DateTime.UtcNow - boundAt > UniqueIdRebind)
             {
+                UniqueIdBound[pointer] = System.DateTime.UtcNow;
                 try
                 {
                     BindingPaths.Bind(bindings, personKey, "UniqueId", UniqueIdCallback);
@@ -502,7 +507,10 @@ namespace RegenerateFM.FM26
             return false;
         }
 
-        private static readonly HashSet<IntPtr> UniqueIdBound = new HashSet<IntPtr>();
+        // When each person node's UniqueId was bound. Its value arrives a frame or
+        // so later; one still missing after UniqueIdRebind is on a reused node.
+        private static readonly Dictionary<IntPtr, System.DateTime> UniqueIdBound = new Dictionary<IntPtr, System.DateTime>();
+        private static readonly TimeSpan UniqueIdRebind = TimeSpan.FromSeconds(2);
         private static readonly Bindings.ValueChangedCallback UniqueIdCallback =
             new Action<Bindings.Key, SI.Core.TypedValue>((_, _) => { });
 
