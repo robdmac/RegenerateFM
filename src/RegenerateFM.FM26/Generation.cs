@@ -20,6 +20,7 @@ using SI.Input;
 using SI.UI;
 using UnityEngine;
 using UnityEngine.UIElements;
+using UnityEngine.ResourceManagement.ResourceLocations;
 
 namespace RegenerateFM.FM26
 {
@@ -471,7 +472,11 @@ namespace RegenerateFM.FM26
                     Log.LogInfo("Dropped FM's entries for the RegenerateFM graphics folder");
                 }
                 else if (purge)
-                    Log.LogInfo("Dropped FM26's entries for " + DropLocalKeys(resources[0], folder) + " pictures in the RegenerateFM graphics folder");
+                {
+                    var (dropped, putBack) = DropLocalKeys(resources[0], folder);
+                    Log.LogInfo("Dropped FM26's entries for " + dropped + " pictures in the RegenerateFM graphics folder" +
+                                (putBack > 0 ? "; put back " + putBack + " from other graphics folders" : ""));
+                }
                 // By name: FM27's returns a LocalPathScan, FM26's nothing, so a call
                 // compiled against FM26's is a missing method in FM27.
                 typeof(ResourcesSubsystem).GetMethod(nameof(ResourcesSubsystem.RegisterLocalPath))
@@ -487,35 +492,63 @@ namespace RegenerateFM.FM26
             }
         }
 
+        // A picture from another graphics folder that our face replaced in
+        // FM26's resource map, by key (ReplacedPicturePatch).
+        private static readonly Dictionary<string, IResourceLocation> ReplacedPictures = new Dictionary<string, IResourceLocation>();
+        private static readonly string LocalProvider = typeof(LocalAssetProvider).FullName;
+        // GraphicsFolder as InFolder takes it, set where ReplacedPicturePatch is used.
+        private static string _ourFolder;
+
+        private static string FolderPrefix(string folder) => folder.Replace('\\', '/').TrimEnd('/') + "/";
+
+        // FM's paths mix / and \.
+        private static bool InFolder(string path, string folderPrefix) =>
+            path != null && folderPrefix != null &&
+            path.Replace('\\', '/').StartsWith(folderPrefix, StringComparison.OrdinalIgnoreCase);
+
         // FM26's PurgeLocalPath. Registering the folder again only adds to FM26's
         // resource map, so a face no longer mapped would still be shown. The
         // keys with a picture in the folder are taken out instead; FM then
         // finds the person's picture again (its photo or its 3D face) when it
-        // is next shown, as it does the first time.
+        // is next shown, as it does the first time. A picture of theirs from
+        // another graphics folder, which FM26 wouldn't find again before a
+        // restart, is put back.
         [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-        private static int DropLocalKeys(ResourcesSubsystem resources, string folder)
+        private static (int Dropped, int PutBack) DropLocalKeys(ResourcesSubsystem resources, string folder)
         {
             var map = resources.m_resourceMap;
             if (map == null)
-                return 0;
-            string inFolder = folder.Replace('\\', '/').TrimEnd('/') + "/";
+                return (0, 0);
+            string inFolder = FolderPrefix(folder);
             var keys = new List<Il2CppSystem.Object>();
             foreach (var entry in map)
             {
                 var list = entry.Value;
                 for (int i = 0; list != null && i < list.Count; i++)
                 {
-                    string id = list[i]?.InternalId;
-                    if (id != null && id.Replace('\\', '/').StartsWith(inFolder, StringComparison.OrdinalIgnoreCase))
+                    if (InFolder(list[i]?.InternalId, inFolder))
                     {
                         keys.Add(entry.Key);
                         break;
                     }
                 }
             }
+            int putBack = 0;
             foreach (var key in keys)
-                map.Remove(key);
-            return keys.Count;
+            {
+                string name = key.ToString();
+                // Kept again if our face for them is registered again.
+                if (ReplacedPictures.Remove(name, out var replaced) && File.Exists(replaced.InternalId))
+                {
+                    var list = new Il2CppSystem.Collections.Generic.List<IResourceLocation>();
+                    list.Add(replaced);
+                    map[key] = list;
+                    putBack++;
+                }
+                else
+                    map.Remove(key);
+            }
+            return (keys.Count, putBack);
         }
 
         private void CheckRefreshTimeout()

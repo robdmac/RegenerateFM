@@ -20,6 +20,7 @@ using SI.Input;
 using SI.UI;
 using UnityEngine;
 using UnityEngine.UIElements;
+using UnityEngine.ResourceManagement.ResourceLocations;
 
 namespace RegenerateFM.FM26
 {
@@ -54,6 +55,48 @@ namespace RegenerateFM.FM26
             {
                 if (WaitingForGraphics)
                     _lastLocatorUtc = System.DateTime.UtcNow;
+            }
+        }
+
+        // FM26 keeps one picture of each type for a key (person_<id>), the last
+        // one registered. Our face for someone who also has a picture in
+        // another graphics folder (a facepack) replaces that picture, and FM26
+        // registers those folders only at startup, so once DropLocalKeys takes
+        // our face out FM26 would show a silhouette until a restart. The
+        // replaced picture is kept for DropLocalKeys to put back. Not used
+        // where FM has PurgeLocalPath (FM27).
+        [HarmonyPatch(typeof(ResourcesSubsystem), "RegisterResourceLocator")]
+        private static class ReplacedPicturePatch
+        {
+            private static bool _failed;
+
+            private static void Prefix(ResourcesSubsystem __instance, Il2CppSystem.Object __0, IResourceLocation __1)
+            {
+                if (_failed)
+                    return;
+                try
+                {
+                    // Every picture FM registers comes here, tens of thousands with
+                    // a facepack: those not in our folder are passed over first.
+                    if (__0 == null || !InFolder(__1?.InternalId, _ourFolder))
+                        return;
+                    var map = __instance.m_resourceMap;
+                    if (map == null || !map.ContainsKey(__0))
+                        return;
+                    var list = map[__0];
+                    for (int i = 0; i < list.Count; i++)
+                    {
+                        var old = list[i];
+                        // FM finds its own photos and 3D faces again by itself.
+                        if (old != null && old.ProviderId == LocalProvider && !InFolder(old.InternalId, _ourFolder))
+                            ReplacedPictures[__0.ToString()] = old;
+                    }
+                }
+                catch (Exception error)
+                {
+                    _failed = true;
+                    Instance.Log.LogWarning("Could not keep FM26's pictures from other graphics folders: " + error);
+                }
             }
         }
 
