@@ -25,10 +25,7 @@ namespace RegenerateFM.FM26
             if (header == null)
                 return null;
             if (Fm27)
-            {
-                var texts = TextValues(FindNamed(header, "report-player-banner-max") ?? header);
-                return texts.Count > 0 ? texts[0] : null;
-            }
+                return Fm27Name(header);
             foreach (var value in TextValues(FindNamed(header, "Frame 1000003381")))
             {
                 string name = IdPattern.Replace(value, "").Trim(' ', '(', ')');
