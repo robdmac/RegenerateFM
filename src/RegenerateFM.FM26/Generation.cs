@@ -485,6 +485,10 @@ namespace RegenerateFM.FM26
                 // compiled against FM26's is a missing method in FM27.
                 typeof(ResourcesSubsystem).GetMethod(nameof(ResourcesSubsystem.RegisterLocalPath))
                     .Invoke(resources[0], new object[] { folder, null });
+                // With the folder's last face removed, FM registers nothing, so
+                // the wait for its registrations to settle starts now.
+                if (!Directory.EnumerateFiles(folder, "*.png").Any())
+                    _lastLocatorUtc = System.DateTime.UtcNow;
                 Log.LogInfo("Requested RegenerateFM graphics reload from " + folder);
                 return true;
             }
