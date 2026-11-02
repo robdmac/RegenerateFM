@@ -152,7 +152,8 @@ Everything has been tested on Linux with Steam/Proton. Status elsewhere:
 - **FM26 Demo:** tested on Windows 10 with the vanilla skin and the same BepInEx. Its squad pages differ from the full game's: Overview is a dashboard, so the squad command is on **First Team**, where the scanner matched all 33 players. On Linux (2026-10-21, with the image stand-in): BepInEx's first start, a First Team scan (8 of 33 missing) and an 8-face batch, and Update face for a player, each shown at once.
 - **FM24:** tested on 24.4.2 with its vanilla-based skin through the native DLL: previews of every command, a billed single face and a billed squad batch with Stop.
 - **Linux installer:** on 2026-10-25, the release's `./install-linux.sh` (now a self-contained program) refused while Steam ran, then set up FM26, the FM26 Demo and FM24: it kept FM24's DLL, token and skin, and copied the companion to `~/.local/share/RegenerateFM/FM24`. FM26 loaded the RegenerateFM plugin, and FM24 started the companion. Not yet checked on a Steam Deck or with Flatpak or Snap Steam.
-- **Not yet checked:** other skins, resolutions, languages and game builds.
+- **Languages:** besides English, checked in German (FM27 and FM26), French (FM27), Japanese and Arabic: the commands, dialogs and profile reading work in each.
+- **Not yet checked:** other skins, resolutions and game builds, and the game's other languages.
 
 ## Building from source
 
