@@ -42,9 +42,12 @@ namespace RegenerateFM.FM26
                     if (HasHash(macAssembly, "7886b66692c18504de32ad3973fe4c9afc3edfe12a6941b44e83627cb9563e26")
                         && HasHash(macPlugin, "de6b048ab1a95fd4ae683a7d751a33645183a9a570fa1c2fba32fd308ca87979"))
                         return true;
-                    // FM27 27.0.0 (Steam), with its own user data.
+                    // FM27 27.0.0 (Steam), with its own user data: the first build
+                    // and Steam's update of 2 November 2026 (build 26340721).
                     if (HasHash(macAssembly, "266d02a57471b44f381b7b647828c58fd394e8222c3083613324a93a9db09dd7")
-                        && HasHash(macPlugin, "2e915b0f264920ae1205b111f45d50e354ac0e7d0b6e136b99189c24b265f431"))
+                        && HasHash(macPlugin, "2e915b0f264920ae1205b111f45d50e354ac0e7d0b6e136b99189c24b265f431")
+                        || HasHash(macAssembly, "d26f882851f26248bb56ca3575fc7759d74aebc21fb9722f44cab29b63c1e654")
+                        && HasHash(macPlugin, "774cacde63567fd3901c47719e7a6ed94cc3a0a62e9b94989dcac6b4890ec0e1"))
                     {
                         Fm27 = true;
                         Text.GameName = "FM27";
