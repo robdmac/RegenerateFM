@@ -49,14 +49,16 @@ namespace RegenerateFM.FM26
             if (banner == null)
                 banner = header;
             var profile = new ProfileSnapshot();
-            // FM26's name box; FM27's frames have no numbers, and its name is the banner's first text.
-            var nameBox = FindNamed(banner, "Frame 1000003381") ?? (Fm27 ? banner : null);
-            foreach (var value in TextValues(nameBox))
-                if (!value.StartsWith("(ID:", StringComparison.OrdinalIgnoreCase))
-                {
-                    profile.Name = value;
-                    break;
-                }
+            // FM26's name box; FM27's frames have no numbers, so its name is read by its binding.
+            if (Fm27)
+                profile.Name = Fm27Name(header);
+            else
+                foreach (var value in TextValues(FindNamed(banner, "Frame 1000003381")))
+                    if (!value.StartsWith("(ID:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        profile.Name = value;
+                        break;
+                    }
             profile.Position = FirstText(FindNamed(banner, "Frame 1000003901")) ?? CompactPosition(banner) ??
                                (Fm27 ? BoundText(banner, Fm27PositionPath) : null);
             profile.Club = FirstText(FindNamed(header, "PlayingTeam"));
@@ -263,8 +265,7 @@ namespace RegenerateFM.FM26
         private static void ReadFm27StaffHeader(VisualElement header, ProfileSnapshot profile)
         {
             var texts = TextValues(header);
-            if (string.IsNullOrWhiteSpace(profile.Name) && texts.Count > 0)
-                profile.Name = texts[0];
+            profile.Name = Fm27Name(header) ?? profile.Name;
             int actions = texts.FindIndex(value => IsLabel(value, "Actions", ActionsLabel));
             if (actions >= 0 && actions + 2 < texts.Count)
             {
@@ -401,6 +402,13 @@ namespace RegenerateFM.FM26
 
         // What FM27's player header binds its position to, in the player's language.
         private const string Fm27PositionPath = "person.PositionCombinedStringLong";
+
+        // FM27's player and staff headers bind the name to person.Name. It isn't
+        // always the banner's first text: while the header is redrawn (as a face
+        // reloads) the name is briefly empty, and the first text is then a
+        // player's squad number or a coach's job. Null until the name is there.
+        private static string Fm27Name(VisualElement header) =>
+            BoundText(FindNamed(header, "report-player-banner-max") ?? header, "person.Name");
 
         private static bool IsPlayerHeader(VisualElement header)
         {
