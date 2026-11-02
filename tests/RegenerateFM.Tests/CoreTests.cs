@@ -54,6 +54,29 @@ namespace RegenerateFM.Tests
         }
 
         [Fact]
+        public void OnlyMenAreGivenAFacialHairChange()
+        {
+            // Across many people, about half of men get the change; women and
+            // people whose gender the game didn't give never do.
+            int men = 0;
+            for (int id = 1; id <= 200; id++)
+            {
+                var person = new ProfileSnapshot { Name = "Sam Taylor", Age = 31, Club = "Example FC", Position = "Striker" };
+                person.Gender = "male";
+                if (Prompts.UpdatePrompt(person, id.ToString()).Contains("Change their facial hair"))
+                    men++;
+                foreach (var gender in new[] { "female", null })
+                {
+                    person.Gender = gender;
+                    string prompt = Prompts.UpdatePrompt(person, id.ToString());
+                    Assert.DoesNotContain("Change their facial hair", prompt);
+                    Assert.Contains("Do not add any facial hair.", prompt);
+                }
+            }
+            Assert.InRange(men, 70, 130);
+        }
+
+        [Fact]
         public void EveryTranslationKeepsItsEnglishPlaceholders()
         {
             var assembly = typeof(Text).Assembly;
