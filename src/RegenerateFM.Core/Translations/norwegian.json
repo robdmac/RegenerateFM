@@ -305,5 +305,9 @@
   "Downloading Unity's libraries…": "Laster ned Unity-bibliotekene…",
   "Reading FM26's code…": "Leser koden til FM26…",
   "Building RegenerateFM's link to FM26…": "Bygger koblingen mellom RegenerateFM og FM26…",
-  "Starting FM26…": "Starter FM26…"
+  "Starting FM26…": "Starter FM26…",
+  "Previous face": "Forrige ansikt",
+  "Remove face": "Fjern ansikt",
+  "No earlier face to go back to": "Ikke noe tidligere ansikt å gå tilbake til",
+  "No RegenerateFM face to remove": "Ikke noe RegenerateFM-ansikt å fjerne"
 }

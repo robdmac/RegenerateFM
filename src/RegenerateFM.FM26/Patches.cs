@@ -20,6 +20,7 @@ using SI.Input;
 using SI.UI;
 using UnityEngine;
 using UnityEngine.UIElements;
+using UnityEngine.ResourceManagement.ResourceLocations;
 
 namespace RegenerateFM.FM26
 {
@@ -54,6 +55,48 @@ namespace RegenerateFM.FM26
             {
                 if (WaitingForGraphics)
                     _lastLocatorUtc = System.DateTime.UtcNow;
+            }
+        }
+
+        // FM keeps one picture of each type for a key (person_<id>), the last
+        // one registered. Our face for someone who also has a picture in
+        // another graphics folder (a facepack) replaces that picture, and FM
+        // registers those folders only at startup, so once DropLocalKeys
+        // (FM26) or PurgeLocalPath (FM27) takes our face out FM would show a
+        // silhouette until a restart. The replaced picture is kept for
+        // DropLocalKeys or PutBackReplaced to put back.
+        [HarmonyPatch(typeof(ResourcesSubsystem), "RegisterResourceLocator")]
+        private static class ReplacedPicturePatch
+        {
+            private static bool _failed;
+
+            private static void Prefix(ResourcesSubsystem __instance, Il2CppSystem.Object __0, IResourceLocation __1)
+            {
+                if (_failed)
+                    return;
+                try
+                {
+                    // Every picture FM registers comes here, tens of thousands with
+                    // a facepack: those not in our folder are passed over first.
+                    if (__0 == null || !InFolder(__1?.InternalId, _ourFolder))
+                        return;
+                    var map = __instance.m_resourceMap;
+                    if (map == null || !map.ContainsKey(__0))
+                        return;
+                    var list = map[__0];
+                    for (int i = 0; i < list.Count; i++)
+                    {
+                        var old = list[i];
+                        // FM finds its own photos and 3D faces again by itself.
+                        if (old != null && old.ProviderId == LocalProvider && !InFolder(old.InternalId, _ourFolder))
+                            ReplacedPictures[__0.ToString()] = (__0, old);
+                    }
+                }
+                catch (Exception error)
+                {
+                    _failed = true;
+                    Instance.Log.LogWarning("Could not keep FM's pictures from other graphics folders: " + error);
+                }
             }
         }
 
@@ -103,20 +146,20 @@ namespace RegenerateFM.FM26
                 int rows = -1;
                 bool shown = false;
                 // Found once: a hidden row has no size, so FindText can't find it again.
-                VisualElement generate = null, update = null;
+                var ours = new VisualElement[MenuLabels.Length];
                 IVisualElementScheduledItem check = null;
                 check = menu.schedule.Execute((Il2CppSystem.Action)(System.Action)(() =>
                 {
                     var now = System.DateTime.UtcNow;
-                    generate = generate ?? MenuRow(menu, Text.T("Generate face"));
-                    update = update ?? MenuRow(menu, Text.T("Update face"));
-                    if (generate == null || update == null || generate.parent != update.parent)
+                    for (int i = 0; i < ours.Length; i++)
+                        ours[i] = ours[i] ?? MenuRow(menu, Text.T(MenuLabels[i]));
+                    var view = ours[0]?.parent;
+                    if (Array.Exists(ours, row => row == null || row.parent != view))
                     {
                         if (now - opened > MenuSettle + MenuSettle)
                             check?.Pause();
                         return;
                     }
-                    var view = update.parent;
                     if (view.childCount != rows)
                     {
                         rows = view.childCount;
@@ -125,19 +168,20 @@ namespace RegenerateFM.FM26
                     bool settled = now - lastChange >= MenuSettle || now - opened >= MenuGiveUp;
                     if (!settled && !shown)
                     {
-                        generate.style.display = DisplayStyle.None;
-                        update.style.display = DisplayStyle.None;
+                        foreach (var row in ours)
+                            row.style.display = DisplayStyle.None;
                         return;
                     }
-                    if (view.IndexOf(update) != view.childCount - 1 || view.IndexOf(generate) != view.childCount - 2)
-                    {
-                        generate.BringToFront();
-                        update.BringToFront();
-                    }
+                    bool last = true;
+                    for (int i = 0; i < ours.Length; i++)
+                        last &= view.IndexOf(ours[i]) == view.childCount - ours.Length + i;
+                    if (!last)
+                        foreach (var row in ours)
+                            row.BringToFront();
                     if (!shown)
                     {
-                        generate.style.display = DisplayStyle.Flex;
-                        update.style.display = DisplayStyle.Flex;
+                        foreach (var row in ours)
+                            row.style.display = DisplayStyle.Flex;
                         shown = true;
                         Instance.Log.LogInfo("RegenerateFM actions shown at the bottom of the Actions menu after " +
                                              (now - opened).TotalSeconds.ToString("0.00") + " s");
@@ -148,6 +192,9 @@ namespace RegenerateFM.FM26
                 }));
                 check.Every(0);
             }
+
+            // RegenerateFM's rows, in their order at the bottom of the menu.
+            private static readonly string[] MenuLabels = { "Generate face", "Update face", "Previous face", "Remove face" };
 
             // How long FM's own rows must stop arriving before ours are shown, and
             // the longest the menu waits for that.
@@ -193,6 +240,15 @@ namespace RegenerateFM.FM26
                 // While the picture is still loading, leave it enabled; the click checks again.
                 if (FaceState(FindNamed(header, "PersonPicture")) == false)
                     context.Description.SetEnabled(update, false);
+                var previous = context.Description.AddItem(parent, Text.T("Previous face"),
+                    (Il2CppSystem.Action)(System.Action)(() => Instance.ChangeFace(personId, false)));
+                var remove = context.Description.AddItem(parent, Text.T("Remove face"),
+                    (Il2CppSystem.Action)(System.Action)(() => Instance.ChangeFace(personId, true)));
+                var choices = personId.HasValue ? FaceChoices(personId.Value, ShownName(header)) : (Previous: true, Remove: true);
+                if (!choices.Previous)
+                    context.Description.SetEnabled(previous, false);
+                if (!choices.Remove)
+                    context.Description.SetEnabled(remove, false);
                 _bound = true;
                 Instance.Log.LogInfo("RegenerateFM actions contributed to the Actions menu for " +
                                      (personId?.ToString() ?? "a profile still loading"));

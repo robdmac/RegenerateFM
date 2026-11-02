@@ -115,6 +115,99 @@ namespace RegenerateFM.Tests
         }
 
         [Fact]
+        public void PreviousFaceBringsBackEarlierFacesInTurn()
+        {
+            using var folder = new TempFolder();
+            string graphics = folder.Combine("graphics");
+            byte[] Face(byte red) => Pngs.Make(64, red);
+            var made = new DateTime(2026, 10, 30, 12, 0, 0, DateTimeKind.Utc);
+            Portraits.SavePortrait(graphics, "5", Face(10), owner: "Sean Winton", made: made);
+            Portraits.SavePortrait(graphics, "5", Face(20), owner: "Sean Winton", made: made.AddMinutes(1));
+            Portraits.SavePortrait(graphics, "5", Face(30), owner: "Sean Winton", made: made.AddMinutes(2));
+            Assert.Single(Directory.GetFiles(graphics, "5-*.png"));
+            Assert.Equal(2, FaceHistory.EarlierCount(graphics, "5", "Sean Winton"));
+            Assert.Equal(0, FaceHistory.EarlierCount(graphics, "5", "Gerardo Morales"));
+            // Back one at a time, then round to the newest again.
+            foreach (byte red in new byte[] { 20, 10, 30, 20 })
+            {
+                string saved = FaceHistory.Previous(graphics, "5", "Sean Winton");
+                Assert.Equal(Face(red), File.ReadAllBytes(saved));
+                Assert.Equal(Face(red), Portraits.CurrentPortrait(graphics, "5"));
+                Assert.Single(Directory.GetFiles(graphics, "5-*.png"));
+                Assert.Equal(2, FaceHistory.EarlierCount(graphics, "5", "Sean Winton"));
+            }
+            Assert.Null(FaceHistory.Previous(graphics, "5", "Gerardo Morales"));
+        }
+
+        [Fact]
+        public void TheHistoryKeepsTheNewestFacesOfEachOwner()
+        {
+            using var folder = new TempFolder();
+            string graphics = folder.Combine("graphics");
+            var made = new DateTime(2026, 10, 30, 12, 0, 0, DateTimeKind.Utc);
+            for (int i = 0; i < FaceHistory.KeptPerOwner + 3; i++)
+                Portraits.SavePortrait(graphics, "5", Pngs.Make(64, (byte)i), owner: "Sean Winton", made: made.AddMinutes(i));
+            Assert.Equal(FaceHistory.KeptPerOwner, FaceHistory.EarlierCount(graphics, "5", "Sean Winton"));
+            Assert.Equal(FaceHistory.KeptPerOwner, Directory.GetFiles(Path.Combine(graphics, ".regeneratefm-history", "5"), "*.face").Length);
+        }
+
+        [Fact]
+        public void RemoveFaceShowsTheGamesOwnAndKeepsItForPrevious()
+        {
+            using var folder = new TempFolder();
+            string graphics = folder.Combine("graphics");
+            Assert.False(FaceHistory.Remove(graphics, "5"));
+            var made = new DateTime(2026, 10, 30, 12, 0, 0, DateTimeKind.Utc);
+            Portraits.SavePortrait(graphics, "5", Pngs.Make(64, 10), owner: "Sean Winton", made: made);
+            Portraits.SavePortrait(graphics, "5", Pngs.Make(64, 20), owner: "Sean Winton", made: made.AddMinutes(1));
+            Assert.True(FaceHistory.Remove(graphics, "5"));
+            Assert.Null(Portraits.CurrentPortrait(graphics, "5"));
+            Assert.Empty(Directory.GetFiles(graphics, "5-*.png"));
+            Assert.DoesNotContain("person/5/", File.ReadAllText(Path.Combine(graphics, "config.xml")));
+            // Seeing the person again (in a later session) brings back none of
+            // their faces: they took the face off, not just the one shown.
+            Assert.False(FaceHistory.Claim(graphics, "5", "Sean Winton"));
+            Assert.Null(Portraits.CurrentPortrait(graphics, "5"));
+            Assert.NotNull(FaceHistory.Previous(graphics, "5", "Sean Winton"));
+            Assert.Equal(Pngs.Make(64, 20), Portraits.CurrentPortrait(graphics, "5"));
+            // The face they chose again is theirs to keep: another save's
+            // person moves it aside, and seeing them again brings it back.
+            Assert.True(FaceHistory.Claim(graphics, "5", "Gerardo Morales"));
+            Assert.True(FaceHistory.Claim(graphics, "5", "Sean Winton"));
+            Assert.Equal(Pngs.Make(64, 20), Portraits.CurrentPortrait(graphics, "5"));
+        }
+
+        [Fact]
+        public void AFaceMadeInAnotherSaveMakesWayForThisSavesPerson()
+        {
+            using var folder = new TempFolder();
+            string graphics = folder.Combine("graphics");
+            // One save's Sean Winton has ID 5; another save gives 5 to Gerardo Morales.
+            Portraits.SavePortrait(graphics, "5", Pngs.Make(64, 10), owner: "Sean Winton");
+            Assert.False(FaceHistory.Claim(graphics, "5", "Sean Winton"));
+            Assert.True(FaceHistory.Claim(graphics, "5", "Gerardo Morales"));
+            Assert.Null(Portraits.CurrentPortrait(graphics, "5"));
+            Assert.False(FaceHistory.Claim(graphics, "5", "Gerardo Morales"));
+            Portraits.SavePortrait(graphics, "5", Pngs.Make(64, 20), owner: "Gerardo Morales");
+            // Back in the first save, each gets their own face again.
+            Assert.True(FaceHistory.Claim(graphics, "5", "Sean Winton"));
+            Assert.Equal(Pngs.Make(64, 10), Portraits.CurrentPortrait(graphics, "5"));
+            Assert.Equal("Sean Winton", FaceHistory.Owner(graphics, "5"));
+            Assert.True(FaceHistory.Claim(graphics, "5", "Gerardo Morales"));
+            Assert.Equal(Pngs.Make(64, 20), Portraits.CurrentPortrait(graphics, "5"));
+            // Previous face is only ever one of the person's own.
+            Assert.Null(FaceHistory.Previous(graphics, "5", "Gerardo Morales"));
+            // A face with no recorded owner is left alone.
+            Assert.False(FaceHistory.Claim(graphics, "7", "Sean Winton"));
+            Portraits.SavePortrait(graphics, "7", Pngs.Make(64, 30));
+            Assert.False(FaceHistory.Claim(graphics, "7", "Sean Winton"));
+            Assert.NotNull(Portraits.CurrentPortrait(graphics, "7"));
+            // Previous face offers it to anyone with the ID, as it may be theirs.
+            Portraits.SavePortrait(graphics, "7", Pngs.Make(64, 40), owner: "Sean Winton");
+            Assert.Equal(Pngs.Make(64, 30), File.ReadAllBytes(FaceHistory.Previous(graphics, "7", "Sean Winton")));
+        }
+
+        [Fact]
         public void KnownEthnicitiesAreSavedAndTheUsersChoiceKept()
         {
             using var folder = new TempFolder();

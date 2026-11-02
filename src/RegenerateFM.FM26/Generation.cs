@@ -20,6 +20,7 @@ using SI.Input;
 using SI.UI;
 using UnityEngine;
 using UnityEngine.UIElements;
+using UnityEngine.ResourceManagement.ResourceLocations;
 
 namespace RegenerateFM.FM26
 {
@@ -436,7 +437,11 @@ namespace RegenerateFM.FM26
         // The game's folder under Sports Interactive; SupportedGameBuild sets it for the Demo.
         private static string UserDataName = "Football Manager 26";
 
-        private bool Refresh()
+        // ``purge``: a face was taken off, not replaced. FM27 keeps the folder's
+        // old entries when it is registered again, so a removed face's name
+        // still points at its missing file (a newgen then shows a blank instead
+        // of FM's 3D face); the folder's entries are dropped first.
+        private bool Refresh(bool purge = false)
         {
             if (WaitingForGraphics)
             {
@@ -460,6 +465,22 @@ namespace RegenerateFM.FM26
                 WaitingForGraphics = true;
                 _lastLocatorUtc = null;
                 _refreshStartedUtc = System.DateTime.UtcNow;
+                // By name: FM26 has no PurgeLocalPath.
+                if (purge && typeof(ResourcesSubsystem).GetMethod("PurgeLocalPath") is System.Reflection.MethodInfo purgePath)
+                {
+                    purgePath.Invoke(resources[0], new object[] { folder });
+                    int putBack = PutBackReplaced(resources[0]);
+                    // LocatorPatch saw those registrations; the reload's are still to come.
+                    _lastLocatorUtc = null;
+                    Log.LogInfo("Dropped FM's entries for the RegenerateFM graphics folder" +
+                                (putBack > 0 ? "; put back " + putBack + " from other graphics folders" : ""));
+                }
+                else if (purge)
+                {
+                    var (dropped, putBack) = DropLocalKeys(resources[0], folder);
+                    Log.LogInfo("Dropped FM26's entries for " + dropped + " pictures in the RegenerateFM graphics folder" +
+                                (putBack > 0 ? "; put back " + putBack + " from other graphics folders" : ""));
+                }
                 // By name: FM27's returns a LocalPathScan, FM26's nothing, so a call
                 // compiled against FM26's is a missing method in FM27.
                 typeof(ResourcesSubsystem).GetMethod(nameof(ResourcesSubsystem.RegisterLocalPath))
@@ -473,6 +494,86 @@ namespace RegenerateFM.FM26
                 Log.LogError("Could not register RegenerateFM graphics: " + error);
                 return false;
             }
+        }
+
+        // A picture from another graphics folder that our face replaced in
+        // FM's resource map, by key (ReplacedPicturePatch).
+        private static readonly Dictionary<string, (Il2CppSystem.Object Key, IResourceLocation Location)> ReplacedPictures =
+            new Dictionary<string, (Il2CppSystem.Object Key, IResourceLocation Location)>();
+        private static readonly string LocalProvider = typeof(LocalAssetProvider).FullName;
+        // GraphicsFolder as InFolder takes it, set in Load.
+        private static string _ourFolder;
+
+        private static string FolderPrefix(string folder) => folder.Replace('\\', '/').TrimEnd('/') + "/";
+
+        // FM's paths mix / and \.
+        private static bool InFolder(string path, string folderPrefix) =>
+            path != null && folderPrefix != null &&
+            path.Replace('\\', '/').StartsWith(folderPrefix, StringComparison.OrdinalIgnoreCase);
+
+        // FM26's PurgeLocalPath. Registering the folder again only adds to FM26's
+        // resource map, so a face no longer mapped would still be shown. The
+        // keys with a picture in the folder are taken out instead; FM then
+        // finds the person's picture again (its photo or its 3D face) when it
+        // is next shown, as it does the first time. A picture of theirs from
+        // another graphics folder, which FM26 wouldn't find again before a
+        // restart, is put back.
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        private static (int Dropped, int PutBack) DropLocalKeys(ResourcesSubsystem resources, string folder)
+        {
+            var map = resources.m_resourceMap;
+            if (map == null)
+                return (0, 0);
+            string inFolder = FolderPrefix(folder);
+            var keys = new List<Il2CppSystem.Object>();
+            foreach (var entry in map)
+            {
+                var list = entry.Value;
+                for (int i = 0; list != null && i < list.Count; i++)
+                {
+                    if (InFolder(list[i]?.InternalId, inFolder))
+                    {
+                        keys.Add(entry.Key);
+                        break;
+                    }
+                }
+            }
+            int putBack = 0;
+            foreach (var key in keys)
+            {
+                string name = key.ToString();
+                // Kept again if our face for them is registered again.
+                if (ReplacedPictures.Remove(name, out var replaced) && File.Exists(replaced.Location.InternalId))
+                {
+                    var list = new Il2CppSystem.Collections.Generic.List<IResourceLocation>();
+                    list.Add(replaced.Location);
+                    map[key] = list;
+                    putBack++;
+                }
+                else
+                    map.Remove(key);
+            }
+            return (keys.Count, putBack);
+        }
+
+        // FM27's PurgeLocalPath takes our pictures out, and with them the keys
+        // they were registered for, so a picture from another graphics folder
+        // that ours replaced would be gone until a restart. Those are
+        // registered again here; registering our folder again then puts our
+        // remaining faces back over them (and ReplacedPicturePatch keeps them
+        // again).
+        private static int PutBackReplaced(ResourcesSubsystem resources)
+        {
+            int putBack = 0;
+            foreach (var (key, location) in ReplacedPictures.Values)
+            {
+                if (!File.Exists(location.InternalId))
+                    continue;
+                resources.RegisterResourceLocator(key, location);
+                putBack++;
+            }
+            ReplacedPictures.Clear();
+            return putBack;
         }
 
         private void CheckRefreshTimeout()

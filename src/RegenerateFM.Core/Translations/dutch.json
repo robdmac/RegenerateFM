@@ -305,5 +305,9 @@
  "Downloading Unity's libraries…": "Unity-bibliotheken downloaden…",
  "Reading FM26's code…": "Code van FM26 lezen…",
  "Building RegenerateFM's link to FM26…": "Koppeling tussen RegenerateFM en FM26 opbouwen…",
- "Starting FM26…": "FM26 starten…"
+ "Starting FM26…": "FM26 starten…",
+ "Previous face": "Vorig gezicht",
+ "Remove face": "Gezicht verwijderen",
+ "No earlier face to go back to": "Geen eerder gezicht om naar terug te gaan",
+ "No RegenerateFM face to remove": "Geen RegenerateFM-gezicht om te verwijderen"
 }

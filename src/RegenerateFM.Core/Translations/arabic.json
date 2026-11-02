@@ -305,5 +305,9 @@
   "Downloading Unity's libraries…": "جارٍ تنزيل مكتبات Unity…",
   "Reading FM26's code…": "جارٍ قراءة شفرة FM26…",
   "Building RegenerateFM's link to FM26…": "جارٍ بناء الربط بين RegenerateFM وFM26…",
-  "Starting FM26…": "جارٍ تشغيل FM26…"
+  "Starting FM26…": "جارٍ تشغيل FM26…",
+  "Previous face": "الوجه السابق",
+  "Remove face": "إزالة الوجه",
+  "No earlier face to go back to": "لا يوجد وجه سابق للعودة إليه",
+  "No RegenerateFM face to remove": "لا يوجد وجه من RegenerateFM لإزالته"
 }

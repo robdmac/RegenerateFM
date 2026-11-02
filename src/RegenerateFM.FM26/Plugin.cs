@@ -127,6 +127,8 @@ namespace RegenerateFM.FM26
                 _harmony.PatchAll(typeof(LocatorPatch));
             else
                 _harmony.PatchAll(typeof(AssetLoadPatch));
+            _ourFolder = FolderPrefix(GraphicsFolder());
+            _harmony.PatchAll(typeof(ReplacedPicturePatch));
             _harmony.PatchAll(typeof(MenuOpenPatch));
             AddComponent<StaffWatcher>();
             Log.LogInfo("RegenerateFM Actions and portrait menu integration loaded");

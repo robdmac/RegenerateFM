@@ -305,5 +305,9 @@
   "Downloading Unity's libraries…": "Λήψη των βιβλιοθηκών της Unity…",
   "Reading FM26's code…": "Ανάγνωση του κώδικα του FM26…",
   "Building RegenerateFM's link to FM26…": "Δημιουργία της σύνδεσης μεταξύ RegenerateFM και FM26…",
-  "Starting FM26…": "Εκκίνηση του FM26…"
+  "Starting FM26…": "Εκκίνηση του FM26…",
+  "Previous face": "Προηγούμενο πρόσωπο",
+  "Remove face": "Αφαίρεση προσώπου",
+  "No earlier face to go back to": "Δεν υπάρχει προηγούμενο πρόσωπο για επιστροφή",
+  "No RegenerateFM face to remove": "Δεν υπάρχει πρόσωπο RegenerateFM για αφαίρεση"
 }

@@ -62,7 +62,7 @@ namespace RegenerateFM
                     ? await ImageApi.EditPng(settings, Prompts.RelativePrompt(profile, relation, personId, folder), relativeFace, cancel).ConfigureAwait(false)
                     : await ImageApi.GeneratePng(settings, Prompts.ProfilePrompt(profile, personId, folder), cancel).ConfigureAwait(false);
             }
-            return SavePortrait(folder, personId, png);
+            return SavePortrait(folder, personId, png, owner: profile.Name);
         }
 
         // ---- Saving into FM26's graphics folder ----------------------------
@@ -80,11 +80,21 @@ namespace RegenerateFM
 
         // A file RegenerateFM saved for this person: "<id>" (before faces were
         // versioned, and from the FM26 web page) or "<id>-<16 hex>".
-        private static bool IsPortraitStem(string stem, string personId) =>
+        internal static bool IsPortraitStem(string stem, string personId) =>
             Regex.IsMatch(stem ?? "", "^" + personId + "-[0-9a-f]{16}$");
 
         // RegenerateFM's saved portrait for this ID, if config.xml still maps it.
         public static byte[] CurrentPortrait(string directory, string personId)
+        {
+            string path = CurrentFile(directory, personId);
+            if (path == null)
+                return null;
+            var png = File.ReadAllBytes(path);
+            return Png.IsPng(png) && png.Length <= ImageApi.MaxReference ? png : null;
+        }
+
+        // The file of RegenerateFM's face that config.xml maps for this ID, or null.
+        public static string CurrentFile(string directory, string personId)
         {
             ValidateId(personId);
             var (_, maps) = LoadMaps(directory);
@@ -95,10 +105,8 @@ namespace RegenerateFM
                 if (!IsPortraitStem(stem, personId) || !targets.Contains((string)record.Attribute("to")))
                     continue;
                 string path = Path.Combine(directory, stem + ".png");
-                if (!File.Exists(path))
-                    continue;
-                var png = File.ReadAllBytes(path);
-                return Png.IsPng(png) && png.Length <= ImageApi.MaxReference ? png : null;
+                if (File.Exists(path))
+                    return path;
             }
             return null;
         }
@@ -135,11 +143,14 @@ namespace RegenerateFM
         // to the person's ordinary and generated-player IDs, as the FM24
         // companion does: FM26 keeps a staff portrait it has drawn and doesn't
         // load the same file again, so a face saved over the old file would
-        // not appear until a restart. The person's earlier files are removed
-        // once config.xml maps the new one; if config.xml fails, the new file is.
-        // ``removeEarlier`` false keeps the person's earlier files for FM24,
-        // which shows them until its skin reload succeeds (RemoveEarlier then).
-        public static string SavePortrait(string directory, string personId, byte[] png, bool removeEarlier = true)
+        // not appear until a restart. The person's earlier files go into the
+        // history (FaceHistory) once config.xml maps the new one; if config.xml
+        // fails, the new file is removed. ``removeEarlier`` false keeps the
+        // person's earlier files for FM24, which shows them until its skin
+        // reload succeeds (RemoveEarlier then). ``owner`` is the name shown
+        // with the face, ``made`` when it was first made.
+        public static string SavePortrait(string directory, string personId, byte[] png, bool removeEarlier = true,
+                                          string owner = null, DateTime? made = null)
         {
             ValidateId(personId);
             if (!Png.IsPng(png))
@@ -157,13 +168,7 @@ namespace RegenerateFM
                 foreach (var prefix in new[] { "", "r-" })
                     maps.Add(new XElement("record", new XAttribute("from", stem),
                                           new XAttribute("to", "graphics/pictures/person/" + prefix + personId + "/portrait")));
-                byte[] xml;
-                using (var buffer = new MemoryStream())
-                {
-                    using (var writer = XmlWriter.Create(buffer, new XmlWriterSettings { Indent = true, IndentChars = "  ", Encoding = new UTF8Encoding(false) }))
-                        document.Save(writer);
-                    xml = buffer.ToArray();
-                }
+                byte[] xml = ConfigBytes(document);
                 AtomicFile.Write(imagePath, png);
                 try
                 {
@@ -181,27 +186,40 @@ namespace RegenerateFM
                     }
                     throw;
                 }
+                FaceHistory.Added(directory, personId, stem, owner, made ?? DateTime.UtcNow);
                 if (removeEarlier)
                     RemoveEarlier(imagePath, personId);
                 return imagePath;
             }
         }
 
-        // The person's files beside ``current`` that config.xml no longer maps;
-        // one that can't be removed now is removed after the next face.
+        private static byte[] ConfigBytes(XDocument document)
+        {
+            using var buffer = new MemoryStream();
+            using (var writer = XmlWriter.Create(buffer, new XmlWriterSettings { Indent = true, IndentChars = "  ", Encoding = new UTF8Encoding(false) }))
+                document.Save(writer);
+            return buffer.ToArray();
+        }
+
+        // Takes the person's face out of config.xml; FaceHistory keeps the file.
+        internal static void Unmap(string directory, string personId)
+        {
+            lock (SaveLock)
+            {
+                var (document, maps) = LoadMaps(directory);
+                var targets = Targets(personId);
+                foreach (var record in maps.Elements("record").Where(record => targets.Contains((string)record.Attribute("to"))).ToList())
+                    record.Remove();
+                AtomicFile.Write(Path.Combine(directory, "config.xml"), ConfigBytes(document));
+            }
+        }
+
+        // The person's files beside ``current`` that config.xml no longer maps
+        // go into the history; one that can't be moved now goes after the next face.
         public static void RemoveEarlier(string current, string personId)
         {
-            string stem = Path.GetFileNameWithoutExtension(current);
-            foreach (var old in Directory.EnumerateFiles(Path.GetDirectoryName(current), personId + "*.png"))
-            {
-                string oldStem = Path.GetFileNameWithoutExtension(old);
-                if (oldStem != stem && IsPortraitStem(oldStem, personId))
-                {
-                    try { File.Delete(old); }
-                    catch (IOException) { }
-                    catch (UnauthorizedAccessException) { }
-                }
-            }
+            lock (SaveLock)
+                FaceHistory.Retire(Path.GetDirectoryName(current), personId, Path.GetFileNameWithoutExtension(current));
         }
     }
 }

@@ -96,7 +96,6 @@ namespace RegenerateFM.FM26
             menu.style.left = Math.Max(0f, picture.worldBound.x - root.worldBound.x);
             menu.style.top = Math.Max(0f, picture.worldBound.yMax - root.worldBound.y + 3f);
             menu.style.width = 190;
-            menu.style.height = 66;
             menu.style.backgroundColor = new Color(0.16f, 0.16f, 0.16f, 1f);
             menu.style.borderTopWidth = 1;
             menu.style.borderBottomWidth = 1;
@@ -107,19 +106,31 @@ namespace RegenerateFM.FM26
             menu.style.borderLeftColor = Color.gray;
             menu.style.borderRightColor = Color.gray;
             bool hasFace = HasFace(picture);
+            var choices = FaceChoices(personId, ShownName(header));
             menu.Add(PortraitMenuItem("regeneratefm-portrait-generate", Text.T("Generate new face"), personId, false, true));
             menu.Add(PortraitMenuItem("regeneratefm-portrait-update", Text.T("Update face"), personId, true, hasFace));
+            menu.Add(PortraitMenuItem("regeneratefm-portrait-previous", Text.T("Previous face"), personId, false, choices.Previous,
+                                      () => ChangeFace(personId, false), Text.T("No earlier face to go back to")));
+            menu.Add(PortraitMenuItem("regeneratefm-portrait-remove", Text.T("Remove face"), personId, false, choices.Remove,
+                                      () => ChangeFace(personId, true), Text.T("No RegenerateFM face to remove")));
             root.Add(Directed(menu));
             _portraitDismissLayer = dismissLayer;
             _portraitMenu = menu;
             _portraitMenuPersonId = personId;
         }
 
-        private Button PortraitMenuItem(string name, string text, long personId, bool update, bool enabled)
+        // ``action`` replaces Generate (or Update) face; ``disabledTip`` explains a disabled item.
+        private Button PortraitMenuItem(string name, string text, long personId, bool update, bool enabled,
+                                        Action action = null, string disabledTip = null)
         {
             var item = new Button((Il2CppSystem.Action)(System.Action)(() =>
             {
                 ClosePortraitMenu();
+                if (action != null)
+                {
+                    action();
+                    return;
+                }
                 var currentRoot = CurrentRoot();
                 var currentHeader = FindNamed(currentRoot, "ReportHeader");
                 if (currentHeader == null || !HeaderId(currentHeader, out long currentId) ||
@@ -139,7 +150,7 @@ namespace RegenerateFM.FM26
             item.style.paddingLeft = 10;
             item.SetEnabled(enabled);
             if (!enabled)
-                item.tooltip = Text.T("No face to update yet");
+                item.tooltip = disabledTip ?? Text.T("No face to update yet");
             return item;
         }
 

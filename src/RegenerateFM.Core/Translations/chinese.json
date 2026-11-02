@@ -305,5 +305,9 @@
  "Downloading Unity's libraries…": "正在下载 Unity 库…",
  "Reading FM26's code…": "正在读取 FM26 的代码…",
  "Building RegenerateFM's link to FM26…": "正在建立 RegenerateFM 与 FM26 的连接…",
- "Starting FM26…": "正在启动 FM26…"
+ "Starting FM26…": "正在启动 FM26…",
+ "Previous face": "上一个头像",
+ "Remove face": "移除头像",
+ "No earlier face to go back to": "没有可恢复的旧头像",
+ "No RegenerateFM face to remove": "没有可移除的 RegenerateFM 头像"
 }
