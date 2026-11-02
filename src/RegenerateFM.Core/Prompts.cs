@@ -107,6 +107,12 @@ namespace RegenerateFM
         private static string GenderText(string name, string gender) =>
             gender == "female" ? " " + name + " is a woman." : gender == "male" ? " " + name + " is a man." : "";
 
+        // GenderText for Update face and a newgen's photograph, where an under-18
+        // described as a man or woman is drawn too old.
+        private static string GenderText(string name, string gender, int age) =>
+            age >= 18 ? GenderText(name, gender)
+            : gender == "female" ? " " + name + " is a teenage girl." : gender == "male" ? " " + name + " is a teenage boy." : "";
+
         // FM's ethnicities (its SI.Match.Ethnicity, in the game's order) and how
         // the prompt describes each.
         public static readonly string[] Ethnicities =
@@ -283,9 +289,12 @@ namespace RegenerateFM
                    "features as described above. Do not copy the supplied face, its expression or its pose.";
         }
 
-        // Refreshing an existing portrait supplied as the input image: only the
-        // person's current age and attire change.
-        public static string UpdatePrompt(ProfileSnapshot profile)
+        // Refreshing an existing portrait supplied as the input image, which may
+        // be years old: the same person, clearly aged to now, in their current
+        // kit. ``personId`` seeds whether this update also changes their facial
+        // hair and makes their hairstyle more grown-up (about half of updates
+        // each, the same for a person at the same age).
+        public static string UpdatePrompt(ProfileSnapshot profile, string personId = null)
         {
             if (profile == null)
                 throw new ArgumentException("Profile is missing.");
@@ -300,23 +309,56 @@ namespace RegenerateFM
             string gender = Gender(profile);
             string attire = kind == "staff" ? "Dress them in a simple unbranded dark jacket or training top. "
                                             : KitText(Text(profile.Club, "club", label));
-            return "Update this Football Manager profile picture of " + name + ". The supplied image is " +
-                   name + "'s current portrait." + GenderText(name, gender) + " Keep them clearly the same person, with the same face shape, " +
-                   "features, skin tone, eye colour, hairstyle, facial hair and distinguishing marks. " +
-                   (gender == "male" ? "" : "Do not add any facial hair. ") +
+            string seed = (personId ?? name) + "\0" + age.ToString(CultureInfo.InvariantCulture);
+            string hair = Appearance.Chance(seed, "hairstyle")
+                ? "Give them a more grown-up hairstyle than in the supplied picture, such as a shorter, neater or differently styled cut that suits a " + age + "-year-old, keeping their hair colour and texture. "
+                : "Their hairstyle may be cut or styled a little differently, as it naturally would be by now. ";
+            string facialHair = gender != "male" ? "Do not add any facial hair. "
+                : Appearance.Chance(seed, "facialHair")
+                    ? "Change their facial hair from the supplied picture: if they are clean-shaven, give them natural stubble or a short beard; if they have facial hair, give them a different style or shave it off. "
+                    : "Keep their facial hair much as it is, grown or trimmed naturally for their age. ";
+            return "Update this Football Manager profile picture of " + name + ". The supplied image is an earlier portrait of " +
+                   name + " and may be several years old." + GenderText(name, gender, age) + PositionText(profile, name) +
+                   " Show " + name + " as they look now, at age " + age + ": " + AgeSigns(age, gender) + ". " +
+                   "Age the face to match, rather than copying how old it looks in the picture; if it already looks about " + age +
+                   ", change little. Keep them recognisably the same person, with the same bone structure, face shape, nose, eyes, " +
+                   "eye colour, skin tone and distinguishing marks, and the same hair colour apart from any natural greying. " +
+                   hair + facialHair +
                    "Make it a realistic photograph of " + name + " as a real person: if the supplied picture is a " +
                    "3D render, game graphic or illustration, keep the likeness but replace its rendered look with " +
-                   "real photographic skin, hair and lighting. " +
-                   "Show " + name + " as they look now, at age " + age + ": if the supplied picture looks younger or " +
-                   "older, change only the natural signs of age, such as hairline, hair colour, skin " +
-                   "texture and facial lines. " + attire + PortraitFraming + PortraitPhotography +
-                   PortraitBackground + "Otherwise make it an updated photograph of the supplied picture of " + name + ". " +
-                   "Do not depict numbers. No text, logos, badges, borders, or other people.";
+                   "real photographic skin, hair and lighting. " + attire + PortraitFraming + PortraitPhotography +
+                   PortraitBackground + "Do not depict numbers. No text, logos, badges, borders, or other people.";
         }
 
+        // How a face looks at ``age``, for Update face to age towards.
+        private static string AgeSigns(int age, string gender)
+        {
+            string person = gender == "female" ? "woman" : gender == "male" ? "man" : "person";
+            if (age < 20)
+                return "a teenager's face, with youthful skin and softer features";
+            if (age < 24)
+                return "a young adult's face, losing its teenage softness, with a slightly more defined jaw and cheekbones";
+            if (age < 28)
+                return "a " + person + " in their mid-twenties: a fully adult, more defined face with no teenage softness, and slightly more textured skin";
+            if (age < 33)
+                return "a " + person + " around thirty: a lean, mature face with a defined jaw, faint lines across the forehead and at the corners of the eyes, " +
+                       "deeper smile lines and more weathered, textured skin";
+            if (age < 40)
+                return "a " + person + " in their thirties: clear forehead lines and crow's feet, deeper smile lines, a little less fullness in the cheeks, " +
+                       "weathered skin, and possibly a few grey hairs or a slightly higher hairline";
+            return "a " + person + " of " + age + ": visible lines and wrinkles, looser skin along the jaw, greying hair and, if it suits them, " +
+                   "a receding or thinning hairline";
+        }
+
+        // " Name is a Goalkeeper.", so the kit is a goalkeeper's where it should be.
+        private static string PositionText(ProfileSnapshot profile, string name) =>
+            (profile.Type ?? "player") == "player" && !string.IsNullOrWhiteSpace(profile.Position) && profile.Position.Length <= 120
+                ? " " + name + " plays as a " + Whitespace.Replace(profile.Position.Trim(), " ") + "."
+                : "";
+
         // UpdatePrompt, for a supplied image that is FM26's own 3D face for a
-        // newgen: the render becomes a photograph of a real person, keeping its
-        // colouring and hair, with the person's appearance traits for the face.
+        // newgen: the render is only a guide to the person's colouring and hair,
+        // and the photograph is of an ordinary person with their appearance traits.
         public static string NewgenPrompt(ProfileSnapshot profile, string personId = null, string appearanceDir = null)
         {
             if (profile == null)
@@ -336,20 +378,22 @@ namespace RegenerateFM
             var traits = Appearance.PersonTraits(name, age, personId, appearanceDir, gender, family);
             Appearance.AppearanceInstruction(traits, gender); // refuses invalid saved traits
             string facialHair = gender == "male" ? traits["facialHair"] : Appearance.NoFacialHair;
-            return "Turn this Football Manager picture of " + name + " into a realistic photograph of a real person. " +
-                   "The supplied image is the game's computer-generated 3D face for " + name + ", not a photograph." +
-                   GenderText(name, gender) + " Keep " + name + "'s skin tone, eye colour, hair colour and hairstyle from it, " +
-                   "but not its smooth, rendered, game-like face: show a real human face with real photographic skin, " +
-                   "hair and lighting. Show " + name + " at age " + age + ", with their own individual features: " + traits["face"] + "; " +
-                   traits["features"] + "; " + facialHair + "; " + traits["expression"] + ". " +
-                   "Keep these features understated, anatomically natural and consistent with the person's age. " +
-                   attire + PortraitFraming + PortraitPhotography + PortraitBackground +
+            string youth = age < 20 ? " Show " + name + " as the teenager they are, with a youthful face and skin, not as someone in their twenties." : "";
+            return "Create a realistic photograph of " + name + ", a real " + age + "-year-old, for their Football Manager profile picture. " +
+                   "The supplied image is the game's computer-generated 3D face for " + name + ". Use it only as a loose guide to " +
+                   name + "'s skin tone, eye colour, hair colour, hairstyle and rough face shape: it is not a likeness to copy, and its " +
+                   "smooth, symmetrical, rendered features are not how a real person looks." + GenderText(name, gender, age) +
+                   PositionText(profile, name) + youth + " Make " + name + " an ordinary-looking person rather than a model, with their own " +
+                   "individual features: " + traits["face"] + "; " + traits["features"] + "; " + facialHair + "; " + traits["expression"] + ". " +
+                   "Give them real, imperfect skin with uneven tone and texture" + (age < 22 ? " and the odd blemish" : "") +
+                   ", natural asymmetry and ordinary proportions; avoid a chiselled, symmetrical, airbrushed or conventionally " +
+                   "handsome look. " + attire + PortraitFraming + PortraitPhotography + PortraitBackground +
                    "Do not depict numbers. No text, logos, badges, borders, or other people.";
         }
 
         private static string Text(string value, string key, string label)
         {
-            if (string.IsNullOrWhiteSpace(value) || value.Length > 120)
+            if (string.IsNullOrWhiteSpace(value) || value.Length > 120 || key == "name" && !GameInfo.PlausibleName(value))
                 throw new ArgumentException(label + " " + key + " is missing or invalid.");
             return Whitespace.Replace(value.Trim(), " ");
         }

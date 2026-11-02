@@ -134,7 +134,7 @@ namespace RegenerateFM.Tests
             var preview = _companion.Generate("123", "update");
             Assert.True(preview.Preview);
             Assert.Equal("FM24 bundled messi.jpg", preview.Reference);
-            Assert.Contains("updated photograph of the supplied picture of Lionel Messi", preview.Prompt);
+            Assert.Contains("The supplied image is an earlier portrait of Lionel Messi", preview.Prompt);
             Assert.True(_identityOnly);
             Assert.Equal("123 " + _folder.Combine("graphics") + " /games/fm24", asked);
             Assert.Empty(_calls);

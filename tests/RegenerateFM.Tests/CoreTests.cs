@@ -25,6 +25,35 @@ namespace RegenerateFM.Tests
         };
 
         [Fact]
+        public void AnUncheckedBuildIsNamedByItsAppInfo()
+        {
+            var fm27 = GameInfo.FromAppInfo("Sports Interactive\nFootball Manager 27");
+            Assert.Equal((27, false, "Football Manager 27", "FM27"), (fm27.Number, fm27.Demo, fm27.UserDataName, fm27.ShortName));
+            var demo = GameInfo.FromAppInfo("Sports Interactive\r\nFootball Manager 26 Demo\r\n");
+            Assert.Equal((26, true, "Football Manager 26 Demo"), (demo.Number, demo.Demo, demo.UserDataName));
+            Assert.Equal(28, GameInfo.FromAppInfo("Sports Interactive\nFootball Manager 28").Number);
+            // Not a game the plugin is for.
+            Assert.Null(GameInfo.FromAppInfo("Sports Interactive\nFootball Manager 2024"));
+            Assert.Null(GameInfo.FromAppInfo("Sports Interactive\nFootball Manager 25"));
+            Assert.Null(GameInfo.FromAppInfo("Someone Else\nFootball Manager 27"));
+            Assert.Null(GameInfo.FromAppInfo(""));
+            Assert.Null(GameInfo.FromAppInfo(null));
+        }
+
+        [Fact]
+        public void TextReadInPlaceOfANameMakesNoFace()
+        {
+            // FM27's banner once gave the squad number where the name was read.
+            Assert.False(GameInfo.PlausibleName("4"));
+            Assert.False(GameInfo.PlausibleName(" "));
+            Assert.True(GameInfo.PlausibleName("Li Liming"));
+            Assert.True(GameInfo.PlausibleName("Ødegaard"));
+            var player = Player();
+            player.Name = "4";
+            Assert.Throws<ArgumentException>(() => Prompts.UpdatePrompt(player));
+        }
+
+        [Fact]
         public void EveryTranslationKeepsItsEnglishPlaceholders()
         {
             var assembly = typeof(Text).Assembly;
@@ -357,7 +386,7 @@ namespace RegenerateFM.Tests
             Assert.Contains(Prompts.NewgenPrompt(newgen, "2002068539", graphics), firstForm);
             Assert.Contains("computer-generated 3D face for Craig Griffiths", firstForm);
             // Once RegenerateFM has a face for them, Update face refreshes that photograph instead.
-            Assert.Contains(Prompts.UpdatePrompt(newgen), secondForm);
+            Assert.Contains(Prompts.UpdatePrompt(newgen, "2002068539"), secondForm);
             Assert.DoesNotContain("computer-generated", secondForm);
 
             var father = new ProfileSnapshot
