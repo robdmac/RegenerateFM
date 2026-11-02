@@ -469,7 +469,11 @@ namespace RegenerateFM.FM26
                 if (purge && typeof(ResourcesSubsystem).GetMethod("PurgeLocalPath") is System.Reflection.MethodInfo purgePath)
                 {
                     purgePath.Invoke(resources[0], new object[] { folder });
-                    Log.LogInfo("Dropped FM's entries for the RegenerateFM graphics folder");
+                    int putBack = PutBackReplaced(resources[0]);
+                    // LocatorPatch saw those registrations; the reload's are still to come.
+                    _lastLocatorUtc = null;
+                    Log.LogInfo("Dropped FM's entries for the RegenerateFM graphics folder" +
+                                (putBack > 0 ? "; put back " + putBack + " from other graphics folders" : ""));
                 }
                 else if (purge)
                 {
@@ -493,10 +497,11 @@ namespace RegenerateFM.FM26
         }
 
         // A picture from another graphics folder that our face replaced in
-        // FM26's resource map, by key (ReplacedPicturePatch).
-        private static readonly Dictionary<string, IResourceLocation> ReplacedPictures = new Dictionary<string, IResourceLocation>();
+        // FM's resource map, by key (ReplacedPicturePatch).
+        private static readonly Dictionary<string, (Il2CppSystem.Object Key, IResourceLocation Location)> ReplacedPictures =
+            new Dictionary<string, (Il2CppSystem.Object Key, IResourceLocation Location)>();
         private static readonly string LocalProvider = typeof(LocalAssetProvider).FullName;
-        // GraphicsFolder as InFolder takes it, set where ReplacedPicturePatch is used.
+        // GraphicsFolder as InFolder takes it, set in Load.
         private static string _ourFolder;
 
         private static string FolderPrefix(string folder) => folder.Replace('\\', '/').TrimEnd('/') + "/";
@@ -538,10 +543,10 @@ namespace RegenerateFM.FM26
             {
                 string name = key.ToString();
                 // Kept again if our face for them is registered again.
-                if (ReplacedPictures.Remove(name, out var replaced) && File.Exists(replaced.InternalId))
+                if (ReplacedPictures.Remove(name, out var replaced) && File.Exists(replaced.Location.InternalId))
                 {
                     var list = new Il2CppSystem.Collections.Generic.List<IResourceLocation>();
-                    list.Add(replaced);
+                    list.Add(replaced.Location);
                     map[key] = list;
                     putBack++;
                 }
@@ -549,6 +554,26 @@ namespace RegenerateFM.FM26
                     map.Remove(key);
             }
             return (keys.Count, putBack);
+        }
+
+        // FM27's PurgeLocalPath takes our pictures out, and with them the keys
+        // they were registered for, so a picture from another graphics folder
+        // that ours replaced would be gone until a restart. Those are
+        // registered again here; registering our folder again then puts our
+        // remaining faces back over them (and ReplacedPicturePatch keeps them
+        // again).
+        private static int PutBackReplaced(ResourcesSubsystem resources)
+        {
+            int putBack = 0;
+            foreach (var (key, location) in ReplacedPictures.Values)
+            {
+                if (!File.Exists(location.InternalId))
+                    continue;
+                resources.RegisterResourceLocator(key, location);
+                putBack++;
+            }
+            ReplacedPictures.Clear();
+            return putBack;
         }
 
         private void CheckRefreshTimeout()

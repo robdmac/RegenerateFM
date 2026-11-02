@@ -58,13 +58,13 @@ namespace RegenerateFM.FM26
             }
         }
 
-        // FM26 keeps one picture of each type for a key (person_<id>), the last
+        // FM keeps one picture of each type for a key (person_<id>), the last
         // one registered. Our face for someone who also has a picture in
-        // another graphics folder (a facepack) replaces that picture, and FM26
-        // registers those folders only at startup, so once DropLocalKeys takes
-        // our face out FM26 would show a silhouette until a restart. The
-        // replaced picture is kept for DropLocalKeys to put back. Not used
-        // where FM has PurgeLocalPath (FM27).
+        // another graphics folder (a facepack) replaces that picture, and FM
+        // registers those folders only at startup, so once DropLocalKeys
+        // (FM26) or PurgeLocalPath (FM27) takes our face out FM would show a
+        // silhouette until a restart. The replaced picture is kept for
+        // DropLocalKeys or PutBackReplaced to put back.
         [HarmonyPatch(typeof(ResourcesSubsystem), "RegisterResourceLocator")]
         private static class ReplacedPicturePatch
         {
@@ -89,13 +89,13 @@ namespace RegenerateFM.FM26
                         var old = list[i];
                         // FM finds its own photos and 3D faces again by itself.
                         if (old != null && old.ProviderId == LocalProvider && !InFolder(old.InternalId, _ourFolder))
-                            ReplacedPictures[__0.ToString()] = old;
+                            ReplacedPictures[__0.ToString()] = (__0, old);
                     }
                 }
                 catch (Exception error)
                 {
                     _failed = true;
-                    Instance.Log.LogWarning("Could not keep FM26's pictures from other graphics folders: " + error);
+                    Instance.Log.LogWarning("Could not keep FM's pictures from other graphics folders: " + error);
                 }
             }
         }

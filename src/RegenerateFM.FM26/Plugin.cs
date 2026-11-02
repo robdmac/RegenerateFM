@@ -127,12 +127,8 @@ namespace RegenerateFM.FM26
                 _harmony.PatchAll(typeof(LocatorPatch));
             else
                 _harmony.PatchAll(typeof(AssetLoadPatch));
-            // FM27 takes a folder's pictures out with PurgeLocalPath, not DropLocalKeys.
-            if (typeof(ResourcesSubsystem).GetMethod("PurgeLocalPath") == null)
-            {
-                _ourFolder = FolderPrefix(GraphicsFolder());
-                _harmony.PatchAll(typeof(ReplacedPicturePatch));
-            }
+            _ourFolder = FolderPrefix(GraphicsFolder());
+            _harmony.PatchAll(typeof(ReplacedPicturePatch));
             _harmony.PatchAll(typeof(MenuOpenPatch));
             AddComponent<StaffWatcher>();
             Log.LogInfo("RegenerateFM Actions and portrait menu integration loaded");
