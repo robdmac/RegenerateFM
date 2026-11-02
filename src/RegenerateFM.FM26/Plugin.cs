@@ -73,6 +73,8 @@ namespace RegenerateFM.FM26
         private static readonly TimeSpan LocatorsSettled = TimeSpan.FromMilliseconds(250);
         private readonly Dictionary<long, string> _biographyCache = new Dictionary<long, string>();
         private Harmony _harmony;
+        // The game says when it has reloaded our folder (LocatorPatch or AssetLoadPatch).
+        private bool _liveReload;
         private FaceMenuContributor _menuContributor;
         private VisualElement _keyDialog;
         private TextField _keyField;
@@ -109,29 +111,47 @@ namespace RegenerateFM.FM26
 
         public override void Load()
         {
-            if (!SupportedGameBuild())
-            {
-                Log.LogWarning("RegenerateFM supports only the checked FM26 26.3.2 and FM26 Demo binaries; buttons disabled");
+            if (!IdentifyGame())
                 return;
-            }
             Instance = this;
-            ClassInjector.RegisterTypeInIl2Cpp<FaceMenuContributor>(new RegisterTypeOptions
-            {
-                Interfaces = new[] { typeof(IMenuContributor) }
-            });
-            _menuContributor = new FaceMenuContributor();
             _harmony = new Harmony("fm.regenerate");
+            // Each part on its own: a game update that changed what one of them
+            // uses turns off only that one.
+            TryPart("the Actions menu's face commands", () =>
+            {
+                ClassInjector.RegisterTypeInIl2Cpp<FaceMenuContributor>(new RegisterTypeOptions
+                {
+                    Interfaces = new[] { typeof(IMenuContributor) }
+                });
+                _menuContributor = new FaceMenuContributor();
+                _harmony.PatchAll(typeof(MenuOpenPatch));
+            });
             // See LocatorPatch: on macOS the reload is followed another way, and
-            // so in FM27, which has no EnumerateLocalAssetsComplete.
-            if (OperatingSystem.IsMacOS() || Fm27)
-                _harmony.PatchAll(typeof(LocatorPatch));
-            else
-                _harmony.PatchAll(typeof(AssetLoadPatch));
+            // so in FM27, which has no EnumerateLocalAssetsComplete. Without it a
+            // new face is saved and shows after a restart (Refresh).
+            _liveReload = TryPart("showing a new face without restarting", () =>
+                _harmony.PatchAll(OperatingSystem.IsMacOS() || Fm27 ? typeof(LocatorPatch) : typeof(AssetLoadPatch)));
             _ourFolder = FolderPrefix(GraphicsFolder());
-            _harmony.PatchAll(typeof(ReplacedPicturePatch));
-            _harmony.PatchAll(typeof(MenuOpenPatch));
-            AddComponent<StaffWatcher>();
+            TryPart("putting back a face pack's photo after Remove face", () => _harmony.PatchAll(typeof(ReplacedPicturePatch)));
+            if (!TryPart("everything else", () => AddComponent<StaffWatcher>()))
+                return;
             Log.LogInfo("RegenerateFM Actions and portrait menu integration loaded");
+        }
+
+        // False, and a warning naming the part, when it can't be set up.
+        private bool TryPart(string part, Action setUp)
+        {
+            try
+            {
+                setUp();
+                return true;
+            }
+            catch (Exception error)
+            {
+                Log.LogWarning("RegenerateFM turned off " + part + ": this " + Text.GameName + " build changed what it uses. " +
+                               (TestedBuild ? "" : "A RegenerateFM update will put it back. ") + error);
+                return false;
+            }
         }
 
         // The key or credits token (KeyStore) and settings.ini (Settings), both

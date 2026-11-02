@@ -448,6 +448,8 @@ namespace RegenerateFM.FM26
                 Log.LogWarning("Graphics refresh is already in progress");
                 return false;
             }
+            if (!_liveReload)
+                return false;
             string folder = GraphicsFolder();
             if (!Directory.Exists(folder) || !File.Exists(Path.Combine(folder, "config.xml")))
             {
