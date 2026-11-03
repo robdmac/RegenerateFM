@@ -42,7 +42,8 @@ namespace RegenerateFM
                 var reference = saved ?? shownPng;
                 if (reference == null)
                     throw new InvalidOperationException(Text.T("This person has no face to update yet. Use Generate face instead."));
-                string prompt = saved == null && shownNewgen ? Prompts.NewgenPrompt(profile, personId, folder) : Prompts.UpdatePrompt(profile, personId);
+                string prompt = saved == null && shownNewgen ? Prompts.NewgenPrompt(profile, personId, folder)
+                    : Prompts.UpdatePrompt(profile, personId, saved == null ? null : FaceHistory.Age(folder, personId));
                 png = await ImageApi.EditPng(settings, prompt, reference, cancel).ConfigureAwait(false);
             }
             else
@@ -62,7 +63,7 @@ namespace RegenerateFM
                     ? await ImageApi.EditPng(settings, Prompts.RelativePrompt(profile, relation, personId, folder), relativeFace, cancel).ConfigureAwait(false)
                     : await ImageApi.GeneratePng(settings, Prompts.ProfilePrompt(profile, personId, folder), cancel).ConfigureAwait(false);
             }
-            return SavePortrait(folder, personId, png, owner: profile.Name);
+            return SavePortrait(folder, personId, png, owner: profile.Name, age: profile.Age);
         }
 
         // ---- Saving into FM26's graphics folder ----------------------------
@@ -148,9 +149,10 @@ namespace RegenerateFM
         // fails, the new file is removed. ``removeEarlier`` false keeps the
         // person's earlier files for FM24, which shows them until its skin
         // reload succeeds (RemoveEarlier then). ``owner`` is the name shown
-        // with the face, ``made`` when it was first made.
+        // with the face, ``made`` when it was first made, ``age`` the person's
+        // age in it.
         public static string SavePortrait(string directory, string personId, byte[] png, bool removeEarlier = true,
-                                          string owner = null, DateTime? made = null)
+                                          string owner = null, DateTime? made = null, int? age = null)
         {
             ValidateId(personId);
             if (!Png.IsPng(png))
@@ -186,7 +188,7 @@ namespace RegenerateFM
                     }
                     throw;
                 }
-                FaceHistory.Added(directory, personId, stem, owner, made ?? DateTime.UtcNow);
+                FaceHistory.Added(directory, personId, stem, owner, made ?? DateTime.UtcNow, age);
                 if (removeEarlier)
                     RemoveEarlier(imagePath, personId);
                 return imagePath;

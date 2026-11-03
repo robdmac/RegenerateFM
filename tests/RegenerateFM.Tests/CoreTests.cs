@@ -192,6 +192,33 @@ namespace RegenerateFM.Tests
         }
 
         [Fact]
+        public void UpdateFaceIsToldTheAgeOfTheFaceItUpdates()
+        {
+            using var folder = new TempFolder();
+            string graphics = folder.Combine("graphics");
+            var made = new DateTime(2026, 10, 30, 12, 0, 0, DateTimeKind.Utc);
+            Assert.Null(FaceHistory.Age(graphics, "5"));
+            Portraits.SavePortrait(graphics, "5", Pngs.Make(64, 10), owner: "Sean Winton", made: made, age: 19);
+            Assert.Equal(19, FaceHistory.Age(graphics, "5"));
+            Portraits.SavePortrait(graphics, "5", Pngs.Make(64, 20), owner: "Sean Winton", made: made.AddMinutes(1), age: 31);
+            Assert.Equal(31, FaceHistory.Age(graphics, "5"));
+            // A face brought back keeps its own age; one saved without an age has none.
+            FaceHistory.Previous(graphics, "5", "Sean Winton");
+            Assert.Equal(19, FaceHistory.Age(graphics, "5"));
+            Portraits.SavePortrait(graphics, "5", Pngs.Make(64, 30), owner: "Sean Winton", made: made.AddMinutes(2));
+            Assert.Null(FaceHistory.Age(graphics, "5"));
+
+            var player = Player();
+            player.Age = 31;
+            string aged = Prompts.UpdatePrompt(player, "5", 19);
+            Assert.Contains("at age 19, taken 12 years ago.", aged);
+            Assert.Contains("Make them look clearly 12 years older than in the picture, aged from 19 to 31", aged);
+            Assert.DoesNotContain("may be several years old", aged);
+            Assert.Contains("Their age hasn't changed", Prompts.UpdatePrompt(player, "5", 31));
+            Assert.Contains("may be several years old", Prompts.UpdatePrompt(player, "5"));
+        }
+
+        [Fact]
         public void TheHistoryKeepsTheNewestFacesOfEachOwner()
         {
             using var folder = new TempFolder();
@@ -408,8 +435,9 @@ namespace RegenerateFM.Tests
             string firstForm = Encoding.UTF8.GetString(requests[0].Body), secondForm = Encoding.UTF8.GetString(requests[1].Body);
             Assert.Contains(Prompts.NewgenPrompt(newgen, "2002068539", graphics), firstForm);
             Assert.Contains("computer-generated 3D face for Craig Griffiths", firstForm);
-            // Once RegenerateFM has a face for them, Update face refreshes that photograph instead.
-            Assert.Contains(Prompts.UpdatePrompt(newgen, "2002068539"), secondForm);
+            // Once RegenerateFM has a face for them, Update face refreshes that
+            // photograph instead, knowing it was made at their age.
+            Assert.Contains(Prompts.UpdatePrompt(newgen, "2002068539", 16), secondForm);
             Assert.DoesNotContain("computer-generated", secondForm);
 
             var father = new ProfileSnapshot

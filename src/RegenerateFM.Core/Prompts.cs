@@ -293,8 +293,10 @@ namespace RegenerateFM
         // be years old: the same person, clearly aged to now, in their current
         // kit. ``personId`` seeds whether this update also changes their facial
         // hair and makes their hairstyle more grown-up (about half of updates
-        // each, the same for a person at the same age).
-        public static string UpdatePrompt(ProfileSnapshot profile, string personId = null)
+        // each, the same for a person at the same age). ``pictureAge`` is their
+        // age in the supplied picture, when RegenerateFM made it, so the prompt
+        // can say how many years to add.
+        public static string UpdatePrompt(ProfileSnapshot profile, string personId = null, int? pictureAge = null)
         {
             if (profile == null)
                 throw new ArgumentException("Profile is missing.");
@@ -317,11 +319,21 @@ namespace RegenerateFM
                 : Appearance.Chance(seed, "facialHair")
                     ? "Change their facial hair from the supplied picture: if they are clean-shaven, give them natural stubble or a short beard; if they have facial hair, give them a different style or shave it off. "
                     : "Keep their facial hair much as it is, grown or trimmed naturally for their age. ";
-            return "Update this Football Manager profile picture of " + name + ". The supplied image is an earlier portrait of " +
-                   name + " and may be several years old." + GenderText(name, gender, age) + PositionText(profile, name) +
-                   " Show " + name + " as they look now, at age " + age + ": " + AgeSigns(age, gender) + ". " +
-                   "Age the face to match, rather than copying how old it looks in the picture; if it already looks about " + age +
-                   ", change little. Keep them recognisably the same person, with the same bone structure, face shape, nose, eyes, " +
+            int years = pictureAge.HasValue ? age - pictureAge.Value : 0;
+            string earlier = years > 0
+                ? " The supplied image is a portrait of " + name + " at age " + pictureAge.Value + ", taken " + years +
+                  (years == 1 ? " year" : " years") + " ago."
+                : pictureAge.HasValue ? " The supplied image is a recent portrait of " + name + ", taken at their current age."
+                : " The supplied image is an earlier portrait of " + name + " and may be several years old.";
+            string ageing = years > 0
+                ? "Make them look clearly " + years + (years == 1 ? " year" : " years") + " older than in the picture, aged from " +
+                  pictureAge.Value + " to " + age + ", rather than copying how old they look in it. "
+                : pictureAge.HasValue ? "Their age hasn't changed, so keep how old they look. "
+                : "Age the face to match, rather than copying how old it looks in the picture; if it already looks about " + age +
+                  ", change little. ";
+            return "Update this Football Manager profile picture of " + name + "." + earlier + GenderText(name, gender, age) +
+                   PositionText(profile, name) + " Show " + name + " as they look now, at age " + age + ": " + AgeSigns(age, gender) + ". " +
+                   ageing + "Keep them recognisably the same person, with the same bone structure, face shape, nose, eyes, " +
                    "eye colour, skin tone and distinguishing marks, and the same hair colour apart from any natural greying. " +
                    hair + facialHair +
                    "Make it a realistic photograph of " + name + " as a real person: if the supplied picture is a " +
