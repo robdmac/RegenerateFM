@@ -368,7 +368,9 @@ namespace RegenerateFM.Desktop.FM24
                         throw new InvalidOperationException(Text.T("{0} has no face to update yet. Choose Generate new face instead; no image request was made.",
                                                                    profile.Name));
                     (reference, source) = found.Value;
-                    prompt = Prompts.UpdatePrompt(profile, playerId);
+                    // A face RegenerateFM saved knows the age it was made at.
+                    bool ours = Path.GetDirectoryName(source) == Path.TrimEndingDirectorySeparator(GraphicsDir);
+                    prompt = Prompts.UpdatePrompt(profile, playerId, ours ? FaceHistory.Age(GraphicsDir, playerId) : null);
                 }
                 else
                     prompt = Prompts.ProfilePrompt(profile, playerId, PreviewOnly ? null : GraphicsDir);
@@ -379,7 +381,7 @@ namespace RegenerateFM.Desktop.FM24
                 clock.Restart();
                 var png = (reference != null ? EditPng(settings, prompt, reference) : GeneratePng(settings, prompt)).GetAwaiter().GetResult();
                 Log("Image request took " + clock.Elapsed.TotalSeconds.ToString("0.0") + " s.");
-                return SaveAndReload(playerId, png, progress);
+                return SaveAndReload(playerId, png, progress, profile.Age);
             }
             catch (Exception error) when (Expected(error) || error is MissingApiKeyException)
             {
@@ -397,9 +399,9 @@ namespace RegenerateFM.Desktop.FM24
 
         // Saves the face and has FM24 reload it. The earlier face stays until the
         // reload succeeds: FM24 keeps showing it until then.
-        private FaceResult SaveAndReload(string playerId, byte[] png, IFaceProgress progress)
+        private FaceResult SaveAndReload(string playerId, byte[] png, IFaceProgress progress, int? age)
         {
-            string saved = Portraits.SavePortrait(GraphicsDir, playerId, png, removeEarlier: false);
+            string saved = Portraits.SavePortrait(GraphicsDir, playerId, png, removeEarlier: false, age: age);
             progress?.Loading();
             try
             {
@@ -446,7 +448,7 @@ namespace RegenerateFM.Desktop.FM24
                 if (PreviewOnly)
                     return new FaceResult { Ok = true, Preview = true, PlayerId = playerId, Prompt = prompt };
                 Portraits.CheckGraphicsConfig(GraphicsDir);
-                return SaveAndReload(playerId, GeneratePng(RequestSettings(), prompt).GetAwaiter().GetResult(), null);
+                return SaveAndReload(playerId, GeneratePng(RequestSettings(), prompt).GetAwaiter().GetResult(), null, profile.Age);
             }
             catch (Exception error) when (Expected(error) || error is MissingApiKeyException)
             {

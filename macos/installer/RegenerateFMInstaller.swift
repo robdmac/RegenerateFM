@@ -226,6 +226,12 @@ enum Epic {
         return entry.program != (remove ? gameProgram(game.folder) : game.launcher)
     }
 
+    /// Whether RegenerateFM is installed in an Epic game but Epic starts the
+    /// game itself: an Epic update or Verify puts the game's own program back.
+    static func turnedOff(_ game: Game) -> Bool {
+        game.isEpic && Installer.isInstalled(game) && needsChange(game, remove: false)
+    }
+
     /// Makes Epic start the game's launcher (or, removing, the game itself), as
     /// src/RegenerateFM.Desktop/Epic/EpicLaunch.cs does for FM24: only while
     /// Epic is closed, keeping a copy of the record the first time.
@@ -593,7 +599,8 @@ final class Model: ObservableObject {
     func refresh() {
         games = Steam.installedGames() + Epic.installedGames()
         if chosen == nil || !games.contains(chosen!) && !FileManager.default.fileExists(atPath: chosen!.folder.path) {
-            chosen = games.first
+            // A game an Epic update turned RegenerateFM off in first, so its note shows.
+            chosen = games.first(where: Epic.turnedOff) ?? games.first
         }
         if chosen == nil {
             message = "Football Manager 27, Football Manager 26 or Football Manager 2024 wasn't found in your Steam libraries or Epic's games. Choose the game's folder (in Steam: Manage > Browse local files)."
@@ -775,7 +782,8 @@ struct InstallerView: View {
             HStack {
                 Picker("Game:", selection: $model.chosen) {
                     ForEach(model.games, id: \.self) { game in
-                        Text(game.name + (Installer.isInstalled(game) ? " (installed)" : "")).tag(Optional(game))
+                        Text(game.name + (Epic.turnedOff(game) ? " (turned off)"
+                                          : Installer.isInstalled(game) ? " (installed)" : "")).tag(Optional(game))
                     }
                 }
                 .disabled(model.games.isEmpty)
@@ -786,6 +794,10 @@ struct InstallerView: View {
             }
             if let game = model.chosen {
                 Text(game.folder.path).font(.caption).foregroundColor(.secondary).textSelection(.enabled)
+                if !model.working && Epic.turnedOff(game) {
+                    Text("An Epic update or Verify set Epic to start \(game.name) without RegenerateFM. Click Update to turn RegenerateFM back on; your faces are kept.")
+                        .foregroundColor(.orange).fixedSize(horizontal: false, vertical: true)
+                }
             }
             HStack {
                 Button(model.chosen.map { Installer.isInstalled($0) } == true ? "Update" : "Install") { model.install() }
@@ -875,7 +887,7 @@ func runCommandLine(_ arguments: [String]) -> Int32 {
             print(Steam.needsChange(game, remove: arguments.contains("--remove")))
         case "games":
             for game in Steam.installedGames() + Epic.installedGames() {
-                print("\(game.appID) \(game.folder.path)\(game.isEpic ? " epic" : "")")
+                print("\(game.appID) \(game.folder.path)\(game.isEpic ? " epic" : "")\(Epic.turnedOff(game) ? " turned-off" : "")")
             }
         default:
             FileHandle.standardError.write(Data("Unknown command\n".utf8))

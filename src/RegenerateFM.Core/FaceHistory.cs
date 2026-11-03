@@ -31,6 +31,8 @@ namespace RegenerateFM
             public string Stem;
             public string Owner;
             public DateTime Made;
+            // The person's age when it was made, so Update face knows how far to age it.
+            public int? Age;
             // Taken off by the user (Remove face): Claim doesn't bring it back.
             public bool Removed;
         }
@@ -88,6 +90,9 @@ namespace RegenerateFM
                     if (item.TryGetProperty("made", out var made) && made.ValueKind == JsonValueKind.String &&
                         DateTime.TryParse(made.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var when))
                         face.Made = when;
+                    if (item.TryGetProperty("age", out var age) && age.ValueKind == JsonValueKind.Number && age.TryGetInt32(out int years) &&
+                        years >= 14 && years <= 100)
+                        face.Age = years;
                     face.Removed = item.TryGetProperty("removed", out var removed) && removed.ValueKind == JsonValueKind.True;
                     faces.Add(face);
                 }
@@ -148,6 +153,8 @@ namespace RegenerateFM
                     if (face.Owner != null)
                         json.WriteString("owner", face.Owner);
                     json.WriteString("made", face.Made.ToString("o", CultureInfo.InvariantCulture));
+                    if (face.Age.HasValue)
+                        json.WriteNumber("age", face.Age.Value);
                     if (face.Removed)
                         json.WriteBoolean("removed", true);
                     json.WriteEndObject();
@@ -165,12 +172,13 @@ namespace RegenerateFM
         }
 
         // A face SavePortrait has just mapped: ``owner`` is the name shown with
-        // it, ``made`` when it was first made (a face brought back keeps its own).
-        internal static void Added(string directory, string personId, string stem, string owner, DateTime made)
+        // it, ``made`` when it was first made and ``age`` the person's age then
+        // (a face brought back keeps its own).
+        internal static void Added(string directory, string personId, string stem, string owner, DateTime made, int? age = null)
         {
             var faces = Load(directory, personId);
             faces.RemoveAll(face => face.Stem == stem);
-            faces.Add(new Face { Stem = stem, Owner = owner, Made = made });
+            faces.Add(new Face { Stem = stem, Owner = owner, Made = made, Age = age });
             Store(directory, personId, faces, stem);
         }
 
@@ -212,6 +220,17 @@ namespace RegenerateFM
             {
                 string stem = MappedStem(directory, personId);
                 return stem == null ? null : Load(directory, personId).FirstOrDefault(face => face.Stem == stem)?.Owner;
+            }
+        }
+
+        // The person's age when their mapped face was made, or null (none, or
+        // made before RegenerateFM noted ages).
+        public static int? Age(string directory, string personId)
+        {
+            lock (Portraits.SaveLock)
+            {
+                string stem = MappedStem(directory, personId);
+                return stem == null ? null : Load(directory, personId).FirstOrDefault(face => face.Stem == stem)?.Age;
             }
         }
 
@@ -257,7 +276,7 @@ namespace RegenerateFM
         {
             string file = Earlier(directory, personId, face.Stem);
             var png = File.ReadAllBytes(file);
-            string saved = Portraits.SavePortrait(directory, personId, png, owner: face.Owner, made: face.Made);
+            string saved = Portraits.SavePortrait(directory, personId, png, owner: face.Owner, made: face.Made, age: face.Age);
             TryDelete(file);
             Store(directory, personId, Load(directory, personId), Path.GetFileNameWithoutExtension(saved));
             return saved;
