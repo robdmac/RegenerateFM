@@ -107,8 +107,10 @@ namespace RegenerateFM.FM26
                             (snapshot.BiographyHeadline != null) + "; family: " +
                             (FamilyText(snapshot) ?? "none") + (update ? "" : "; ethnicity: " + (snapshot.Ethnicity ?? (snapshot.Likeness ? "not known" : "guessed")) +
                                                                 (snapshot.Likeness ? "; likeness" : "")));
+                _missedFailure = null;
                 _pending = new PendingGeneration
                 {
+                    PersonId = personId.Value,
                     Task = RequestPortrait(personId.Value, snapshot, settings, update ? "update" : "generate", reference, newgenFace),
                     Overlay = overlay,
                     Message = message,
@@ -148,6 +150,7 @@ namespace RegenerateFM.FM26
 
         private sealed class PendingGeneration
         {
+            public long PersonId;
             public Task<GenerationResult> Task;
             public VisualElement Overlay;
             public Label Message;
@@ -164,7 +167,7 @@ namespace RegenerateFM.FM26
                 if (System.DateTime.UtcNow - pending.StartedUtc < GenerationTimeout)
                     return;
                 _pending = null;
-                ShowError(pending.Overlay, pending.Message, Text.T("Portrait request timed out. Try again."));
+                ShowPendingError(pending, Text.T("Portrait request timed out. Try again."));
                 Log.LogError("Face generation timed out; request lock released");
                 return;
             }
@@ -174,7 +177,7 @@ namespace RegenerateFM.FM26
                 var result = pending.Task.GetAwaiter().GetResult();
                 if (!result.Success)
                 {
-                    ShowError(pending.Overlay, pending.Message, result.Error);
+                    ShowPendingError(pending, result.Error);
                     Log.LogError("Face generation failed: " + result.Error);
                     ShowKeyProblem(result);
                     return;
@@ -184,18 +187,69 @@ namespace RegenerateFM.FM26
                     pending.Message.text = Text.T("Loading face…");
                 _refreshOverlay = pending.Overlay;
                 _refreshMessage = pending.Message;
+                _refreshPersonId = pending.PersonId;
                 if (!Refresh())
                 {
-                    ShowError(pending.Overlay, pending.Message,
-                        Text.T("Portrait saved, but game refresh failed. Restart FM26 to load it."));
+                    ShowPendingError(pending, Text.T("Portrait saved, but game refresh failed. Restart FM26 to load it."));
                     _refreshOverlay = null;
                     _refreshMessage = null;
+                    _refreshPersonId = null;
                 }
             }
             catch (Exception error)
             {
-                ShowError(pending.Overlay, pending.Message, error.Message);
+                ShowPendingError(pending, error.Message);
                 Log.LogError("Face generation failed: " + error);
+            }
+        }
+
+        // The error goes on the overlay if it is on screen, and is kept for when
+        // the person's profile is shown again if not.
+        private void ShowPendingError(PendingGeneration pending, string error)
+        {
+            ShowError(pending.Overlay, pending.Message, error);
+            if (pending.Overlay == null || pending.Overlay.parent == null || pending.Overlay.worldBound.width <= 0)
+                _missedFailure = (pending.PersonId, error);
+        }
+
+        // Going to another page and back builds the profile's picture again,
+        // without RegenerateFM's overlay; it is put back while that person's
+        // face is still being made or loaded, so it doesn't look as if the
+        // request failed, and a failure missed meanwhile is shown.
+        private void RestoreFaceStatus()
+        {
+            bool loading = WaitingForGraphics && _refreshPersonId.HasValue;
+            if (_pending == null && !loading && _missedFailure == null)
+                return;
+            var header = FindNamed(CurrentRoot(), "ReportHeader");
+            if (header == null || header.worldBound.width < 800 || !HeaderId(header, out long personId))
+                return;
+            var picture = FindNamed(header, "PersonPicture");
+            if (picture == null || picture.worldBound.width < 30 || picture.worldBound.height < 30)
+                return;
+            bool shown = picture.Q<VisualElement>("regeneratefm-generating-overlay") != null;
+            if (_pending != null && _pending.PersonId == personId)
+            {
+                if (shown)
+                    return;
+                if (_pending.Overlay != null && _pending.Overlay.parent != null)
+                    _pending.Overlay.RemoveFromHierarchy();
+                _pending.Overlay = BuildOverlay(picture, out _pending.Message);
+            }
+            else if (loading && _refreshPersonId == personId)
+            {
+                if (shown)
+                    return;
+                if (_refreshOverlay != null && _refreshOverlay.parent != null)
+                    _refreshOverlay.RemoveFromHierarchy();
+                _refreshOverlay = BuildOverlay(picture, out _refreshMessage);
+                _refreshMessage.text = Text.T("Loading face…");
+            }
+            else if (_missedFailure?.PersonId == personId)
+            {
+                if (!shown)
+                    ShowError(BuildOverlay(picture, out var message), message, _missedFailure.Value.Error);
+                _missedFailure = null;
             }
         }
 
@@ -601,6 +655,7 @@ namespace RegenerateFM.FM26
                 Text.T("Portrait saved, but graphics reload timed out. Restart FM26 to load it."));
             _refreshOverlay = null;
             _refreshMessage = null;
+            _refreshPersonId = null;
             Log.LogWarning("RegenerateFM graphics reload timed out after 30 seconds; refresh lock released");
         }
 
@@ -657,6 +712,7 @@ namespace RegenerateFM.FM26
             {
                 _refreshOverlay = null;
                 _refreshMessage = null;
+                _refreshPersonId = null;
             }
         }
     }
