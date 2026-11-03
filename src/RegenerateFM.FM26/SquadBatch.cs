@@ -759,7 +759,7 @@ namespace RegenerateFM.FM26
                 {
                     batch.UnfocusedSinceUtc = System.DateTime.UtcNow;
                     batch.Status.text = Text.T("Paused while FM26 is in the background; return to FM26 to continue.");
-                    Log.LogInfo("RegenerateFM squad batch paused: FM26 is in the background");
+                    Log.LogInfo("RegenerateFM squad batch paused: " + (Text.GameName ?? "FM26") + " is in the background");
                 }
                 return;
             }
@@ -980,7 +980,14 @@ namespace RegenerateFM.FM26
             ProfileSnapshot profile;
             VisualElement picture;
             VisualElement root;
-            try { profile = asPlayer ? CaptureProfile(personId, out picture, out root) : CaptureStaff(personId, out picture, out root); }
+            // An incomplete header is retried until ProfileBindTimeout, so only
+            // the last try logs it for diagnosis.
+            bool retry = System.DateTime.UtcNow - batch.StageStartedUtc < ProfileBindTimeout;
+            try
+            {
+                profile = asPlayer ? CaptureProfile(personId, out picture, out root, diagnose: !retry)
+                                   : CaptureStaff(personId, out picture, out root, diagnose: !retry);
+            }
             catch (NeedsScoutingException) when (System.DateTime.UtcNow - batch.StageStartedUtc >= ScoutingSettle)
             {
                 // Hidden attributes, still hidden once the profile has settled: skip them.
@@ -989,7 +996,7 @@ namespace RegenerateFM.FM26
                 SetBatchStage(batch, SquadStage.ReturnToSquad);
                 return;
             }
-            catch (InvalidOperationException) when (System.DateTime.UtcNow - batch.StageStartedUtc < ProfileBindTimeout)
+            catch (InvalidOperationException) when (retry)
             {
                 // FM creates the header before its bound name, stats and height
                 // arrive; under Rosetta 2 on macOS that took more than 10 s.

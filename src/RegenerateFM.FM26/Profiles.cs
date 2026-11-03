@@ -27,7 +27,10 @@ namespace RegenerateFM.FM26
     // family, biography.
     public sealed partial class Plugin
     {
-        private static ProfileSnapshot CaptureProfile(long playerId, out VisualElement picture, out VisualElement root)
+        // ``diagnose`` logs the header's texts when the profile is incomplete; a
+        // squad batch turns it off while it waits for the header to fill in.
+        private static ProfileSnapshot CaptureProfile(long playerId, out VisualElement picture, out VisualElement root,
+                                                      bool diagnose = true)
         {
             picture = null;
             root = null;
@@ -160,7 +163,8 @@ namespace RegenerateFM.FM26
                 string.IsNullOrWhiteSpace(profile.Height) || profile.Age < 14 ||
                 profile.Technical.Count + profile.Mental.Count + profile.Goalkeeping.Count < 6)
             {
-                Instance?.Log.LogWarning("Player header, for diagnosis: " + DescribeTexts(header));
+                if (diagnose)
+                    Instance?.Log.LogWarning("Player header, for diagnosis: " + DescribeTexts(header));
                 throw new InvalidOperationException("Incomplete profile (no API request): " +
                     "name=" + profile.Name + ", age=" + profile.Age + ", nationality=" + profile.Nationality +
                     ", position=" + profile.Position + ", club=" + profile.Club + ", height=" + profile.Height +
@@ -279,7 +283,8 @@ namespace RegenerateFM.FM26
         private static string CompactNation(VisualElement header) =>
             FirstText(FindNamed(FindNamed(header, "Frame 1000003900"), "not-null"));
 
-        private static ProfileSnapshot CaptureStaff(long personId, out VisualElement picture, out VisualElement root)
+        private static ProfileSnapshot CaptureStaff(long personId, out VisualElement picture, out VisualElement root,
+                                                    bool diagnose = true)
         {
             picture = null;
             root = CurrentRoot();
@@ -375,7 +380,8 @@ namespace RegenerateFM.FM26
                 // member waits for the club.
                 compact && FindNamed(contract, "HasTeam") != null && profile.Club == null)
             {
-                Instance?.Log.LogWarning("Staff header, for diagnosis: " + DescribeTexts(banner));
+                if (diagnose)
+                    Instance?.Log.LogWarning("Staff header, for diagnosis: " + DescribeTexts(banner));
                 throw new InvalidOperationException("Incomplete staff profile (no API request): name=" + profile.Name +
                     ", age=" + profile.Age + ", nationality=" + profile.Nationality + ", job=" + profile.JobTitle + ".");
             }
