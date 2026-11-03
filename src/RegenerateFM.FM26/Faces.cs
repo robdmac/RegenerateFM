@@ -144,7 +144,7 @@ namespace RegenerateFM.FM26
         // True if the person's face changed.
         private bool ClaimFace(long id, string name)
         {
-            if (string.IsNullOrWhiteSpace(name) || _ownerChecked.TryGetValue(id, out string checkedName) && FaceHistory.SameOwner(checkedName, name))
+            if (!RegenerateFM.GameInfo.PlausibleName(name) || _ownerChecked.TryGetValue(id, out string checkedName) && FaceHistory.SameOwner(checkedName, name))
                 return false;
             _ownerChecked[id] = name;
             try

@@ -111,6 +111,15 @@ namespace RegenerateFM
             return chosen;
         }
 
+        // A coin flip that is always the same for ``seed`` and ``category``.
+        public static bool Chance(string seed, string category)
+        {
+            byte[] digest;
+            using (var sha = SHA256.Create())
+                digest = sha.ComputeHash(Encoding.UTF8.GetBytes("regeneratefm-chance-v1\0" + seed + "\0" + category));
+            return (digest[0] & 1) == 0;
+        }
+
         // Relatives share these, chosen from the family's seed: a slight family
         // resemblance, while jaw, cheeks, hairstyle and expression stay their own.
         private static readonly string[] FamilyTraits = { "faceShape", "features", "hairColour" };

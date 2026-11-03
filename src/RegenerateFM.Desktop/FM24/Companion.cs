@@ -368,7 +368,7 @@ namespace RegenerateFM.Desktop.FM24
                         throw new InvalidOperationException(Text.T("{0} has no face to update yet. Choose Generate new face instead; no image request was made.",
                                                                    profile.Name));
                     (reference, source) = found.Value;
-                    prompt = Prompts.UpdatePrompt(profile);
+                    prompt = Prompts.UpdatePrompt(profile, playerId);
                 }
                 else
                     prompt = Prompts.ProfilePrompt(profile, playerId, PreviewOnly ? null : GraphicsDir);
