@@ -152,27 +152,27 @@ namespace RegenerateFM
         }
 
         // The prompt's ethnicity: FM's own when known, otherwise a best guess
-        // from the person's name and nationality.
-        private static string EthnicityText(ProfileSnapshot profile, string name)
+        // from the person's name and nationality. FM's hair colour is only
+        // roughly right (Appearance.HairShade), so it comes after the ethnicity
+        // and skin tone the model is told to follow, as a shade of its own.
+        private static string EthnicityText(ProfileSnapshot profile, string name, string seed)
         {
             if (profile.Ethnicity == null)
                 return "Ethnicity is not known: give " + name + " the most likely ethnicity and skin tone for their full " +
                        "name and nationality, remembering that many people's heritage differs from the country they represent. ";
             string text = "Ethnicity: " + EthnicityLabel(profile.Ethnicity);
-            string skin = null;
             if (profile.SkinTone != null)
             {
                 int tone = Array.IndexOf(SkinTones, profile.SkinTone);
                 if (tone < 0)
                     throw new ArgumentException("Skin tone is invalid.");
-                skin = SkinToneWords[tone] + " skin";
+                text += ", with " + SkinToneWords[tone] + " skin";
             }
             if (profile.HairColour != null && !HairColours.Contains(profile.HairColour))
                 throw new ArgumentException("Hair colour is invalid.");
-            string hair = profile.HairColour != null ? "naturally " + profile.HairColour + " hair" : null;
-            if (skin != null || hair != null)
-                text += ", with " + string.Join(" and ", new[] { skin, hair }.Where(part => part != null));
-            return text + "; follow this over any other appearance detail. ";
+            text += "; follow this over any other appearance detail. ";
+            return profile.HairColour == null ? text
+                : text + "Natural hair colour: " + Appearance.HairShade(profile.HairColour, profile.Ethnicity, seed) + ". ";
         }
 
         // ---- Prompts -------------------------------------------------------
@@ -195,8 +195,9 @@ namespace RegenerateFM
             int age = profile.Age;
             if (age < 14 || age > 100)
                 throw new ArgumentException(label + " age is missing or invalid.");
+            string shadeSeed = Appearance.ShadeSeed(name, personId, family);
             if (profile.Likeness)
-                return LikenessPrompt(profile, kind, label, name, nationality, gender, age);
+                return LikenessPrompt(profile, kind, label, name, nationality, gender, age, personId, appearanceDir, family);
             if (kind == "staff")
             {
                 string jobTitle = Text(profile.JobTitle, "jobTitle", label);
@@ -206,7 +207,7 @@ namespace RegenerateFM
                 return "Football Manager profile picture for " + name + ", age " + age + ", nationality " + nationality + ", " +
                        "job title " + jobTitle + clubText + "." + GenderText(name, gender) + biographyText + " " +
                        "Create one plausible, original staff portrait for a sports management game. " +
-                       EthnicityText(profile, name) + staffAppearance + PortraitStyle(gender) +
+                       EthnicityText(profile, name, shadeSeed) + staffAppearance + PortraitStyle(gender) +
                        "Wear a simple unbranded dark jacket or training top. " +
                        "Use age and biography to guide appearance. No text, logos, badges, borders, or other people.";
             }
@@ -241,27 +242,33 @@ namespace RegenerateFM
                     string.Join(", ", knownPhysical.Select(stat => stat + " " + physical[stat].Text + "/20")) + ". ") +
                    "Best non-physical stats: " + format(best) + ". Weakest non-physical stats: " + format(worst) + ". " +
                    "Create one plausible, original footballer portrait for a sports management game. " +
-                   EthnicityText(profile, name) + appearance + PortraitStyle(gender) +
+                   EthnicityText(profile, name, shadeSeed) + appearance + PortraitStyle(gender) +
                    KitText(club) + "Use age and physical details to guide appearance, but do not depict " +
                    "numbers. No text, logos, badges, borders, or other people.";
         }
 
         // ProfilePrompt for a real person: their own likeness, from who and where
-        // they are, with FM's ethnicity when it is known.
+        // they are, with FM's ethnicity when it is known. The model knows few
+        // people outside the top leagues, and without more to go on it drew a
+        // lower-league squad as one face; the person's own appearance traits
+        // (Appearance) are what it uses where it can't be sure of the likeness.
         private static string LikenessPrompt(ProfileSnapshot profile, string kind, string label, string name,
-                                             string nationality, string gender, int age)
+                                             string nationality, string gender, int age, string personId,
+                                             string appearanceDir, string family)
         {
             string firstName = Whitespace.Split(name)[0];
-            string ethnicity = profile.Ethnicity != null ? EthnicityText(profile, name) : "";
+            string ethnicity = profile.Ethnicity != null ? EthnicityText(profile, name, Appearance.ShadeSeed(name, personId, family)) : "";
+            string fallback = "Where you can't be sure how " + name + " looks, use this individual appearance instead of a generic " +
+                              (kind == "staff" ? "face" : "footballer's face") + ". " +
+                              Appearance.AppearancePrompt(name, age, personId, appearanceDir, gender, family, profile);
             if (kind == "staff")
             {
                 string jobTitle = Text(profile.JobTitle, "jobTitle", label);
                 string staffClub = string.IsNullOrEmpty(profile.Club) ? null : Text(profile.Club, "club", label);
                 return "Football Manager profile picture of " + name + ", the " + age + "-year-old " + jobTitle +
                        (staffClub != null ? " at " + staffClub : "") + ". Nationality: " + nationality + "." +
-                       GenderText(firstName, gender) + " Make it look like " + name + " as they look now. " + ethnicity +
-                       "Wear a simple unbranded dark jacket or training top. " +
-                       PortraitFraming + PortraitPhotography + PortraitBackground +
+                       GenderText(firstName, gender) + " Make it look like " + name + " as they look now. " + ethnicity + fallback +
+                       "Wear a simple unbranded dark jacket or training top. " + PortraitStyle(gender) +
                        "No text, logos, badges, borders, or other people.";
             }
             string position = Text(profile.Position, "position", "Player");
@@ -270,8 +277,8 @@ namespace RegenerateFM
                 throw new ArgumentException("Player age is missing or invalid.");
             return "Football Manager profile picture of " + name + ", the " + age + "-year-old " + position + " " +
                    (NoClub(club) ? "who is a free agent" : "who plays for " + club) + ". Nationality: " + nationality + "." +
-                   GenderText(firstName, gender) + " Make it look like " + name + " as they look now. " + ethnicity +
-                   KitText(club) + PortraitFraming + PortraitPhotography + PortraitBackground +
+                   GenderText(firstName, gender) + " Make it look like " + name + " as they look now. " + ethnicity + fallback +
+                   KitText(club) + PortraitStyle(gender) +
                    "Do not depict numbers. No text, logos, badges, borders, or other people.";
         }
 
