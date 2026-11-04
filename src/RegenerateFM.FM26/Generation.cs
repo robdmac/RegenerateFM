@@ -203,13 +203,12 @@ namespace RegenerateFM.FM26
             }
         }
 
-        // The error goes on the overlay if it is on screen, and is kept for when
-        // the person's profile is shown again if not.
+        // The error goes on the overlay, and is kept for RestoreFaceStatus in case
+        // that overlay is on a page FM keeps but isn't showing.
         private void ShowPendingError(PendingGeneration pending, string error)
         {
             ShowError(pending.Overlay, pending.Message, error);
-            if (pending.Overlay == null || pending.Overlay.parent == null || pending.Overlay.worldBound.width <= 0)
-                _missedFailure = (pending.PersonId, error);
+            _missedFailure = (pending.PersonId, error);
         }
 
         // Going to another page and back builds the profile's picture again,
