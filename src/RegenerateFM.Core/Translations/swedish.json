@@ -54,6 +54,8 @@
   "FM26 staff UI was not found.": "FM26:s personalvy hittades inte.",
   "FM26's Back button didn't return to {0}, so the batch stopped after {1} face. Open {0}'s squad again and choose Generate faces… for the rest.": "Tillbaka-knappen i FM26 ledde inte tillbaka till {0}, så körningen stoppades efter {1} ansikte. Öppna truppen för {0} igen och välj Generera ansikten… för resten.",
   "FM26's Back button didn't return to {0}, so the batch stopped after {1} faces. Open {0}'s squad again and choose Generate faces… for the rest.": "Tillbaka-knappen i FM26 ledde inte tillbaka till {0}, så körningen stoppades efter {1} ansikten. Öppna truppen för {0} igen och välj Generera ansikten… för resten.",
+  "Couldn't open {0}'s squad, so the batch stopped after {1} face. Open {0}'s squad again and choose Generate faces… for its players.": "Truppen för {0} gick inte att öppna, så körningen stoppades efter {1} ansikte. Öppna truppen för {0} igen och välj Generera ansikten… för dess spelare.",
+  "Couldn't open {0}'s squad, so the batch stopped after {1} faces. Open {0}'s squad again and choose Generate faces… for its players.": "Truppen för {0} gick inte att öppna, så körningen stoppades efter {1} ansikten. Öppna truppen för {0} igen och välj Generera ansikten… för dess spelare.",
   "Face generation failed": "Det gick inte att generera ansiktet",
   "Face generation is already in progress": "Ett ansikte håller redan på att genereras",
   "Failed": "Misslyckades",

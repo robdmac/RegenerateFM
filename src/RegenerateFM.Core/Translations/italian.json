@@ -54,6 +54,8 @@
   "FM26 staff UI was not found.": "Interfaccia dello staff di FM26 non trovata.",
   "FM26's Back button didn't return to {0}, so the batch stopped after {1} face. Open {0}'s squad again and choose Generate faces… for the rest.": "Il pulsante Indietro di FM26 non ha riportato a {0}, quindi l'elaborazione si è fermata dopo {1} volto. Riaprire la rosa di {0} e scegliere «Genera volti…» per i restanti.",
   "FM26's Back button didn't return to {0}, so the batch stopped after {1} faces. Open {0}'s squad again and choose Generate faces… for the rest.": "Il pulsante Indietro di FM26 non ha riportato a {0}, quindi l'elaborazione si è fermata dopo {1} volti. Riaprire la rosa di {0} e scegliere «Genera volti…» per i restanti.",
+  "Couldn't open {0}'s squad, so the batch stopped after {1} face. Open {0}'s squad again and choose Generate faces… for its players.": "Impossibile aprire la rosa di {0}, quindi l'elaborazione si è fermata dopo {1} volto. Riaprire la rosa di {0} e scegliere «Genera volti…» per i suoi giocatori.",
+  "Couldn't open {0}'s squad, so the batch stopped after {1} faces. Open {0}'s squad again and choose Generate faces… for its players.": "Impossibile aprire la rosa di {0}, quindi l'elaborazione si è fermata dopo {1} volti. Riaprire la rosa di {0} e scegliere «Genera volti…» per i suoi giocatori.",
   "Face generation failed": "Generazione del volto non riuscita",
   "Face generation is already in progress": "Generazione del volto già in corso",
   "Failed": "Non riuscito",

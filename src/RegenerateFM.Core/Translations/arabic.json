@@ -54,6 +54,8 @@
   "FM26 staff UI was not found.": "لم يُعثر على واجهة الطاقم في FM26.",
   "FM26's Back button didn't return to {0}, so the batch stopped after {1} face. Open {0}'s squad again and choose Generate faces… for the rest.": "لم يُرجعك زر الرجوع في FM26 إلى {0}، فتوقفت الدفعة بعد إنشاء {1} وجه. افتح تشكيلة {0} مجدداً واختر «إنشاء الوجوه…» لإكمال الباقي.",
   "FM26's Back button didn't return to {0}, so the batch stopped after {1} faces. Open {0}'s squad again and choose Generate faces… for the rest.": "لم يُرجعك زر الرجوع في FM26 إلى {0}، فتوقفت الدفعة بعد إنشاء {1} من الوجوه. افتح تشكيلة {0} مجدداً واختر «إنشاء الوجوه…» لإكمال الباقي.",
+  "Couldn't open {0}'s squad, so the batch stopped after {1} face. Open {0}'s squad again and choose Generate faces… for its players.": "تعذّر فتح تشكيلة {0}، فتوقفت الدفعة بعد إنشاء {1} وجه. افتح تشكيلة {0} مجدداً واختر «إنشاء الوجوه…» لإنشاء وجوه لاعبيها.",
+  "Couldn't open {0}'s squad, so the batch stopped after {1} faces. Open {0}'s squad again and choose Generate faces… for its players.": "تعذّر فتح تشكيلة {0}، فتوقفت الدفعة بعد إنشاء {1} من الوجوه. افتح تشكيلة {0} مجدداً واختر «إنشاء الوجوه…» لإنشاء وجوه لاعبيها.",
   "Face generation failed": "فشل إنشاء الوجه",
   "Face generation is already in progress": "إنشاء الوجه قيد التنفيذ بالفعل",
   "Failed": "فشل",

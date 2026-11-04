@@ -54,6 +54,8 @@
   "FM26 staff UI was not found.": "No se encontró la interfaz de empleado de FM26.",
   "FM26's Back button didn't return to {0}, so the batch stopped after {1} face. Open {0}'s squad again and choose Generate faces… for the rest.": "El botón Atrás de FM26 no volvió a {0}, así que la tanda se detuvo tras {1} cara. Abre de nuevo la plantilla de {0} y elige «Generar caras…» para el resto.",
   "FM26's Back button didn't return to {0}, so the batch stopped after {1} faces. Open {0}'s squad again and choose Generate faces… for the rest.": "El botón Atrás de FM26 no volvió a {0}, así que la tanda se detuvo tras {1} caras. Abre de nuevo la plantilla de {0} y elige «Generar caras…» para el resto.",
+  "Couldn't open {0}'s squad, so the batch stopped after {1} face. Open {0}'s squad again and choose Generate faces… for its players.": "No se pudo abrir la plantilla de {0}, así que la tanda se detuvo tras {1} cara. Abre de nuevo la plantilla de {0} y elige «Generar caras…» para sus jugadores.",
+  "Couldn't open {0}'s squad, so the batch stopped after {1} faces. Open {0}'s squad again and choose Generate faces… for its players.": "No se pudo abrir la plantilla de {0}, así que la tanda se detuvo tras {1} caras. Abre de nuevo la plantilla de {0} y elige «Generar caras…» para sus jugadores.",
   "Face generation failed": "Error al generar la cara",
   "Face generation is already in progress": "Ya se está generando una cara",
   "Failed": "Error",

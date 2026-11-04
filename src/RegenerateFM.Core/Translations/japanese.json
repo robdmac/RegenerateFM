@@ -54,6 +54,8 @@
  "FM26 staff UI was not found.": "FM26 のスタッフ UI が見つかりませんでした。",
  "FM26's Back button didn't return to {0}, so the batch stopped after {1} face. Open {0}'s squad again and choose Generate faces… for the rest.": "FM26 の戻るボタンで{0}に戻れなかったため、顔写真{1}枚の時点で一括生成を停止しました。{0}のスカッドをもう一度開き、「顔写真を生成…」を選んで残りを生成してください。",
  "FM26's Back button didn't return to {0}, so the batch stopped after {1} faces. Open {0}'s squad again and choose Generate faces… for the rest.": "FM26 の戻るボタンで{0}に戻れなかったため、顔写真{1}枚の時点で一括生成を停止しました。{0}のスカッドをもう一度開き、「顔写真を生成…」を選んで残りを生成してください。",
+ "Couldn't open {0}'s squad, so the batch stopped after {1} face. Open {0}'s squad again and choose Generate faces… for its players.": "{0}のスカッドを開けなかったため、顔写真{1}枚の時点で一括生成を停止しました。{0}のスカッドをもう一度開き、「顔写真を生成…」を選んで選手の顔写真を生成してください。",
+ "Couldn't open {0}'s squad, so the batch stopped after {1} faces. Open {0}'s squad again and choose Generate faces… for its players.": "{0}のスカッドを開けなかったため、顔写真{1}枚の時点で一括生成を停止しました。{0}のスカッドをもう一度開き、「顔写真を生成…」を選んで選手の顔写真を生成してください。",
  "Face generation failed": "顔写真の生成に失敗しました",
  "Face generation is already in progress": "顔写真を生成中です",
  "Failed": "失敗",

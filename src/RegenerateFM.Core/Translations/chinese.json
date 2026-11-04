@@ -54,6 +54,8 @@
  "FM26 staff UI was not found.": "未找到 FM26 职员界面。",
  "FM26's Back button didn't return to {0}, so the batch stopped after {1} face. Open {0}'s squad again and choose Generate faces… for the rest.": "FM26 的返回按钮未能回到{0}，因此批量生成在完成 {1} 张头像后停止。请重新打开{0}的阵容，并选择“生成头像…”处理剩余部分。",
  "FM26's Back button didn't return to {0}, so the batch stopped after {1} faces. Open {0}'s squad again and choose Generate faces… for the rest.": "FM26 的返回按钮未能回到{0}，因此批量生成在完成 {1} 张头像后停止。请重新打开{0}的阵容，并选择“生成头像…”处理剩余部分。",
+ "Couldn't open {0}'s squad, so the batch stopped after {1} face. Open {0}'s squad again and choose Generate faces… for its players.": "无法打开{0}的阵容，因此批量生成在完成 {1} 张头像后停止。请重新打开{0}的阵容，并选择“生成头像…”为其球员生成头像。",
+ "Couldn't open {0}'s squad, so the batch stopped after {1} faces. Open {0}'s squad again and choose Generate faces… for its players.": "无法打开{0}的阵容，因此批量生成在完成 {1} 张头像后停止。请重新打开{0}的阵容，并选择“生成头像…”为其球员生成头像。",
  "Face generation failed": "头像生成失败",
  "Face generation is already in progress": "头像正在生成中",
  "Failed": "失败",

@@ -32,6 +32,8 @@ namespace RegenerateFM.FM26
         private sealed class SquadScan
         {
             public ListKind Kind;
+            // The team page whose players are read (ListTeam), or null.
+            public string Team;
             // Still on the way to the list (the other list, for the confirmation's tick box).
             public bool Finding;
             public System.DateTime StartedUtc = System.DateTime.UtcNow;
@@ -68,6 +70,8 @@ namespace RegenerateFM.FM26
             public ListKind Kind;
             public List<SquadCandidate> Missing;
             public int Count;
+            // The team page the scanned players are on (SquadScan.Team).
+            public string Team;
             public List<SquadCandidate> OtherMissing;
             public int OtherCount;
             public string OtherProblem;  // why the other list couldn't be counted
@@ -100,6 +104,12 @@ namespace RegenerateFM.FM26
             // return to it with FM26's Back button.
             public bool ReturnByBack;
             public bool TabClicked;
+            // The team page the players were read on, when the batch comes to them
+            // from the staff list: a youth team ("MK Dons U18s") is a tab beside
+            // Squad > Overview, not the Club Site's first team. Null for the
+            // first team's own table.
+            public string Team;
+            public System.DateTime? TeamTabClickedUtc;
             public int NeedsScouting;
             // Staff whose names don't open a profile (an owner, for one).
             public readonly List<string> Unopened = new List<string>();
@@ -316,7 +326,7 @@ namespace RegenerateFM.FM26
             }
             var status = ShowDialog(kind == ListKind.Staff ? Text.T("Scanning staff portraits…") : Text.T("Scanning squad portraits…"),
                 Text.T("Cancel"), () => CancelSquadScan());
-            _squadScan = new SquadScan { Kind = kind, Status = status };
+            _squadScan = new SquadScan { Kind = kind, Status = status, Team = kind == ListKind.Players ? ListTeam(list) : null };
             BeginScan(_squadScan, list);
         }
 
@@ -468,7 +478,7 @@ namespace RegenerateFM.FM26
                             : Text.T("Scan incomplete ({0} of {1} players). No images have been requested.", scan.Portraits.Count, scan.ExpectedCount);
                     return;
                 }
-                ShowSquadConfirmation(new SquadOffer { Kind = scan.Kind, Missing = missing, Count = scan.Portraits.Count }, false);
+                ShowSquadConfirmation(new SquadOffer { Kind = scan.Kind, Missing = missing, Count = scan.Portraits.Count, Team = scan.Team }, false);
                 return;
             }
             scan.LastY = currentY;
@@ -563,7 +573,7 @@ namespace RegenerateFM.FM26
             }));
             if (missing.Count > 0)
             {
-                var generate = new Button((Il2CppSystem.Action)(System.Action)(() => StartSquadBatch(missing)))
+                var generate = new Button((Il2CppSystem.Action)(System.Action)(() => StartSquadBatch(missing, offer.Team)))
                 { text = missing.Count == 1 ? Text.T("Generate {0} face", missing.Count) : Text.T("Generate {0} faces", missing.Count), focusable = false };
                 generate.style.height = 34;
                 generate.style.marginTop = 10;
@@ -674,7 +684,7 @@ namespace RegenerateFM.FM26
             ShowSquadConfirmation(scan.Offer, false);
         }
 
-        private void StartSquadBatch(List<SquadCandidate> missing)
+        private void StartSquadBatch(List<SquadCandidate> missing, string team)
         {
             if (missing.Count == 0 || _pending != null || WaitingForGraphics || _squadBatch != null)
                 return;
@@ -697,7 +707,7 @@ namespace RegenerateFM.FM26
             }
             var status = ShowDialog(queue[0].Kind == ListKind.Staff ? Text.T("Opening the first missing member of staff…") : Text.T("Opening the first missing player…"),
                 Text.T("Stop after current face"), () => RequestStopSquadBatch());
-            var batch = new SquadBatch { Status = status, Settings = settings };
+            var batch = new SquadBatch { Status = status, Settings = settings, Team = team };
             batch.Queue.AddRange(queue);
             _squadBatch = batch;
             if (list == null)
@@ -736,13 +746,65 @@ namespace RegenerateFM.FM26
                 : Text.T("{0} faces done. Opening the first team's players…", batch.Completed);
             if (now < batch.NextStepUtc)
                 return;
-            if (list != null)
+            // Another team's players (the Club Site's first team, or Squad >
+            // Overview's own table on the way to a youth team's tab) aren't the batch's.
+            bool otherTeam = list != null && batch.Kind == ListKind.Players && batch.Team != null && ListTeam(list) != batch.Team;
+            if (list != null && !otherTeam)
             {
                 UseBatchList(batch, list);
                 return;
             }
-            Log.LogInfo("Finding the club's " + Plural(batch.Kind) + ": " + StepToList(batch.Kind));
+            string step = otherTeam ? StepToTeam(batch) : StepToList(batch.Kind);
+            if (step == null)
+            {
+                Log.LogInfo("No tab for " + batch.Team + " beside Squad > Overview");
+                StopSquadBatch((batch.Completed == 1
+                    ? Text.T("Couldn't open {0}'s squad, so the batch stopped after {1} face. Open {0}'s squad again and choose Generate faces… for its players.", batch.Team, batch.Completed)
+                    : Text.T("Couldn't open {0}'s squad, so the batch stopped after {1} faces. Open {0}'s squad again and choose Generate faces… for its players.", batch.Team, batch.Completed)) +
+                    ScoutingNote(batch));
+                return;
+            }
+            Log.LogInfo("Finding the club's " + Plural(batch.Kind) + ": " + step);
             batch.NextStepUtc = now.AddSeconds(2);
+        }
+
+        // The team page a players list is on, its heading's first text (as
+        // SquadPageTeam), or null for Squad > Overview's own table.
+        private static string ListTeam(ScrollView list)
+        {
+            if (list == null || InSquadScreen(list))
+                return null;
+            for (var element = list.parent; element != null; element = element.parent)
+                if (element.name == "playertable")
+                {
+                    var texts = element.parent == null ? null : TextValues(element.parent);
+                    return texts != null && texts.Count > 0 ? texts[0] : null;
+                }
+            return null;
+        }
+
+        // How long a team's tab has to open its page before the batch gives up on it.
+        private static readonly TimeSpan TeamTabWait = TimeSpan.FromSeconds(10);
+
+        // One step from another team's players towards the batch's team: in
+        // Squad, its tab beside Overview; elsewhere, Squad first. Null once its
+        // tab has been clicked without opening it (another club's youth team, say).
+        private string StepToTeam(SquadBatch batch)
+        {
+            var tab = SquadTab(CurrentRoot(), batch.Team, out var label);
+            if (tab != null)
+            {
+                if (batch.TeamTabClickedUtc is System.DateTime clicked)
+                    return System.DateTime.UtcNow - clicked < TeamTabWait ? "waiting for " + batch.Team : null;
+                batch.TeamTabClickedUtc = System.DateTime.UtcNow;
+                tab.clickable.SimulateSingleClick(null);
+                return "opened " + FirstText(label) + " for " + batch.Team;
+            }
+            var squad = SquadNavButton();
+            if (squad == null)
+                return null;
+            squad.clickable.SimulateSingleClick(null);
+            return "opened Squad";
         }
 
         private void PollSquadBatch()
@@ -1077,9 +1139,21 @@ namespace RegenerateFM.FM26
         // team's own tab ("Atlanta United Academy"), or "First Team" for the club's.
         private void OpenSquadTab(SquadBatch batch)
         {
-            var root = CurrentRoot();
-            if (FindNamed(root, "SquadScreen") == null)
+            var tab = SquadTab(CurrentRoot(), batch.ReturnTab, out var label);
+            if (tab == null)
                 return;
+            batch.TabClicked = true;
+            tab.clickable.SimulateSingleClick(null);
+            Log.LogInfo("Opened " + FirstText(label) + " for " + batch.ReturnTab + " from Squad Overview");
+        }
+
+        // On Squad > Overview, the tab for this team beside it: the team's own,
+        // else First Team. Null off Squad.
+        private static Button SquadTab(VisualElement root, string team, out VisualElement label)
+        {
+            label = null;
+            if (FindNamed(root, "SquadScreen") == null)
+                return null;
             var nav = FindText(root, "First Team");
             while (nav != null && FindText(nav, "Overview") == null)
                 nav = nav.parent;
@@ -1087,21 +1161,26 @@ namespace RegenerateFM.FM26
             if (nav == null)
                 (nav, firstTeam) = SquadTabs(root);
             if (nav == null)
-                return;
+                return null;
             // English clubs label youth tabs by age ("Under 21s" for "Arsenal U21s").
-            var age = Regex.Match(batch.ReturnTab ?? "", @"\bU(\d{2})s?$");
-            var label = FindText(nav, batch.ReturnTab) ??
-                        (age.Success ? FindText(nav, "Under " + age.Groups[1].Value + "s") : null) ??
-                        firstTeam;
+            var age = Regex.Match(team ?? "", @"\bU(\d{2})s?$");
+            label = FindText(nav, team) ??
+                    (age.Success ? FindText(nav, "Under " + age.Groups[1].Value + "s") : null) ??
+                    firstTeam;
             var button = label;
             while (button != null && button.TryCast<Button>() == null)
                 button = button.parent;
-            var tab = button?.TryCast<Button>();
-            if (tab == null)
-                return;
-            batch.TabClicked = true;
-            tab.clickable.SimulateSingleClick(null);
-            Log.LogInfo("Opened " + FirstText(label) + " for " + batch.ReturnTab + " from Squad Overview");
+            return button?.TryCast<Button>();
+        }
+
+        // The top navigation's Squad, which opens your own club's Squad > Overview.
+        private static Button SquadNavButton()
+        {
+            var root = CurrentRoot();
+            var button = FindText(root, "Squad") ?? FindNamed(FindNamed(root, "SquadButton"), "text");
+            while (button != null && button.TryCast<Button>() == null)
+                button = button.parent;
+            return button?.TryCast<Button>();
         }
 
         private void ReturnToSquad(SquadBatch batch)
@@ -1129,11 +1208,7 @@ namespace RegenerateFM.FM26
                             " after " + batch.Queue[batch.Index].Name);
                 return;
             }
-            var label = FindText(CurrentRoot(), "Squad") ?? FindNamed(FindNamed(CurrentRoot(), "SquadButton"), "text");
-            var button = label;
-            while (button != null && button.TryCast<Button>() == null)
-                button = button.parent;
-            var nav = button?.TryCast<Button>();
+            var nav = SquadNavButton();
             if (nav == null)
                 throw new InvalidOperationException("Squad navigation button was not found");
             SetBatchStage(batch, SquadStage.AwaitSquad);
