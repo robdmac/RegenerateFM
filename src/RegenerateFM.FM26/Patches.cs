@@ -145,53 +145,82 @@ namespace RegenerateFM.FM26
                 var lastChange = opened;
                 int rows = -1;
                 bool shown = false;
+                int serial = ++_menuSerial;
                 // Found once: a hidden row has no size, so FindText can't find it again.
                 var ours = new VisualElement[MenuLabels.Length];
                 IVisualElementScheduledItem check = null;
+                void Stop()
+                {
+                    check?.Pause();
+                    if (!shown)
+                        foreach (var row in ours)
+                            if (row != null)
+                                row.style.display = DisplayStyle.Flex;
+                }
                 check = menu.schedule.Execute((Il2CppSystem.Action)(System.Action)(() =>
                 {
-                    var now = System.DateTime.UtcNow;
-                    for (int i = 0; i < ours.Length; i++)
-                        ours[i] = ours[i] ?? MenuRow(menu, Text.T(MenuLabels[i]));
-                    var view = ours[0]?.parent;
-                    if (Array.Exists(ours, row => row == null || row.parent != view))
+                    try
                     {
-                        if (now - opened > MenuSettle + MenuSettle)
+                        // FM reuses the menu, so a check still going from an earlier
+                        // menu (closed within MenuGiveUp) runs again when the next opens.
+                        if (serial != _menuSerial)
+                        {
+                            Stop();
+                            return;
+                        }
+                        var now = System.DateTime.UtcNow;
+                        for (int i = 0; i < ours.Length; i++)
+                            ours[i] = ours[i] ?? MenuRow(menu, Text.T(MenuLabels[i]));
+                        // No view once the menu has closed: FM takes the rows out.
+                        var view = ours[0]?.parent;
+                        if (view == null || Array.Exists(ours, row => row == null || row.parent != view))
+                        {
+                            if (now - opened > MenuSettle + MenuSettle)
+                                Stop();
+                            return;
+                        }
+                        if (view.childCount != rows)
+                        {
+                            rows = view.childCount;
+                            lastChange = now;
+                        }
+                        bool settled = now - lastChange >= MenuSettle || now - opened >= MenuGiveUp;
+                        if (!settled && !shown)
+                        {
+                            foreach (var row in ours)
+                                row.style.display = DisplayStyle.None;
+                            return;
+                        }
+                        bool last = true;
+                        for (int i = 0; i < ours.Length; i++)
+                            last &= view.IndexOf(ours[i]) == view.childCount - ours.Length + i;
+                        if (!last)
+                            foreach (var row in ours)
+                                row.BringToFront();
+                        if (!shown)
+                        {
+                            foreach (var row in ours)
+                                row.style.display = DisplayStyle.Flex;
+                            shown = true;
+                            Instance.Log.LogInfo("RegenerateFM actions shown at the bottom of the Actions menu after " +
+                                                 (now - opened).TotalSeconds.ToString("0.00") + " s");
+                        }
+                        // FM can still add rows after ours appear; keep ours last a little longer.
+                        if (now - opened >= MenuGiveUp)
                             check?.Pause();
-                        return;
                     }
-                    if (view.childCount != rows)
+                    catch (Exception error)
                     {
-                        rows = view.childCount;
-                        lastChange = now;
+                        // Once, not every frame.
+                        Stop();
+                        Instance.Log.LogWarning("Could not move RegenerateFM's actions to the bottom of the Actions menu: " + error);
                     }
-                    bool settled = now - lastChange >= MenuSettle || now - opened >= MenuGiveUp;
-                    if (!settled && !shown)
-                    {
-                        foreach (var row in ours)
-                            row.style.display = DisplayStyle.None;
-                        return;
-                    }
-                    bool last = true;
-                    for (int i = 0; i < ours.Length; i++)
-                        last &= view.IndexOf(ours[i]) == view.childCount - ours.Length + i;
-                    if (!last)
-                        foreach (var row in ours)
-                            row.BringToFront();
-                    if (!shown)
-                    {
-                        foreach (var row in ours)
-                            row.style.display = DisplayStyle.Flex;
-                        shown = true;
-                        Instance.Log.LogInfo("RegenerateFM actions shown at the bottom of the Actions menu after " +
-                                             (now - opened).TotalSeconds.ToString("0.00") + " s");
-                    }
-                    // FM can still add rows after ours appear; keep ours last a little longer.
-                    if (now - opened >= MenuGiveUp)
-                        check?.Pause();
                 }));
                 check.Every(0);
             }
+
+            // Counts the Actions menus opened, so a menu's check can tell a later one has opened.
+            private static int _menuSerial;
 
             // RegenerateFM's rows, in their order at the bottom of the menu.
             private static readonly string[] MenuLabels = { "Generate face", "Update face", "Previous face", "Remove face" };
