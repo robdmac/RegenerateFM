@@ -232,7 +232,7 @@ namespace RegenerateFM.FM26
                     return;
                 }
                 long? personId = HeaderId(header, out long shownId) ? shownId : (long?)null;
-                context.Description.AddItem(parent, Text.T("Generate face"),
+                var generate = context.Description.AddItem(parent, Text.T("Generate face"),
                     (Il2CppSystem.Action)(System.Action)(() => Instance.GenerateOpenProfile(personId, false)));
                 var update = context.Description.AddItem(parent, Text.T("Update face"),
                     (Il2CppSystem.Action)(System.Action)(() => Instance.GenerateOpenProfile(personId, true)));
@@ -249,6 +249,14 @@ namespace RegenerateFM.FM26
                     context.Description.SetEnabled(previous, false);
                 if (!choices.Remove)
                     context.Description.SetEnabled(remove, false);
+                // While a face is being made or loaded, every item waits for it.
+                if (Instance.FaceBusy)
+                {
+                    context.Description.SetEnabled(generate, false);
+                    context.Description.SetEnabled(update, false);
+                    context.Description.SetEnabled(previous, false);
+                    context.Description.SetEnabled(remove, false);
+                }
                 _bound = true;
                 Instance.Log.LogInfo("RegenerateFM actions contributed to the Actions menu for " +
                                      (personId?.ToString() ?? "a profile still loading"));

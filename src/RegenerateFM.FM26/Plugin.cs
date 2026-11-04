@@ -58,6 +58,10 @@ namespace RegenerateFM.FM26
         private PendingGeneration _pending;
         private VisualElement _refreshOverlay;
         private Label _refreshMessage;
+        // Whose face is loading into FM, while WaitingForGraphics, for RestoreFaceStatus.
+        private long? _refreshPersonId;
+        // A face that failed while its profile wasn't shown, to show when it is.
+        private (long PersonId, string Error)? _missedFailure;
         private VisualElement _portraitMenu;
         private VisualElement _portraitDismissLayer;
         private SquadScan _squadScan;

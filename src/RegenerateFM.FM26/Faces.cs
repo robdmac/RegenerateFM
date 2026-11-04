@@ -78,11 +78,13 @@ namespace RegenerateFM.FM26
                 if (_refreshMessage != null)
                     _refreshMessage.text = Text.T("Loading face…");
                 _refreshOverlay = overlay;
+                _refreshPersonId = personId;
                 if (!Refresh(purge: true))
                 {
                     ShowError(overlay, _refreshMessage, Text.T("Portrait saved, but game refresh failed. Restart FM26 to load it."));
                     _refreshOverlay = null;
                     _refreshMessage = null;
+                    _refreshPersonId = null;
                 }
             }
             catch (Exception error)

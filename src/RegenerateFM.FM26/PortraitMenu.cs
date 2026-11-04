@@ -142,6 +142,10 @@ namespace RegenerateFM.FM26
                 bool staff = !IsPlayerOverview(currentRoot) && !IsPlayerHeader(currentHeader);
                 Generate(currentId, staff, update);
             })) { name = name, text = text };
+            // While a face is being made or loaded, every item waits for it.
+            bool busy = FaceBusy;
+            if (busy)
+                enabled = false;
             item.style.width = Length.Percent(100);
             item.style.height = 32;
             item.style.color = enabled ? Color.white : new Color(0.55f, 0.55f, 0.55f, 1f);
@@ -150,9 +154,12 @@ namespace RegenerateFM.FM26
             item.style.paddingLeft = 10;
             item.SetEnabled(enabled);
             if (!enabled)
-                item.tooltip = disabledTip ?? Text.T("No face to update yet");
+                item.tooltip = busy ? Text.T("Face generation is already in progress")
+                                    : disabledTip ?? Text.T("No face to update yet");
             return item;
         }
+
+        private bool FaceBusy => _pending != null || _squadBatch != null || WaitingForGraphics;
 
         private void ClosePortraitMenu()
         {
