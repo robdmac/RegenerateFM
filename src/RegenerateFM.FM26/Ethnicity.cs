@@ -53,6 +53,12 @@ namespace RegenerateFM.FM26
                 var setup = visuals.m_characterSetup;
                 string ethnicity = setup.ethnicity.ToString(), skinTone = setup.skinTone.ToString();
                 MatchSeen.Add(id);
+                // FM's own colour, before HairColourName rounds it to one of ours,
+                // so the palette can be checked against the colours FM uses.
+                var hair = setup.hairColour;
+                Log.LogInfo("Match hair colour for " + id + ": RGB " + string.Join(" ",
+                    new[] { hair.r, hair.g, hair.b }.Select(part => part.ToString("0.000", CultureInfo.InvariantCulture))) +
+                    ", named " + HairColourName(hair) + " (" + ethnicity + ", " + skinTone + ")");
                 if (!Prompts.Ethnicities.Contains(ethnicity))
                     continue;
                 found[id.ToString(CultureInfo.InvariantCulture)] = new RegenerateFM.KnownEthnicity
