@@ -23,7 +23,7 @@ using UnityEngine.UIElements;
 
 namespace RegenerateFM.FM26
 {
-    [BepInPlugin("fm.regenerate", "RegenerateFM", "1.0.0")]
+    [BepInPlugin("fm.regenerate", "RegenerateFM", "1.0.1")]
     public sealed partial class Plugin : BasePlugin
     {
         internal static Plugin Instance;
