@@ -113,12 +113,15 @@ namespace RegenerateFM.FM26
             // FM27 27.0.0 for Windows (Steam), with its own user data. Epic's FM27
             // Launch Preview has the same GameAssembly.dll and a game_plugin.dll
             // packed differently, as Epic's FM26 does. Epic's update to
-            // 27.0.0+2493426 rebuilt both with the same metadata.
+            // 27.0.0+2493426 rebuilt both with the same metadata. Then Steam's
+            // update of 2 November 2026 (build 26340721).
             if (HasHash(gameAssembly, "820d6618acafac7dffc1ef3b489582eddb84b0343d4f34d55fff9fb70881e00a")
                     && (HasHash(gamePlugin, "bc940e472418fc5c214208d7cf30fecf600f689b6f9d71c11ba19a2df0fe057f")
                         || HasHash(gamePlugin, "55725511227555e3950cd2a58dd86d9f70969cf6d7566140fa1a4af560485ba8"))
                 || HasHash(gameAssembly, "4972a1a9ee485e9283bef073145282719e1730a23f104156bd5d0d64c089ea26")
-                    && HasHash(gamePlugin, "36e6027b63605a227ce583452bf90b313adc48e819f74bbeb2bae1ed52c5a2ac"))
+                    && HasHash(gamePlugin, "36e6027b63605a227ce583452bf90b313adc48e819f74bbeb2bae1ed52c5a2ac")
+                || HasHash(gameAssembly, "3f20a3829a1194c200d82bdc95b717cdeaf1b7a348eecbe6520bce7af9c0c588")
+                    && HasHash(gamePlugin, "252ff8fb5b7a4a5a5464db6ba632e309eef9b6e65ffa992ae20575a189e66c6a"))
             {
                 Fm27 = true;
                 Text.GameName = "FM27";

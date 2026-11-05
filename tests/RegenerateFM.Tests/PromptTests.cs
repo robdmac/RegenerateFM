@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Xunit;
 
 namespace RegenerateFM.Tests
@@ -105,6 +106,49 @@ namespace RegenerateFM.Tests
             var saved = JsonDocument.Parse(File.ReadAllText(Path.Combine(folder.Path, ".regeneratefm-appearances", "111.json")));
             Assert.Equal("female", saved.RootElement.GetProperty("gender").GetString());
             Assert.Throws<ArgumentException>(() => Prompts.ProfilePrompt(player, "x", folder.Path));
+        }
+
+        // Real players the model can't know, at one club and with the same FM
+        // ethnicity, skin and hair, came out as one face: each now has their own
+        // appearance traits and shade of FM's hair colour, saved like a newgen's.
+        [Fact]
+        public void RealTeamMatesWithTheSameLookInFMGetTheirOwnAppearance()
+        {
+            using var folder = new TempFolder();
+            ProfileSnapshot Real(string name, int age) => new ProfileSnapshot
+            {
+                Name = name, Age = age, Nationality = "Scotland", Position = "Defender (Centre)", Club = "Edinburgh City",
+                Gender = "male", Ethnicity = "NorthernEuropean", SkinTone = "White2", HairColour = "dark brown", Likeness = true,
+            };
+            var ids = new[] { "61097660", "61096166", "61089385", "61082163", "61043948", "2000412771", "2000115075" };
+            var prompts = ids.Select(id => Prompts.ProfilePrompt(Real("Sam Smith", 23), id, folder.Path)).ToList();
+            Assert.Equal(ids.Length, prompts.Distinct().Count());
+            Assert.All(prompts, prompt =>
+            {
+                Assert.Contains("Make it look like Sam Smith as they look now. Ethnicity: white Northern European, with fair skin; " +
+                                "follow this over any other appearance detail. Natural hair colour: ", prompt);
+                Assert.Contains("Where you can't be sure how Sam Smith looks, use this individual appearance instead of a generic " +
+                                "footballer's face. Individual appearance: ", prompt);
+                Assert.Contains("avoid defaulting to a model-like face or the same tousled brown haircut", prompt);
+            });
+            // Saved, so the next face for the same player is described the same way.
+            Assert.True(File.Exists(Path.Combine(folder.Path, ".regeneratefm-appearances", "61097660.json")));
+            Assert.Equal(prompts[0], Prompts.ProfilePrompt(Real("Sam Smith", 23), ids[0], folder.Path));
+            Assert.True(prompts.Select(prompt => Regex.Match(prompt, "Natural hair colour: ([^.]+)\\.").Groups[1].Value).Distinct().Count() > 1);
+        }
+
+        [Fact]
+        public void FMsHairColourBecomesAShadeOfItForAWhiteNorthernEuropean()
+        {
+            var shades = Enumerable.Range(0, 40).Select(i => Appearance.HairShade("dark brown", "NorthernEuropean", i.ToString())).ToList();
+            Assert.Equal(new[] { "chestnut brown", "dark brown", "medium brown", "mousy light brown", "very dark brown" },
+                         shades.Distinct().OrderBy(shade => shade).ToArray());
+            Assert.Equal(Appearance.HairShade("ginger", "NorthernEuropean", "7"), Appearance.HairShade("ginger", "NorthernEuropean", "7"));
+            Assert.Equal("dark brown", Appearance.HairShade("dark brown", "AfricanCaribbean", "7"));
+            Assert.Equal("black", Appearance.HairShade("black", "NorthernEuropean", "7"));
+            // Relatives share a family's seed, and so a shade.
+            Assert.Equal("family:12", Appearance.ShadeSeed("Sam Smith", "34", "family:12"));
+            Assert.Equal("34", Appearance.ShadeSeed("Sam Smith", "34", null));
         }
     }
 

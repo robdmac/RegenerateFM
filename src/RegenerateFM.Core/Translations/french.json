@@ -54,6 +54,8 @@
  "FM26 staff UI was not found.": "Interface staff de FM26 introuvable.",
  "FM26's Back button didn't return to {0}, so the batch stopped after {1} face. Open {0}'s squad again and choose Generate faces… for the rest.": "Le bouton Retour de FM26 n'a pas renvoyé vers « {0} », le lot s'est donc arrêté après {1} visage. Rouvrez l'effectif de « {0} » et choisissez « Générer des visages… » pour le reste.",
  "FM26's Back button didn't return to {0}, so the batch stopped after {1} faces. Open {0}'s squad again and choose Generate faces… for the rest.": "Le bouton Retour de FM26 n'a pas renvoyé vers « {0} », le lot s'est donc arrêté après {1} visages. Rouvrez l'effectif de « {0} » et choisissez « Générer des visages… » pour le reste.",
+ "Couldn't open {0}'s squad, so the batch stopped after {1} face. Open {0}'s squad again and choose Generate faces… for its players.": "Impossible d'ouvrir l'effectif de « {0} », le lot s'est donc arrêté après {1} visage. Rouvrez l'effectif de « {0} » et choisissez « Générer des visages… » pour ses joueurs.",
+ "Couldn't open {0}'s squad, so the batch stopped after {1} faces. Open {0}'s squad again and choose Generate faces… for its players.": "Impossible d'ouvrir l'effectif de « {0} », le lot s'est donc arrêté après {1} visages. Rouvrez l'effectif de « {0} » et choisissez « Générer des visages… » pour ses joueurs.",
  "Face generation failed": "Échec de la génération du visage",
  "Face generation is already in progress": "Génération de visage déjà en cours",
  "Failed": "Échec",

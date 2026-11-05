@@ -54,6 +54,8 @@
   "FM26 staff UI was not found.": "FM26s stabsvisning ble ikke funnet.",
   "FM26's Back button didn't return to {0}, so the batch stopped after {1} face. Open {0}'s squad again and choose Generate faces… for the rest.": "Tilbake-knappen i FM26 førte ikke tilbake til {0}, så kjøringen stoppet etter {1} ansikt. Åpne troppen til {0} igjen, og velg «Generer ansikter…» for resten.",
   "FM26's Back button didn't return to {0}, so the batch stopped after {1} faces. Open {0}'s squad again and choose Generate faces… for the rest.": "Tilbake-knappen i FM26 førte ikke tilbake til {0}, så kjøringen stoppet etter {1} ansikter. Åpne troppen til {0} igjen, og velg «Generer ansikter…» for resten.",
+  "Couldn't open {0}'s squad, so the batch stopped after {1} face. Open {0}'s squad again and choose Generate faces… for its players.": "Troppen til {0} kunne ikke åpnes, så kjøringen stoppet etter {1} ansikt. Åpne troppen til {0} igjen, og velg «Generer ansikter…» for spillerne.",
+  "Couldn't open {0}'s squad, so the batch stopped after {1} faces. Open {0}'s squad again and choose Generate faces… for its players.": "Troppen til {0} kunne ikke åpnes, så kjøringen stoppet etter {1} ansikter. Åpne troppen til {0} igjen, og velg «Generer ansikter…» for spillerne.",
   "Face generation failed": "Generering av ansikt mislyktes",
   "Face generation is already in progress": "Et ansikt blir allerede generert",
   "Failed": "Mislyktes",

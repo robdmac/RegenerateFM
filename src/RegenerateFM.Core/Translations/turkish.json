@@ -54,6 +54,8 @@
   "FM26 staff UI was not found.": "FM26 personel arayüzü bulunamadı.",
   "FM26's Back button didn't return to {0}, so the batch stopped after {1} face. Open {0}'s squad again and choose Generate faces… for the rest.": "FM26'nın Geri düğmesi şuraya dönmedi: {0}. Bu nedenle toplu işlem durdu (oluşturulan yüz sayısı: {1}). Kadroyu ({0}) yeniden açın ve kalanlar için “Yüzleri oluştur…” seçeneğini seçin.",
   "FM26's Back button didn't return to {0}, so the batch stopped after {1} faces. Open {0}'s squad again and choose Generate faces… for the rest.": "FM26'nın Geri düğmesi şuraya dönmedi: {0}. Bu nedenle toplu işlem durdu (oluşturulan yüz sayısı: {1}). Kadroyu ({0}) yeniden açın ve kalanlar için “Yüzleri oluştur…” seçeneğini seçin.",
+  "Couldn't open {0}'s squad, so the batch stopped after {1} face. Open {0}'s squad again and choose Generate faces… for its players.": "Kadro açılamadı: {0}. Bu nedenle toplu işlem durdu (oluşturulan yüz sayısı: {1}). Kadroyu ({0}) yeniden açın ve oyuncuları için “Yüzleri oluştur…” seçeneğini seçin.",
+  "Couldn't open {0}'s squad, so the batch stopped after {1} faces. Open {0}'s squad again and choose Generate faces… for its players.": "Kadro açılamadı: {0}. Bu nedenle toplu işlem durdu (oluşturulan yüz sayısı: {1}). Kadroyu ({0}) yeniden açın ve oyuncuları için “Yüzleri oluştur…” seçeneğini seçin.",
   "Face generation failed": "Yüz oluşturma başarısız",
   "Face generation is already in progress": "Yüz oluşturma zaten sürüyor",
   "Failed": "Başarısız",

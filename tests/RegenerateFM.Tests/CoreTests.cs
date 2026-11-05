@@ -316,8 +316,10 @@ namespace RegenerateFM.Tests
             Assert.Equal(0, KnownEthnicities.Save(folder.Path, new Dictionary<string, KnownEthnicity> { ["36099373"] = Known("NorthernEuropean", "match") }));
             var player = Player();
             Assert.True(KnownEthnicities.Apply(player, folder.Path, "28122642"));
-            Assert.Contains("Ethnicity: Black African or Caribbean, with dark brown skin and naturally dark brown hair; " +
-                            "follow this over any other appearance detail.", Prompts.ProfilePrompt(player, "28122642", null));
+            // FM's hair colour follows what the model must follow, as only a guide;
+            // for anyone but a white Northern European it is FM's colour as it is.
+            Assert.Contains("Ethnicity: Black African or Caribbean, with dark brown skin; follow this over any other " +
+                            "appearance detail. Natural hair colour: dark brown.", Prompts.ProfilePrompt(player, "28122642", null));
             var saved = JsonDocument.Parse(File.ReadAllText(Path.Combine(folder.Path, KnownEthnicities.FileName))).RootElement.GetProperty("people");
             Assert.Equal("{\"ethnicity\":\"AfricanCaribbean\",\"source\":\"chosen\"}", saved.GetProperty("2000047230").GetRawText().Replace(" ", "").Replace("\r", "").Replace("\n", ""));
             // An unreadable file counts as no saved ethnicities.

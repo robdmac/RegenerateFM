@@ -54,6 +54,8 @@
  "FM26 staff UI was not found.": "FM26 스태프 UI를 찾을 수 없습니다.",
  "FM26's Back button didn't return to {0}, so the batch stopped after {1} face. Open {0}'s squad again and choose Generate faces… for the rest.": "FM26의 뒤로 가기 버튼이 {0}(으)로 이동하지 않아 얼굴 사진 {1}장 이후 일괄 생성을 중단했습니다. {0}의 스쿼드를 다시 열고 '얼굴 사진 생성…'을 선택해 나머지를 생성하세요.",
  "FM26's Back button didn't return to {0}, so the batch stopped after {1} faces. Open {0}'s squad again and choose Generate faces… for the rest.": "FM26의 뒤로 가기 버튼이 {0}(으)로 이동하지 않아 얼굴 사진 {1}장 이후 일괄 생성을 중단했습니다. {0}의 스쿼드를 다시 열고 '얼굴 사진 생성…'을 선택해 나머지를 생성하세요.",
+ "Couldn't open {0}'s squad, so the batch stopped after {1} face. Open {0}'s squad again and choose Generate faces… for its players.": "{0}의 스쿼드를 열 수 없어 얼굴 사진 {1}장 이후 일괄 생성을 중단했습니다. {0}의 스쿼드를 다시 열고 '얼굴 사진 생성…'을 선택해 선수들의 얼굴 사진을 생성하세요.",
+ "Couldn't open {0}'s squad, so the batch stopped after {1} faces. Open {0}'s squad again and choose Generate faces… for its players.": "{0}의 스쿼드를 열 수 없어 얼굴 사진 {1}장 이후 일괄 생성을 중단했습니다. {0}의 스쿼드를 다시 열고 '얼굴 사진 생성…'을 선택해 선수들의 얼굴 사진을 생성하세요.",
  "Face generation failed": "얼굴 사진 생성 실패",
  "Face generation is already in progress": "이미 얼굴 사진을 생성하는 중입니다",
  "Failed": "실패",

@@ -54,6 +54,8 @@
   "FM26 staff UI was not found.": "Интерфейс персонала FM26 не найден.",
   "FM26's Back button didn't return to {0}, so the batch stopped after {1} face. Open {0}'s squad again and choose Generate faces… for the rest.": "Кнопка «Назад» в FM26 не вернула к «{0}», поэтому обработка остановилась после {1} лица. Снова откройте состав «{0}» и выберите «Создать лица…» для остальных.",
   "FM26's Back button didn't return to {0}, so the batch stopped after {1} faces. Open {0}'s squad again and choose Generate faces… for the rest.": "Кнопка «Назад» в FM26 не вернула к «{0}», поэтому обработка остановилась после {1} лиц. Снова откройте состав «{0}» и выберите «Создать лица…» для остальных.",
+  "Couldn't open {0}'s squad, so the batch stopped after {1} face. Open {0}'s squad again and choose Generate faces… for its players.": "Не удалось открыть состав «{0}», поэтому обработка остановилась после {1} лица. Снова откройте состав «{0}» и выберите «Создать лица…» для его игроков.",
+  "Couldn't open {0}'s squad, so the batch stopped after {1} faces. Open {0}'s squad again and choose Generate faces… for its players.": "Не удалось открыть состав «{0}», поэтому обработка остановилась после {1} лиц. Снова откройте состав «{0}» и выберите «Создать лица…» для его игроков.",
   "Face generation failed": "Не удалось создать лицо",
   "Face generation is already in progress": "Лицо уже создаётся",
   "Failed": "Ошибка",

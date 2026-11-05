@@ -29,12 +29,13 @@ namespace RegenerateFM
 
         internal static string AppearancePrompt(string name, int age, string personId, string directory, string gender,
                                                string family, ProfileSnapshot profile) =>
-            AppearanceInstruction(WithHairColour(PersonTraits(name, age, personId, directory, gender, family), profile), gender);
+            AppearanceInstruction(WithHairColour(PersonTraits(name, age, personId, directory, gender, family), profile,
+                                                 ShadeSeed(name, personId, family)), gender);
 
         // The traits' random hair colour suits only a white Northern European:
         // anyone else gets FM's own hair colour, or one natural for their
         // ethnicity, so that a guessed ethnicity isn't swayed by it.
-        private static Dictionary<string, string> WithHairColour(Dictionary<string, string> traits, ProfileSnapshot profile)
+        private static Dictionary<string, string> WithHairColour(Dictionary<string, string> traits, ProfileSnapshot profile, string seed)
         {
             if (traits == null || !traits.TryGetValue("hair", out string hair) || hair == null ||
                 profile.HairColour == null && profile.Ethnicity == "NorthernEuropean")
@@ -44,11 +45,43 @@ namespace RegenerateFM
                 return traits;
             return new Dictionary<string, string>(traits)
             {
-                ["hair"] = hair.Substring(0, at) + HairColourLabel + (profile.HairColour ?? "natural for their ethnicity")
+                ["hair"] = hair.Substring(0, at) + HairColourLabel +
+                           (profile.HairColour != null ? HairShade(profile.HairColour, profile.Ethnicity, seed) : "natural for their ethnicity")
             };
         }
 
         private const string HairColourLabel = "; hair colour: ";
+
+        // FM draws hair in a few colours, and a match gives about two thirds of
+        // its players the one "dark brown" (from near-black to mousy). For a
+        // white Northern European, FM's colour becomes a shade within it, the
+        // same for a person (and their family) each time.
+        private static readonly Dictionary<string, string[]> HairShades = new Dictionary<string, string[]>
+        {
+            ["dark brown"] = new[] { "very dark brown", "dark brown", "medium brown", "chestnut brown", "mousy light brown" },
+            ["light brown"] = new[] { "light brown", "dark blond", "sandy blond" },
+            ["blond"] = new[] { "blond", "dark blond", "pale blond" },
+            ["ginger"] = new[] { "ginger", "copper red", "auburn", "strawberry blond" },
+        };
+
+        public static string HairShade(string hairColour, string ethnicity, string seed) =>
+            ethnicity == "NorthernEuropean" && HairShades.TryGetValue(hairColour, out var shades)
+                ? Pick(seed, "hairShade", shades) : hairColour;
+
+        // The seed HairShade uses: a family's, so relatives share a shade, else the person's.
+        public static string ShadeSeed(string name, string personId, string family) =>
+            family ?? personId ?? "name:" + name.ToLowerInvariant();
+
+        private static string Pick(string seed, string category, string[] choices)
+        {
+            byte[] digest;
+            using (var sha = SHA256.Create())
+                digest = sha.ComputeHash(Encoding.UTF8.GetBytes("regeneratefm-appearance-v1\0" + seed + "\0" + category));
+            ulong value = 0;
+            for (int i = 0; i < 8; i++)
+                value = (value << 8) | digest[i];
+            return choices[(int)(value % (ulong)choices.Length)];
+        }
 
         // The person's appearance traits: saved ones, or new ones chosen and saved.
         internal static Dictionary<string, string> PersonTraits(string name, int age, string personId, string directory,
@@ -130,16 +163,7 @@ namespace RegenerateFM
         public static Dictionary<string, string> AppearanceTraits(string seed, int age, string gender = null, string family = null)
         {
             Func<string, string[], string> pick = (category, choices) =>
-            {
-                string chosenBy = family != null && FamilyTraits.Contains(category) ? family : seed;
-                byte[] digest;
-                using (var sha = SHA256.Create())
-                    digest = sha.ComputeHash(Encoding.UTF8.GetBytes("regeneratefm-appearance-v1\0" + chosenBy + "\0" + category));
-                ulong value = 0;
-                for (int i = 0; i < 8; i++)
-                    value = (value << 8) | digest[i];
-                return choices[(int)(value % (ulong)choices.Length)];
-            };
+                Pick(family != null && FamilyTraits.Contains(category) ? family : seed, category, choices);
             string shape = pick("faceShape", new[] { "a relatively long face", "a broad face", "an oval face",
                                                      "a square face", "a narrow face", "a rounder face" });
             string jaw = pick("jaw", new[] { "a softly angular jaw", "a gently rounded jaw", "a modest chin",

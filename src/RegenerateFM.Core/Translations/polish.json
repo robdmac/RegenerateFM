@@ -54,6 +54,8 @@
   "FM26 staff UI was not found.": "Nie znaleziono interfejsu personelu FM26.",
   "FM26's Back button didn't return to {0}, so the batch stopped after {1} face. Open {0}'s squad again and choose Generate faces… for the rest.": "Przycisk Wstecz w FM26 nie powrócił do zespołu {0}, więc przetwarzanie zatrzymało się po {1} twarzy. Otwórz ponownie kadrę zespołu {0} i wybierz „Generuj twarze…” dla pozostałych.",
   "FM26's Back button didn't return to {0}, so the batch stopped after {1} faces. Open {0}'s squad again and choose Generate faces… for the rest.": "Przycisk Wstecz w FM26 nie powrócił do zespołu {0}, więc przetwarzanie zatrzymało się po {1} twarzach. Otwórz ponownie kadrę zespołu {0} i wybierz „Generuj twarze…” dla pozostałych.",
+  "Couldn't open {0}'s squad, so the batch stopped after {1} face. Open {0}'s squad again and choose Generate faces… for its players.": "Nie udało się otworzyć kadry zespołu {0}, więc przetwarzanie zatrzymało się po {1} twarzy. Otwórz ponownie kadrę zespołu {0} i wybierz „Generuj twarze…” dla jego zawodników.",
+  "Couldn't open {0}'s squad, so the batch stopped after {1} faces. Open {0}'s squad again and choose Generate faces… for its players.": "Nie udało się otworzyć kadry zespołu {0}, więc przetwarzanie zatrzymało się po {1} twarzach. Otwórz ponownie kadrę zespołu {0} i wybierz „Generuj twarze…” dla jego zawodników.",
   "Face generation failed": "Nie udało się wygenerować twarzy",
   "Face generation is already in progress": "Generowanie twarzy już trwa",
   "Failed": "Niepowodzenie",

@@ -54,6 +54,8 @@
   "FM26 staff UI was not found.": "Δεν βρέθηκε το UI προσωπικού του FM26.",
   "FM26's Back button didn't return to {0}, so the batch stopped after {1} face. Open {0}'s squad again and choose Generate faces… for the rest.": "Το κουμπί «Πίσω» του FM26 δεν επέστρεψε στην ομάδα {0}, οπότε η διαδικασία σταμάτησε μετά από {1} πρόσωπο. Ανοίξτε ξανά το ρόστερ της ομάδας {0} και επιλέξτε «Δημιουργία προσώπων…» για τα υπόλοιπα.",
   "FM26's Back button didn't return to {0}, so the batch stopped after {1} faces. Open {0}'s squad again and choose Generate faces… for the rest.": "Το κουμπί «Πίσω» του FM26 δεν επέστρεψε στην ομάδα {0}, οπότε η διαδικασία σταμάτησε μετά από {1} πρόσωπα. Ανοίξτε ξανά το ρόστερ της ομάδας {0} και επιλέξτε «Δημιουργία προσώπων…» για τα υπόλοιπα.",
+  "Couldn't open {0}'s squad, so the batch stopped after {1} face. Open {0}'s squad again and choose Generate faces… for its players.": "Δεν ήταν δυνατό να ανοίξει το ρόστερ της ομάδας {0}, οπότε η διαδικασία σταμάτησε μετά από {1} πρόσωπο. Ανοίξτε ξανά το ρόστερ της ομάδας {0} και επιλέξτε «Δημιουργία προσώπων…» για τους παίκτες της.",
+  "Couldn't open {0}'s squad, so the batch stopped after {1} faces. Open {0}'s squad again and choose Generate faces… for its players.": "Δεν ήταν δυνατό να ανοίξει το ρόστερ της ομάδας {0}, οπότε η διαδικασία σταμάτησε μετά από {1} πρόσωπα. Ανοίξτε ξανά το ρόστερ της ομάδας {0} και επιλέξτε «Δημιουργία προσώπων…» για τους παίκτες της.",
   "Face generation failed": "Η δημιουργία προσώπου απέτυχε",
   "Face generation is already in progress": "Η δημιουργία προσώπου βρίσκεται ήδη σε εξέλιξη",
   "Failed": "Απέτυχε",
