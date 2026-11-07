@@ -407,14 +407,15 @@ namespace RegenerateFM
                 colours.AddRange(new[] { "salt-and-pepper", "greying brown", "silver-grey" });
             string hair = style == "a shaved head" ? style : style + HairColourLabel + pick("hairColour", even(colours.ToArray()));
 
-            var facialHair = new List<(string, int)> { ("clean-shaven", 6) };
+            // From 23, a full beard and a thick moustache each come up about one time in 33.
+            var facialHair = new List<(string, int)> { ("clean-shaven", 18) };
             if (age >= 18)
-                facialHair.AddRange(new[] { ("very light, patchy stubble", 3), ("a faint moustache", 1) });
+                facialHair.AddRange(new[] { ("very light, patchy stubble", 9), ("a faint moustache", 3) });
             if (age >= 23)
                 facialHair.AddRange(new[]
                 {
-                    ("short, uneven stubble", 4), ("heavy stubble", 3), ("a short, neatly trimmed beard", 2),
-                    ("a modest moustache", 1), ("a neat goatee", 1), ("a full, thick beard", Standout), ("a thick moustache", Standout),
+                    ("short, uneven stubble", 12), ("heavy stubble", 9), ("a short, neatly trimmed beard", 6),
+                    ("a modest moustache", 3), ("a neat goatee", 3), ("a full, thick beard", 2), ("a thick moustache", 2),
                 });
 
             // An aggressive or very determined player looks more intense and never

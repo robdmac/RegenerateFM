@@ -198,7 +198,8 @@ namespace RegenerateFM.Tests
             // Most of a squad looks ordinary.
             var squad = Squad(2000, 27, "male", WithAttributes("NorthernEuropean"));
             Assert.InRange(squad.Count(traits => traits["detail"] == "ordinary skin with a few small blemishes") / 2000.0, 0.3, 0.6);
-            Assert.InRange(squad.Count(traits => traits["facialHair"] == "a full, thick beard") / 2000.0, 0.01, 0.06);
+            Assert.InRange(squad.Count(traits => traits["facialHair"] == "a full, thick beard") / 2000.0, 0.015, 0.045);
+            Assert.InRange(squad.Count(traits => traits["facialHair"] == "a thick moustache") / 2000.0, 0.015, 0.045);
         }
 
         [Fact]
