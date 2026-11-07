@@ -70,6 +70,11 @@ namespace RegenerateFM.FM26
             // "PlayingTeam" is the contract club; a loaned player's header also
             // shows the loan club, so the face wears the kit they play in now.
             var loanClub = FirstText(FindNamed(header, "TeamAwayFromOrTo"));
+            // FM27 shows both clubs in LoanTrialClub, each under a label ("Parent
+            // Club", then "On loan at"), whichever way the loan goes; only the
+            // names are links.
+            if (Fm27 && FindNamed(header, "LoanTrialClub") is VisualElement loanAndTrial)
+                loanClub = LinkTexts(loanAndTrial).LastOrDefault();
             if (!string.IsNullOrWhiteSpace(loanClub))
                 profile.Club = loanClub;
             // A free agent's header has no PlayingTeam; its contract box says "Free Agent".

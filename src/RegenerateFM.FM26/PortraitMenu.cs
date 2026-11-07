@@ -311,5 +311,26 @@ namespace RegenerateFM.FM26
             var values = TextValues(element);
             return values.Count > 0 ? values[0] : null;
         }
+
+        // The shown text of each link in the element, in order.
+        private static List<string> LinkTexts(VisualElement element)
+        {
+            var values = new List<string>();
+            void Visit(VisualElement item)
+            {
+                if (item == null || item.worldBound.width <= 0 || item.worldBound.height <= 0)
+                    return;
+                if (item.GetIl2CppType().Name == "NavigableLink")
+                {
+                    if (FirstText(item) is string value)
+                        values.Add(value);
+                    return;
+                }
+                for (int i = 0; i < item.hierarchy.childCount; i++)
+                    Visit(item.hierarchy.ElementAt(i));
+            }
+            Visit(element);
+            return values;
+        }
     }
 }
