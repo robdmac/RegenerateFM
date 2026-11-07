@@ -311,5 +311,8 @@
  "Previous face": "Vorig gezicht",
  "Remove face": "Gezicht verwijderen",
  "No earlier face to go back to": "Geen eerder gezicht om naar terug te gaan",
- "No RegenerateFM face to remove": "Geen RegenerateFM-gezicht om te verwijderen"
+ "No RegenerateFM face to remove": "Geen RegenerateFM-gezicht om te verwijderen",
+ "RegenerateFM {0} is available.": "RegenerateFM {0} is beschikbaar.",
+ "Download": "Downloaden",
+ "Open the download page?": "De downloadpagina openen?"
 }

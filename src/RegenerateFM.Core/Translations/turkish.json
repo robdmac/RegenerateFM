@@ -311,5 +311,8 @@
   "Previous face": "Önceki yüz",
   "Remove face": "Yüzü kaldır",
   "No earlier face to go back to": "Geri dönülecek önceki yüz yok",
-  "No RegenerateFM face to remove": "Kaldırılacak RegenerateFM yüzü yok"
+  "No RegenerateFM face to remove": "Kaldırılacak RegenerateFM yüzü yok",
+  "RegenerateFM {0} is available.": "RegenerateFM {0} kullanıma sunuldu.",
+  "Download": "İndir",
+  "Open the download page?": "İndirme sayfası açılsın mı?"
 }

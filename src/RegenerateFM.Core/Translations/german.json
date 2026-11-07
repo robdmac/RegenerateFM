@@ -311,5 +311,8 @@
  "Previous face": "Vorheriges Gesicht",
  "Remove face": "Gesicht entfernen",
  "No earlier face to go back to": "Kein früheres Gesicht zum Zurückkehren",
- "No RegenerateFM face to remove": "Kein RegenerateFM-Gesicht zum Entfernen"
+ "No RegenerateFM face to remove": "Kein RegenerateFM-Gesicht zum Entfernen",
+ "RegenerateFM {0} is available.": "RegenerateFM {0} ist verfügbar.",
+ "Download": "Herunterladen",
+ "Open the download page?": "Downloadseite öffnen?"
 }

@@ -46,6 +46,62 @@ namespace RegenerateFM.FM26
             return false;
         }
 
+        // Asks GitHub once a session, then keeps a small notice on screen until
+        // it's dismissed, in the language FM is showing by then.
+        private void CheckUpdateNotice()
+        {
+            _updateCheck ??= UpdateCheck.NewerRelease();
+            if (!_updateCheck.IsCompleted || _updateCheck.Result == null || _updateDismissed)
+                return;
+            if (_updateNotice == null)
+            {
+                Log.LogInfo("RegenerateFM " + _updateCheck.Result + " is available");
+                BuildUpdateNotice();
+            }
+            _updateMessage.text = Text.T("RegenerateFM {0} is available.", _updateCheck.Result);
+            // FM replaces its root as it starts, taking the notice with the old one.
+            var root = CurrentRoot();
+            if (root != null && !root.Contains(_updateNotice))
+                root.Add(_updateNotice);
+        }
+
+        private void BuildUpdateNotice()
+        {
+            var notice = new VisualElement { name = "regeneratefm-update-notice" };
+            notice.style.position = Position.Absolute;
+            notice.style.right = 24;
+            notice.style.bottom = 24;
+            notice.style.flexDirection = FlexDirection.Row;
+            notice.style.alignItems = Align.Center;
+            notice.style.paddingTop = 8;
+            notice.style.paddingBottom = 8;
+            notice.style.paddingLeft = 12;
+            notice.style.paddingRight = 8;
+            notice.style.backgroundColor = new Color(0.13f, 0.10f, 0.18f, 0.97f);
+            _updateMessage = new Label { pickingMode = PickingMode.Ignore };
+            _updateMessage.style.color = Color.white;
+            _updateMessage.style.fontSize = 14;
+            _updateMessage.style.marginRight = 10;
+            notice.Add(_updateMessage);
+            var download = new Button((Il2CppSystem.Action)(System.Action)(() => Application.OpenURL(UpdateCheck.ReleasesPage)))
+            { text = Text.T("Download"), focusable = false };
+            download.style.height = 28;
+            download.style.color = Color.white;
+            download.style.backgroundColor = new Color(0.38f, 0.10f, 0.60f, 1f);
+            notice.Add(download);
+            var close = new Button((Il2CppSystem.Action)(System.Action)(() =>
+            {
+                _updateDismissed = true;
+                notice.RemoveFromHierarchy();
+            }))
+            { text = "×", focusable = false };
+            close.style.height = 28;
+            close.style.width = 28;
+            close.style.marginLeft = 4;
+            notice.Add(close);
+            _updateNotice = Directed(notice);
+        }
+
         private void ShowKeyDialog(string problem, Action next, bool signedIn = false)
         {
             CloseKeyDialog();

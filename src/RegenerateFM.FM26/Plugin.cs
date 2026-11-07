@@ -62,6 +62,11 @@ namespace RegenerateFM.FM26
         private long? _refreshPersonId;
         // A face that failed while its profile wasn't shown, to show when it is.
         private (long PersonId, string Error)? _missedFailure;
+        // The check for a newer release (UpdateCheck), and its notice until dismissed.
+        private Task<string> _updateCheck;
+        private VisualElement _updateNotice;
+        private Label _updateMessage;
+        private bool _updateDismissed;
         private VisualElement _portraitMenu;
         private VisualElement _portraitDismissLayer;
         private SquadScan _squadScan;

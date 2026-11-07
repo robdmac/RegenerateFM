@@ -311,5 +311,8 @@
   "Previous face": "Προηγούμενο πρόσωπο",
   "Remove face": "Αφαίρεση προσώπου",
   "No earlier face to go back to": "Δεν υπάρχει προηγούμενο πρόσωπο για επιστροφή",
-  "No RegenerateFM face to remove": "Δεν υπάρχει πρόσωπο RegenerateFM για αφαίρεση"
+  "No RegenerateFM face to remove": "Δεν υπάρχει πρόσωπο RegenerateFM για αφαίρεση",
+  "RegenerateFM {0} is available.": "Το RegenerateFM {0} είναι διαθέσιμο.",
+  "Download": "Λήψη",
+  "Open the download page?": "Άνοιγμα της σελίδας λήψης;"
 }

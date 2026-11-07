@@ -235,6 +235,8 @@ namespace RegenerateFM.Desktop.FM24
                 Quietly(companion.CheckSavedKey);
             if (startedBy != null)
                 Quietly(() => FirstStart(companion));
+            if (startedBy != null)
+                Quietly(() => companion.OfferUpdate(UpdateCheck.NewerRelease().GetAwaiter().GetResult(), TimeSpan.FromSeconds(30)));
             Console.WriteLine("FM24 companion listening on 127.0.0.1:" + nativePort + " (" + (preview ? "preview" : "generation") + " mode)");
             Thread.Sleep(Timeout.Infinite);
             return 0;

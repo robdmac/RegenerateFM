@@ -1023,6 +1023,8 @@ namespace RegenerateFM.FM26
             catch (Exception error) { Log.LogWarning("Portrait menu setup failed: " + error.Message); }
             try { RestoreFaceStatus(); }
             catch (Exception error) { Log.LogWarning("Face status check failed: " + error.Message); }
+            try { CheckUpdateNotice(); }
+            catch (Exception error) { Log.LogWarning("Update notice failed: " + error.Message); }
             try { CheckFaceOwners(); }
             catch (Exception error) { Log.LogWarning("Face owner check failed: " + error.Message); }
             try { CheckDialogPage(); }

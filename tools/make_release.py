@@ -240,6 +240,9 @@ def plugin_version() -> str:
     match = re.search(r'BepInPlugin\("fm\.regenerate", "RegenerateFM", "([^"]+)"\)', source)
     if not match:
         raise SystemExit("Could not read the plugin version.")
+    # The update check (UpdateCheck.cs) goes by the assemblies' version, from here.
+    if f"<Version>{match.group(1)}</Version>" not in (ROOT / "Directory.Build.props").read_text(encoding="utf-8"):
+        raise SystemExit("The plugin's version isn't the one in Directory.Build.props.")
     return match.group(1)
 
 
