@@ -311,5 +311,8 @@
  "Previous face": "이전 얼굴 사진",
  "Remove face": "얼굴 사진 삭제",
  "No earlier face to go back to": "되돌릴 이전 얼굴 사진이 없습니다",
- "No RegenerateFM face to remove": "삭제할 RegenerateFM 얼굴 사진이 없습니다"
+ "No RegenerateFM face to remove": "삭제할 RegenerateFM 얼굴 사진이 없습니다",
+ "RegenerateFM {0} is available.": "RegenerateFM {0} 버전을 사용할 수 있습니다.",
+ "Download": "다운로드",
+ "Open the download page?": "다운로드 페이지를 여시겠습니까?"
 }

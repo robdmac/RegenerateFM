@@ -311,5 +311,8 @@
   "Previous face": "Föregående ansikte",
   "Remove face": "Ta bort ansikte",
   "No earlier face to go back to": "Inget tidigare ansikte att gå tillbaka till",
-  "No RegenerateFM face to remove": "Inget RegenerateFM-ansikte att ta bort"
+  "No RegenerateFM face to remove": "Inget RegenerateFM-ansikte att ta bort",
+  "RegenerateFM {0} is available.": "RegenerateFM {0} finns tillgänglig.",
+  "Download": "Ladda ner",
+  "Open the download page?": "Vill du öppna nedladdningssidan?"
 }

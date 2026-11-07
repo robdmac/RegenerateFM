@@ -311,5 +311,8 @@
   "Previous face": "Cara anterior",
   "Remove face": "Quitar cara",
   "No earlier face to go back to": "No hay una cara anterior a la que volver",
-  "No RegenerateFM face to remove": "No hay cara de RegenerateFM que quitar"
+  "No RegenerateFM face to remove": "No hay cara de RegenerateFM que quitar",
+  "RegenerateFM {0} is available.": "RegenerateFM {0} está disponible.",
+  "Download": "Descargar",
+  "Open the download page?": "¿Abrir la página de descarga?"
 }

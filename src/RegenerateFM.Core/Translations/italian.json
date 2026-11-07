@@ -311,5 +311,8 @@
   "Previous face": "Volto precedente",
   "Remove face": "Rimuovi volto",
   "No earlier face to go back to": "Nessun volto precedente a cui tornare",
-  "No RegenerateFM face to remove": "Nessun volto RegenerateFM da rimuovere"
+  "No RegenerateFM face to remove": "Nessun volto RegenerateFM da rimuovere",
+  "RegenerateFM {0} is available.": "RegenerateFM {0} è disponibile.",
+  "Download": "Scarica",
+  "Open the download page?": "Aprire la pagina di download?"
 }

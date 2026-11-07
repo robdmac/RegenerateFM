@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Threading;
 using RegenerateFM.Desktop.FM24.Bridge;
 
 namespace RegenerateFM.Desktop.FM24
@@ -54,7 +55,30 @@ namespace RegenerateFM.Desktop.FM24
             }
         }
 
-        // A key check, ``key`` saved: null once it's saved, otherwise the problem.
+        // Offers the page of a newer release (UpdateCheck), if there is one. FM24
+        // can't show a dialog while it's starting, so it tries every ``wait``.
+        public void OfferUpdate(string newer, TimeSpan wait)
+        {
+            if (newer == null)
+                return;
+            Log("RegenerateFM " + newer + " is available: " + UpdateCheck.ReleasesPage);
+            for (int attempt = 0; attempt < 20; attempt++)
+            {
+                Thread.Sleep(wait);
+                try
+                {
+                    string text = Text.T("RegenerateFM {0} is available.", newer) + " " + Text.T("Open the download page?");
+                    if (Dll.ShowDialog(ReloadPort, Token, "confirm", "RegenerateFM", Dll.ClipText(text)) == "yes")
+                        OpenBrowser(UpdateCheck.ReleasesPage);
+                    return;
+                }
+                catch (Exception error) when (error is DialogUnavailableException || error is ArgumentException ||
+                                              error is System.Net.Sockets.SocketException)
+                {
+                }
+            }
+        }
+
         private string CheckAndSave(string entered)
         {
             string key;

@@ -311,5 +311,8 @@
  "Previous face": "前の顔写真",
  "Remove face": "顔写真を削除",
  "No earlier face to go back to": "戻せる前の顔写真がありません",
- "No RegenerateFM face to remove": "削除する RegenerateFM の顔写真がありません"
+ "No RegenerateFM face to remove": "削除する RegenerateFM の顔写真がありません",
+ "RegenerateFM {0} is available.": "RegenerateFM {0} が公開されています。",
+ "Download": "ダウンロード",
+ "Open the download page?": "ダウンロードページを開きますか？"
 }

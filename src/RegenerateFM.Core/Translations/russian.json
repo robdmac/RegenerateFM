@@ -311,5 +311,8 @@
   "Previous face": "Предыдущее лицо",
   "Remove face": "Убрать лицо",
   "No earlier face to go back to": "Нет прежнего лица, к которому можно вернуться",
-  "No RegenerateFM face to remove": "Нет лица RegenerateFM, которое можно убрать"
+  "No RegenerateFM face to remove": "Нет лица RegenerateFM, которое можно убрать",
+  "RegenerateFM {0} is available.": "Доступна версия RegenerateFM {0}.",
+  "Download": "Скачать",
+  "Open the download page?": "Открыть страницу загрузки?"
 }

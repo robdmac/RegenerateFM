@@ -76,6 +76,29 @@ namespace RegenerateFM.Tests
             Assert.InRange(men, 70, 130);
         }
 
+        [Theory]
+        [InlineData("v1.0.2", "1.0.1.0", "1.0.2")]
+        [InlineData("v1.1.0", "1.0.9.0", "1.1.0")]
+        [InlineData("v1.0.10", "1.0.9.0", "1.0.10")]
+        [InlineData("v1.0.1", "1.0.1.0", null)]
+        [InlineData("v1.0.0", "1.0.1.0", null)]
+        [InlineData("v1.0.2-beta", "1.0.1.0", null)]
+        [InlineData("latest", "1.0.1.0", null)]
+        public void UpdateCheckOffersOnlyANewerRelease(string tag, string current, string expected)
+        {
+            Assert.Equal(expected, UpdateCheck.Newer("{\"tag_name\":\"" + tag + "\"}", new Version(current)));
+        }
+
+        [Theory]
+        [InlineData("not json")]
+        [InlineData("{\"message\":\"API rate limit exceeded\"}")]
+        [InlineData("{\"tag_name\":null}")]
+        [InlineData("[]")]
+        public void UpdateCheckIgnoresAnAnswerItCantRead(string json)
+        {
+            Assert.Null(UpdateCheck.Newer(json, new Version(1, 0, 1, 0)));
+        }
+
         [Fact]
         public void EveryTranslationKeepsItsEnglishPlaceholders()
         {

@@ -118,6 +118,10 @@ Both games ask for your key or credits sign-in in the game (see above) and keep 
 | `ApiBaseUrl` | Leave as `https://api.openai.com/v1`; for testing only (an `https` address, or `http` on this computer). |
 | `ServiceUrl` (section `[Credits]`) | Leave as `https://credits.regenerate.fm`; for testing only. |
 
+## Updates
+
+RegenerateFM asks GitHub once each time the game starts whether there's a newer release; the request carries nothing about you or your game. If there is one, FM27 and FM26 show a small notice with a **Download** button, and FM24 asks whether to open the download page. Nothing installs by itself: quit the game and install the new release as you did the first one.
+
 ## How faces are made
 
 - **Player prompts** use the player's name, age, nationality, position, club, height, all eight physical attributes, and their three strongest and three weakest other attributes.

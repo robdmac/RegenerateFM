@@ -311,5 +311,8 @@
  "Previous face": "上一个头像",
  "Remove face": "移除头像",
  "No earlier face to go back to": "没有可恢复的旧头像",
- "No RegenerateFM face to remove": "没有可移除的 RegenerateFM 头像"
+ "No RegenerateFM face to remove": "没有可移除的 RegenerateFM 头像",
+ "RegenerateFM {0} is available.": "RegenerateFM {0} 已发布。",
+ "Download": "下载",
+ "Open the download page?": "要打开下载页面吗？"
 }

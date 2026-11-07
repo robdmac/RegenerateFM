@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using RegenerateFM.Desktop.FM24;
 using RegenerateFM.Desktop.FM24.Bridge;
@@ -192,6 +193,29 @@ namespace RegenerateFM.Tests
             public void Loading() => Events.Add("loading");
             public bool Fail(string message) { Failed = true; Events.Add("fail " + message); return true; }
             public void Close() => Events.Add("close");
+        }
+
+        [Theory]
+        [InlineData("yes", true)]
+        [InlineData("no", false)]
+        public void ANewerReleaseIsOfferedOnceFm24CanAsk(string answer, bool opens)
+        {
+            // Still starting: the first try is turned away, and it tries again.
+            using var dll = new FakeDll("busy", "queued", "shown", "shown", answer);
+            var opened = new List<string>();
+            var companion = new Companion { ReloadPort = dll.Port, Token = new string('t', 43), Log = _ => { }, OpenBrowser = url => { opened.Add(url); return true; } };
+            companion.OfferUpdate("1.0.2", TimeSpan.Zero);
+            string asked = Encoding.UTF8.GetString(Convert.FromBase64String(dll.Received.Last()[6]));
+            Assert.Equal("RegenerateFM 1.0.2 is available. Open the download page?", asked);
+            Assert.Equal(opens ? new[] { UpdateCheck.ReleasesPage } : new string[0], opened);
+        }
+
+        [Fact]
+        public void NoNewerReleaseAsksNothing()
+        {
+            using var dll = new FakeDll();
+            new Companion { ReloadPort = dll.Port, Token = new string('t', 43), Log = _ => { } }.OfferUpdate(null, TimeSpan.Zero);
+            Assert.Empty(dll.Received);
         }
 
         [Fact]
