@@ -39,7 +39,8 @@ namespace RegenerateFM
         public string SkinTone;
         public string HairColour;
         // A real person rather than one of FM's newgens: the prompt asks for
-        // their own likeness, without RegenerateFM's appearance traits.
+        // their own likeness, with appearance traits for whatever the image
+        // model can't know of them.
         public bool Likeness;
         // The game's groups of people the person favours, with their IDs:
         // ("Brothers", "29232937"); only family groups count (FamilyRelatives).

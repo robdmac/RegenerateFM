@@ -394,7 +394,7 @@ namespace RegenerateFM
             string attire = kind == "staff" ? "Dress them in a simple unbranded dark jacket or training top. "
                                             : KitText(Text(profile.Club, "club", label));
             string family = FamilySeed(personId, FamilyRelatives(profile));
-            var traits = Appearance.PersonTraits(name, age, personId, appearanceDir, gender, family);
+            var traits = Appearance.PromptTraits(name, age, personId, appearanceDir, gender, family, profile);
             Appearance.AppearanceInstruction(traits, gender); // refuses invalid saved traits
             string facialHair = gender == "male" ? traits["facialHair"] : Appearance.NoFacialHair;
             string youth = age < 20 ? " Show " + name + " as the teenager they are, with a youthful face and skin, not as someone in their twenties." : "";
@@ -403,7 +403,8 @@ namespace RegenerateFM
                    name + "'s skin tone, eye colour, hair colour, hairstyle and rough face shape: it is not a likeness to copy, and its " +
                    "smooth, symmetrical, rendered features are not how a real person looks." + GenderText(name, gender, age) +
                    PositionText(profile, name) + youth + " Make " + name + " an ordinary-looking person rather than a model, with their own " +
-                   "individual features: " + traits["face"] + "; " + traits["features"] + "; " + facialHair + "; " + traits["expression"] + ". " +
+                   "individual features: " + traits["face"] + "; " + traits["features"] + "; " + facialHair + "; " + traits["expression"] + "; " +
+                   traits["detail"] + ". " +
                    "Give them real, imperfect skin with uneven tone and texture" + (age < 22 ? " and the odd blemish" : "") +
                    ", natural asymmetry and ordinary proportions; avoid a chiselled, symmetrical, airbrushed or conventionally " +
                    "handsome look. " + attire + PortraitFraming + PortraitPhotography + PortraitBackground +

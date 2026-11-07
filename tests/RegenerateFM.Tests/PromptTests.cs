@@ -81,8 +81,13 @@ namespace RegenerateFM.Tests
         {
             foreach (var item in Fixtures.RootElement.GetProperty("traits").EnumerateArray())
             {
+                var profile = new ProfileSnapshot { Ethnicity = Optional(item, "ethnicity") };
+                if (item.TryGetProperty("attributes", out var attributes))
+                    foreach (var attribute in attributes.EnumerateObject())
+                        profile.Mental[attribute.Name] = attribute.Value.ValueKind == JsonValueKind.Number
+                            ? attribute.Value.GetInt32() : (object)attribute.Value.GetString();
                 var traits = Appearance.AppearanceTraits(item.GetProperty("seed").GetString(), item.GetProperty("age").GetInt32(),
-                                                         Optional(item, "gender"), Optional(item, "family"));
+                                                         Optional(item, "gender"), Optional(item, "family"), profile);
                 var expected = item.GetProperty("traits").EnumerateObject().ToDictionary(trait => trait.Name, trait => trait.Value.GetString());
                 Assert.Equal(expected, traits);
             }
@@ -135,6 +140,127 @@ namespace RegenerateFM.Tests
             Assert.True(File.Exists(Path.Combine(folder.Path, ".regeneratefm-appearances", "61097660.json")));
             Assert.Equal(prompts[0], Prompts.ProfilePrompt(Real("Sam Smith", 23), ids[0], folder.Path));
             Assert.True(prompts.Select(prompt => Regex.Match(prompt, "Natural hair colour: ([^.]+)\\.").Groups[1].Value).Distinct().Count() > 1);
+        }
+
+        private static ProfileSnapshot WithAttributes(string ethnicity, params (string Name, object Score)[] attributes)
+        {
+            var profile = new ProfileSnapshot { Ethnicity = ethnicity };
+            foreach (var (name, score) in attributes)
+                profile.Mental[name] = score;
+            return profile;
+        }
+
+        private static List<Dictionary<string, string>> Squad(int count, int age, string gender, ProfileSnapshot profile) =>
+            Enumerable.Range(0, count).Select(i => Appearance.AppearanceTraits("seed" + i, age, gender, null, profile)).ToList();
+
+        private static readonly string[] StandoutHairstyles =
+        {
+            "shoulder-length hair tucked behind the ears", "long hair tied back in a bun",
+            "a modern mullet, short at the sides and longer at the back", "a tall, swept-up quiff",
+            "a curtained haircut with a centre parting", "thick, jaw-length curly hair",
+        };
+
+        private static bool HasStandoutHair(Dictionary<string, string> traits) =>
+            StandoutHairstyles.Any(style => traits["hair"].StartsWith(style + ";", StringComparison.Ordinal));
+
+        [Fact]
+        public void HairstylesSuitFMsEthnicity()
+        {
+            string[] coiled = { "coiled", "cornrows", "dreadlocks", "afro", "twists", "line-up", "high-top" };
+            string Hair(Dictionary<string, string> traits) => traits["hair"].Split(';')[0];
+            foreach (string gender in new[] { "male", "female" })
+            {
+                var white = Squad(400, 27, gender, WithAttributes("NorthernEuropean")).Select(Hair).ToList();
+                Assert.DoesNotContain(white, hair => coiled.Any(hair.Contains));
+                var eastAsian = Squad(400, 27, gender, WithAttributes("EastAsian")).Select(Hair).ToList();
+                Assert.DoesNotContain(eastAsian, hair => coiled.Any(hair.Contains) || hair.Contains("curl"));
+                var black = Squad(400, 27, gender, WithAttributes("AfricanCaribbean")).Select(Hair).ToList();
+                Assert.Contains(black, hair => coiled.Any(hair.Contains));
+                Assert.DoesNotContain(black, hair => hair.Contains("straight") || hair.Contains("fringe") || hair.Contains("side-parted"));
+                // Not knowing the ethnicity gives no coiled hairstyles to sway the model's guess.
+                Assert.DoesNotContain(Squad(400, 27, gender, null).Select(Hair), hair => coiled.Any(hair.Contains));
+            }
+            // Eye colour suits the ethnicity, and is left out when it isn't known.
+            Assert.DoesNotContain(Squad(200, 27, "male", WithAttributes("EastAsian")), traits => traits["eyes"].Contains("blue"));
+            Assert.Contains(Squad(200, 27, "male", WithAttributes("NorthernEuropean")), traits => traits["eyes"].Contains("blue"));
+            Assert.All(Squad(50, 27, "male", null), traits => Assert.Matches("^[a-z ,-]+ eyes$", traits["eyes"]));
+            Assert.DoesNotContain(Squad(50, 27, "male", null), traits => traits["eyes"].Contains("brown") || traits["eyes"].Contains("blue"));
+        }
+
+        [Fact]
+        public void StandoutLooksAreRareAndFlairMakesThemLikelier()
+        {
+            double Share(ProfileSnapshot profile) => Squad(2000, 27, "male", profile).Count(HasStandoutHair) / 2000.0;
+            double usual = Share(WithAttributes("NorthernEuropean", ("Flair", 10)));
+            Assert.InRange(usual, 0.05, 0.13);
+            Assert.InRange(Share(WithAttributes("NorthernEuropean", ("Flair", 17))), usual * 2, 0.35);
+            Assert.InRange(Share(WithAttributes("NorthernEuropean", ("Eccentricity", "15-18"))), usual * 2, 0.35);
+            // Most of a squad looks ordinary.
+            var squad = Squad(2000, 27, "male", WithAttributes("NorthernEuropean"));
+            Assert.InRange(squad.Count(traits => traits["detail"] == "ordinary skin with a few small blemishes") / 2000.0, 0.3, 0.6);
+            Assert.InRange(squad.Count(traits => traits["facialHair"] == "a full, thick beard") / 2000.0, 0.01, 0.06);
+        }
+
+        [Fact]
+        public void AttributesShapeTheExpression()
+        {
+            int Count(ProfileSnapshot profile, params string[] expressions) =>
+                Squad(2000, 27, "male", profile).Count(traits => expressions.Contains(traits["expression"]));
+            string[] intense = { "a serious, intense stare", "a guarded look with a slightly furrowed brow" };
+            Assert.True(Count(WithAttributes(null, ("Aggression", 17)), intense) > 2 * Count(WithAttributes(null, ("Aggression", 10)), intense));
+            Assert.Equal(0, Count(WithAttributes(null, ("Aggression", 17)), "a broad, easy smile showing teeth"));
+            Assert.True(Count(WithAttributes(null, ("Aggression", 4)), "a broad, easy smile showing teeth") >
+                        Count(WithAttributes(null, ("Aggression", 10)), "a broad, easy smile showing teeth"));
+            Assert.True(Count(WithAttributes(null, ("Leadership", 18)), "a composed, self-assured look") >
+                        2 * Count(WithAttributes(null, ("Leadership", 10)), "a composed, self-assured look"));
+            // An unknown or hidden attribute counts as average.
+            Assert.Equal(Squad(50, 27, "male", WithAttributes(null, ("Aggression", 10))), Squad(50, 27, "male", WithAttributes(null)));
+        }
+
+        [Fact]
+        public void StrengthShowsInTheNeckAsItIsNow()
+        {
+            using var folder = new TempFolder();
+            string Prompt(object strength) => Prompts.ProfilePrompt(new ProfileSnapshot
+            {
+                Name = "Sam Smith", Age = 27, Nationality = "Scotland", Position = "Goalkeeper", Club = "Edinburgh City",
+                Gender = "male", Ethnicity = "NorthernEuropean", SkinTone = "White2", HairColour = "dark brown", Likeness = true,
+                Physical = new Dictionary<string, object> { ["Strength"] = strength },
+            }, "61078189", folder.Path);
+            Assert.Contains(", and a thick, muscular neck;", Prompt(17));
+            Assert.Contains(", and a slender neck and slight build;", Prompt("4-6"));
+            Assert.DoesNotContain("neck", Prompt(11).Split(new[] { "Individual appearance: " }, StringSplitOptions.None)[1].Split('.')[0]);
+            Assert.DoesNotContain("understated", Prompt(11));
+            Assert.Contains("Show these features clearly", Prompt(11));
+        }
+
+        [Fact]
+        public void SavedTraitsAreChosenAgainForAKnownEthnicityOrAMissingKind()
+        {
+            using var folder = new TempFolder();
+            var player = new ProfileSnapshot
+            {
+                Name = "Sam Smith", Age = 23, Nationality = "Scotland", Position = "Striker", Club = "Edinburgh City", Gender = "male", Likeness = true,
+            };
+            string path = Path.Combine(folder.Path, ".regeneratefm-appearances", "222.json");
+            Prompts.ProfilePrompt(player, "222", folder.Path);
+            Assert.False(JsonDocument.Parse(File.ReadAllText(path)).RootElement.TryGetProperty("ethnicity", out _));
+            player.Ethnicity = "AfricanCaribbean";
+            string known = Prompts.ProfilePrompt(player, "222", folder.Path);
+            Assert.Equal("AfricanCaribbean", JsonDocument.Parse(File.ReadAllText(path)).RootElement.GetProperty("ethnicity").GetString());
+            Assert.Equal(known, Prompts.ProfilePrompt(player, "222", folder.Path));
+            // Not knowing it later keeps the traits chosen for it.
+            player.Ethnicity = null;
+            Assert.Contains(Regex.Match(known, "Individual appearance: [^.]+").Value, Prompts.ProfilePrompt(player, "222", folder.Path));
+            // Traits saved with only five kinds (before eyes and a detail) are chosen again with all seven.
+            File.WriteAllText(path, "{\"schemaVersion\": 1, \"personId\": \"222\", \"gender\": \"male\", \"traits\": {" +
+                                    "\"face\": \"a broad face\", \"features\": \"a long nose\", \"hair\": \"a buzz cut; hair colour: black\", " +
+                                    "\"facialHair\": \"clean-shaven\", \"expression\": \"a smile\"}}");
+            Prompts.ProfilePrompt(player, "222", folder.Path);
+            var saved = JsonDocument.Parse(File.ReadAllText(path)).RootElement.GetProperty("traits");
+            Assert.Equal(new[] { "detail", "expression", "eyes", "face", "facialHair", "features", "hair" },
+                         saved.EnumerateObject().Select(trait => trait.Name).OrderBy(name => name, StringComparer.Ordinal).ToArray());
+            Assert.NotEqual("a broad face", saved.GetProperty("face").GetString());
         }
 
         [Fact]
