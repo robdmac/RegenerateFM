@@ -62,8 +62,16 @@ namespace RegenerateFM.FM26
                         profile.Name = value;
                         break;
                     }
-            profile.Position = FirstText(FindNamed(banner, "Frame 1000003901")) ?? CompactPosition(banner) ??
-                               (Fm27 ? Fm27Position(header) : null);
+            profile.Position = FirstText(FindNamed(banner, "Frame 1000003901")) ?? CompactPosition(banner);
+            // FM27's compact header abbreviates the position, in the player's
+            // language ("MD, M (GC)"): its full text is bound as the nation's is.
+            if (Fm27 && string.IsNullOrWhiteSpace(profile.Position))
+            {
+                WatchPosition(header, playerId);
+                profile.Position = BoundText(header, Fm27PositionPath) ??
+                                   (PositionById.TryGetValue(playerId, out string position) ? position : null) ??
+                                   ShortPosition(BoundText(header, Fm27ShortPositionPath));
+            }
             profile.Club = FirstText(FindNamed(header, "PlayingTeam"));
             profile.Gender = HeaderGender(header, playerId);
             profile.Relatives = HeaderRelatives(header, playerId);
@@ -604,6 +612,8 @@ namespace RegenerateFM.FM26
             {
                 WatchGender(header, id);
                 WatchNation(header, id);
+                if (Fm27Position(header) != null)
+                    WatchPosition(header, id);
                 WatchFavoured(header, id);
                 WatchNewgenLook(header, id);
             }
@@ -658,27 +668,44 @@ namespace RegenerateFM.FM26
             new Dictionary<long, Bindings.ValueChangedCallback>();
         private const string NationNameProperty = "Nation.Name";
 
-        private static void WatchNation(VisualElement header, long id)
+        private static void WatchNation(VisualElement header, long id) =>
+            WatchPersonText(header, id, NationNameProperty, NationById, NationCallbacks);
+
+        // A player's positions in full, as FM27's standard header binds them
+        // (person.PositionCombinedStringLong), for the compact header that
+        // shows them abbreviated.
+        private static readonly Dictionary<long, string> PositionById = new Dictionary<long, string>();
+        private static readonly Dictionary<long, Bindings.ValueChangedCallback> PositionCallbacks =
+            new Dictionary<long, Bindings.ValueChangedCallback>();
+        private const string PositionProperty = "PositionCombinedStringLong";
+
+        private static void WatchPosition(VisualElement header, long id) =>
+            WatchPersonText(header, id, PositionProperty, PositionById, PositionCallbacks);
+
+        // Binds the person's property and keeps its shown text by person ID;
+        // once it has arrived, the binding is dropped.
+        private static void WatchPersonText(VisualElement header, long id, string property, Dictionary<long, string> texts,
+                                            Dictionary<long, Bindings.ValueChangedCallback> callbacks)
         {
-            if (!Fm27 || NationById.ContainsKey(id) || NationCallbacks.ContainsKey(id) ||
+            if (!Fm27 || texts.ContainsKey(id) || callbacks.ContainsKey(id) ||
                 !PersonNodeKey(header, out var bindings, out var personKey))
                 return;
             Bindings.ValueChangedCallback callback = null;
             callback = new Action<Bindings.Key, SI.Core.TypedValue>((key, value) =>
             {
-                string name = value == null || value.IsNull ? null : LinkedText(value.AsString())?.Trim();
-                if (string.IsNullOrEmpty(name))
+                string text = value == null || value.IsNull ? null : LinkedText(value.AsString())?.Trim();
+                if (string.IsNullOrEmpty(text))
                     return;
-                NationById[id] = name;
-                if (NationCallbacks.Remove(id) && GameSubsystems.TryGet<Bindings>(out var current) && current != null)
+                texts[id] = text;
+                if (callbacks.Remove(id) && GameSubsystems.TryGet<Bindings>(out var current) && current != null)
                 {
                     var unbindKey = key;
                     try { current.Unbind(ref unbindKey, callback); }
                     catch (Exception) { }
                 }
             });
-            NationCallbacks[id] = callback;
-            BindingPaths.Bind(bindings, personKey, NationNameProperty, callback);
+            callbacks[id] = callback;
+            BindingPaths.Bind(bindings, personKey, property, callback);
         }
 
         // A linked name as FM27 binds it, "\u0001<link data>\u0002Chile\u0001":
