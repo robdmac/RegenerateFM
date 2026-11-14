@@ -1084,8 +1084,10 @@ namespace RegenerateFM.FM26
             // without (the prompt then rules out facial hair).
             if (profile.Gender == null && System.DateTime.UtcNow - batch.StageStartedUtc < GenderWait)
                 return;
-            // So does an FM27 staff member's nation name (CaptureStaff).
-            if (Fm27 && !asPlayer && !NationById.ContainsKey(personId) && System.DateTime.UtcNow - batch.StageStartedUtc < GenderWait)
+            // So does an FM27 staff member's nation name (CaptureStaff), and a
+            // player's when the compact header shows only its code.
+            if (Fm27 && (!asPlayer || IsNationCode(profile.Nationality)) && !NationById.ContainsKey(personId) &&
+                System.DateTime.UtcNow - batch.StageStartedUtc < GenderWait)
                 return;
             if (profile.BiographyHeadline == null && _biographyCache.TryGetValue(personId, out string biography))
                 profile.BiographyHeadline = biography;

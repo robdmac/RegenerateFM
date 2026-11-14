@@ -63,7 +63,7 @@ namespace RegenerateFM.FM26
                         break;
                     }
             profile.Position = FirstText(FindNamed(banner, "Frame 1000003901")) ?? CompactPosition(banner) ??
-                               (Fm27 ? BoundText(banner, Fm27PositionPath) : null);
+                               (Fm27 ? Fm27Position(header) : null);
             profile.Club = FirstText(FindNamed(header, "PlayingTeam"));
             profile.Gender = HeaderGender(header, playerId);
             profile.Relatives = HeaderRelatives(header, playerId);
@@ -87,6 +87,14 @@ namespace RegenerateFM.FM26
                 FirstText(FindNamed(header, "FreeAgentCheck")) != null)
                 profile.Club = "Free Agent";
             profile.Nationality = FirstText(FindNamed(header, "Frame 1000003766")) ?? CompactNation(header) ?? HeaderNation(header);
+            // FM27's compact header shows only the nation's code ("SCO"): its
+            // name is bound as a staff member's is.
+            if (Fm27)
+            {
+                WatchNation(header, playerId);
+                if (NationById.TryGetValue(playerId, out string nationName))
+                    profile.Nationality = nationName;
+            }
             foreach (var value in TextValues(banner))
             {
                 var match = AgePattern.Match(value);
@@ -102,6 +110,9 @@ namespace RegenerateFM.FM26
             if (attributes == null || attributes.worldBound.width < 500)
                 throw new InvalidOperationException(Text.T("The player Overview attribute panel is not visible."));
             var texts = TextValues(attributes);
+            // FM27's Positions box, above the pitch, in every layout.
+            if (Fm27 && string.IsNullOrWhiteSpace(profile.Position))
+                profile.Position = ShortPosition(BoundText(attributes, Fm27ShortPositionPath));
             if (string.IsNullOrWhiteSpace(profile.Position))
                 foreach (var value in texts)
                     if (PositionPattern.IsMatch(value))
@@ -158,6 +169,14 @@ namespace RegenerateFM.FM26
                         default: profile.Technical[stat] = number; break;
                     }
                 }
+            }
+            // No position anywhere (a layout not seen yet) doesn't stop the face:
+            // a goalkeeper is told by their goalkeeping attributes.
+            if (string.IsNullOrWhiteSpace(profile.Position) && !string.IsNullOrWhiteSpace(profile.Name))
+            {
+                profile.Position = profile.Goalkeeping.Count > 0 ? "Goalkeeper" : "footballer";
+                Instance?.Log.LogWarning("No position found for " + profile.Name + "; described as a " + profile.Position +
+                                         ". Player header, for diagnosis: " + DescribeTexts(header));
             }
             // Half or more not scouted is too little to describe them; otherwise the
             // known attributes are used.
@@ -411,8 +430,20 @@ namespace RegenerateFM.FM26
             return attributes != null && attributes.worldBound.width > 500;
         }
 
-        // What FM27's player header binds its position to, in the player's language.
+        // What FM27's player header binds its position to, in the player's language:
+        // in full ("Defender (Right, Centre), Wing-Back (Right)") in the standard
+        // header, abbreviated ("D (RC), WB (R)") in the compact one FM27 shows in
+        // a smaller window and in the attributes' Positions box.
         private const string Fm27PositionPath = "person.PositionCombinedStringLong";
+        private const string Fm27ShortPositionPath = "person.PositionCombinedString";
+
+        private static string Fm27Position(VisualElement header) =>
+            BoundText(header, Fm27PositionPath) ?? ShortPosition(BoundText(header, Fm27ShortPositionPath));
+
+        // English abbreviations written out, as the standard header has them;
+        // another language's are kept as shown.
+        private static string ShortPosition(string value) =>
+            value != null && ShortPositionPattern.IsMatch(value) ? ExpandPosition(value) : value;
 
         // FM27's player and staff headers bind the name to person.Name. It isn't
         // always the banner's first text: while the header is redrawn (as a face
@@ -423,7 +454,7 @@ namespace RegenerateFM.FM26
 
         private static bool IsPlayerHeader(VisualElement header)
         {
-            if (Fm27 && BoundText(header, Fm27PositionPath) != null)
+            if (Fm27 && Fm27Position(header) != null)
                 return true;
             foreach (var value in TextValues(header))
                 if (PositionPattern.IsMatch(value))
@@ -655,6 +686,10 @@ namespace RegenerateFM.FM26
         private static readonly Regex Link = new Regex("\u0001[^\u0002\u0001]*\u0002([^\u0001]*)\u0001", RegexOptions.Compiled);
 
         private static string LinkedText(string value) => value == null ? null : Link.Replace(value, "$1");
+
+        // A nation's code as FM27's compact headers show it ("ENG"), rather than its name.
+        private static bool IsNationCode(string nation) =>
+            nation != null && nation.Length <= 3 && nation.All(char.IsUpper);
 
         private static bool PersonNodeKey(VisualElement header, out Bindings bindings, out Bindings.Key personKey)
         {
