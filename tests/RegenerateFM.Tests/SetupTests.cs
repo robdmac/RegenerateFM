@@ -545,7 +545,7 @@ namespace RegenerateFM.Tests
             linux.Release = _root.Combine("release");
             foreach (var (name, text) in Fm26Files)
             {
-                string path = Path.Combine(linux.Release, "FM26", name);
+                string path = Path.Combine(linux.Release, LinuxInstaller.GameFolder, name);
                 Directory.CreateDirectory(Path.GetDirectoryName(path));
                 File.WriteAllText(path, text);
             }
