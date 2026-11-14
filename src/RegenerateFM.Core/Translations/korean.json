@@ -314,5 +314,9 @@
  "No RegenerateFM face to remove": "삭제할 RegenerateFM 얼굴 사진이 없습니다",
  "RegenerateFM {0} is available.": "RegenerateFM {0} 버전을 사용할 수 있습니다.",
  "Download": "다운로드",
- "Open the download page?": "다운로드 페이지를 여시겠습니까?"
+ "Open the download page?": "다운로드 페이지를 여시겠습니까?",
+ "Update": "업데이트",
+ "Updating RegenerateFM…": "RegenerateFM 업데이트 중…",
+ "RegenerateFM {0} is installed. Restart FM26 to use it.": "RegenerateFM {0}이(가) 설치되었습니다. 사용하려면 FM26을 다시 시작하세요.",
+ "RegenerateFM couldn't update itself. Download {0} instead.": "RegenerateFM이 스스로 업데이트하지 못했습니다. 대신 {0}을(를) 다운로드하세요."
 }

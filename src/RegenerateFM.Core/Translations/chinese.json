@@ -314,5 +314,9 @@
  "No RegenerateFM face to remove": "没有可移除的 RegenerateFM 头像",
  "RegenerateFM {0} is available.": "RegenerateFM {0} 已发布。",
  "Download": "下载",
- "Open the download page?": "要打开下载页面吗？"
+ "Open the download page?": "要打开下载页面吗？",
+ "Update": "更新",
+ "Updating RegenerateFM…": "正在更新 RegenerateFM…",
+ "RegenerateFM {0} is installed. Restart FM26 to use it.": "RegenerateFM {0} 已安装。重新启动 FM26 即可使用。",
+ "RegenerateFM couldn't update itself. Download {0} instead.": "RegenerateFM 无法自行更新。请改为下载 {0}。"
 }

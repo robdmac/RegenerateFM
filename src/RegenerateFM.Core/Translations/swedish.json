@@ -314,5 +314,9 @@
   "No RegenerateFM face to remove": "Inget RegenerateFM-ansikte att ta bort",
   "RegenerateFM {0} is available.": "RegenerateFM {0} finns tillgänglig.",
   "Download": "Ladda ner",
-  "Open the download page?": "Vill du öppna nedladdningssidan?"
+  "Open the download page?": "Vill du öppna nedladdningssidan?",
+  "Update": "Uppdatera",
+  "Updating RegenerateFM…": "Uppdaterar RegenerateFM…",
+  "RegenerateFM {0} is installed. Restart FM26 to use it.": "RegenerateFM {0} är installerat. Starta om FM26 för att använda det.",
+  "RegenerateFM couldn't update itself. Download {0} instead.": "RegenerateFM kunde inte uppdatera sig själv. Ladda ned {0} i stället."
 }

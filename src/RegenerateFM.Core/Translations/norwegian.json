@@ -314,5 +314,9 @@
   "No RegenerateFM face to remove": "Ikke noe RegenerateFM-ansikt å fjerne",
   "RegenerateFM {0} is available.": "RegenerateFM {0} er tilgjengelig.",
   "Download": "Last ned",
-  "Open the download page?": "Vil du åpne nedlastingssiden?"
+  "Open the download page?": "Vil du åpne nedlastingssiden?",
+  "Update": "Oppdater",
+  "Updating RegenerateFM…": "Oppdaterer RegenerateFM…",
+  "RegenerateFM {0} is installed. Restart FM26 to use it.": "RegenerateFM {0} er installert. Start FM26 på nytt for å bruke den.",
+  "RegenerateFM couldn't update itself. Download {0} instead.": "RegenerateFM kunne ikke oppdatere seg selv. Last ned {0} i stedet."
 }
