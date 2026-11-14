@@ -314,5 +314,9 @@
  "No RegenerateFM face to remove": "Geen RegenerateFM-gezicht om te verwijderen",
  "RegenerateFM {0} is available.": "RegenerateFM {0} is beschikbaar.",
  "Download": "Downloaden",
- "Open the download page?": "De downloadpagina openen?"
+ "Open the download page?": "De downloadpagina openen?",
+ "Update": "Bijwerken",
+ "Updating RegenerateFM…": "RegenerateFM wordt bijgewerkt…",
+ "RegenerateFM {0} is installed. Restart FM26 to use it.": "RegenerateFM {0} is geïnstalleerd. Start FM26 opnieuw om het te gebruiken.",
+ "RegenerateFM couldn't update itself. Download {0} instead.": "RegenerateFM kon zichzelf niet bijwerken. Download {0} in plaats daarvan."
 }

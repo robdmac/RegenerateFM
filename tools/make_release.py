@@ -3,6 +3,8 @@
 
     python3 tools/make_release.py [--bepinex-zip FILE] [--no-publish]
 
+    python3 tools/make_release.py --unsigned   (no self-update files)
+
 Layout of dist/RegenerateFM-Windows-Linux.zip, in regeneratefm-<version>/:
   FM26/        copy its contents into the "Football Manager 26" folder: BepInEx
                (downloaded once and checked against its pinned SHA-256) and the
@@ -16,6 +18,10 @@ It needs the FM26 plugin built first (see src/RegenerateFM.FM26/README.md: it
 is built against a game folder), FM24's DLL (native/fm24/build.py) and FM26's
 progress window for the Mac (native/fm26progress/build.py --macos, used by
 macos/make_installer.py). It
+also writes the self-update's files (SelfUpdate.cs) beside the ZIP, to upload
+to the same release: dist/RegenerateFM.dll and dist/RegenerateFM-update.json,
+signed with the release key (--signing-key, $REGENERATEFM_SIGNING_KEY or
+~/.regeneratefm/update-signing-key.pem) by openssl. It
 publishes the companion and the Linux installer itself with dotnet, unless
 --no-publish. FM26 and FM24 on macOS are in RegenerateFM-macOS.dmg instead
 (macos/make_installer.py, which uses macos_files below).
@@ -24,11 +30,14 @@ publishes the companion and the Linux installer itself with dotnet, unless
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
+import json
 import os
 import re
 import shutil
 import subprocess
+import tempfile
 import urllib.request
 import zipfile
 from pathlib import Path, PurePosixPath
@@ -71,6 +80,12 @@ MACOS_NATIVE = {"BepInEx/core/libfunchook.dylib": "libfunchook.dylib",
                 "BepInEx/core/Il2CppInterop.Common.dll": "Il2CppInterop.Common.dll",
                 "BepInEx/core/Il2CppInterop.Generator.dll": "Il2CppInterop.Generator.dll",
                 "BepInEx/core/LibCpp2IL.dll": "LibCpp2IL.dll"}
+# The self-update (src/RegenerateFM.Core/SelfUpdate.cs): its manifest and the
+# file it replaces, uploaded with each release, and the key that signs them.
+SELF_UPDATE = ROOT / "src" / "RegenerateFM.Core" / "SelfUpdate.cs"
+UPDATE_MANIFEST = ROOT / "dist" / "RegenerateFM-update.json"
+UPDATE_PLUGIN = ROOT / "dist" / "RegenerateFM.dll"
+DEFAULT_SIGNING_KEY = Path.home() / ".regeneratefm" / "update-signing-key.pem"
 # Tracked files left out of the release's source folder: the README's
 # recording and historical research.
 NOT_PUBLIC = ("docs/", "native/fm24/research/")
@@ -246,6 +261,53 @@ def plugin_version() -> str:
     return match.group(1)
 
 
+def bepinex_build(pinned: tuple[str, str]) -> str:
+    """"6.0.0-be.760" from a pinned BepInEx download, as BepInEx names itself."""
+    match = re.search(r"-(\d+\.\d+\.\d+-be\.\d+)%2B", pinned[0])
+    if not match:
+        raise SystemExit(f"Can't tell the BepInEx version of {pinned[0]}.")
+    return match.group(1)
+
+
+def openssl() -> str:
+    found = shutil.which("openssl")
+    if not found:
+        raise SystemExit("Signing the self-update needs openssl (macOS has it; on Windows, Git's).")
+    return found
+
+
+def write_update(version: str, plugin: bytes, key: Path) -> None:
+    """The self-update's signed manifest and the plugin it installs. Only the
+    plugin is replaced, on the BepInEx builds the release ships (Windows' and
+    the Mac's): a player on another BepInEx is sent to the download page."""
+    if not key.is_file():
+        raise SystemExit(f"The release signing key {key} is missing (or pass --unsigned for no self-update files).")
+    # The key must be the one whose public half the plugin checks against.
+    public = subprocess.run([openssl(), "ec", "-in", str(key), "-pubout", "-outform", "DER"],
+                            check=True, capture_output=True).stdout
+    built_in = re.search(r'ReleaseKey =\s*"([A-Za-z0-9+/=]+)"', SELF_UPDATE.read_text(encoding="utf-8"))
+    if not built_in or base64.b64decode(built_in.group(1)) != public:
+        raise SystemExit(f"{key} isn't the key SelfUpdate.cs's ReleaseKey checks for.")
+    manifest = {
+        "version": version,
+        "bepinex": sorted({bepinex_build(BEPINEX), bepinex_build(BEPINEX_MACOS)}),
+        "files": [{"path": "plugins/RegenerateFM/RegenerateFM.dll", "asset": UPDATE_PLUGIN.name,
+                   "sha256": hashlib.sha256(plugin).hexdigest()}],
+    }
+    payload = json.dumps(manifest, indent=1).encode("utf-8")
+    with tempfile.TemporaryDirectory() as folder:
+        payload_file = Path(folder) / "payload.json"
+        payload_file.write_bytes(payload)
+        signature = subprocess.run([openssl(), "dgst", "-sha256", "-sign", str(key), str(payload_file)],
+                                   check=True, capture_output=True).stdout
+    UPDATE_PLUGIN.write_bytes(plugin)
+    UPDATE_MANIFEST.write_text(json.dumps({"payload": base64.b64encode(payload).decode("ascii"),
+                                           "signature": base64.b64encode(signature).decode("ascii")}, indent=1) + "\n",
+                               encoding="utf-8")
+    print(f"Created {UPDATE_MANIFEST.name} and {UPDATE_PLUGIN.name} for the self-update, for BepInEx "
+          f"{', '.join(manifest['bepinex'])}: upload them to the release with the ZIP")
+
+
 def check_private(name: str, data: bytes) -> None:
     """Refuses a file that names this checkout's folder or holds a key."""
     home = str(Path.home()).encode()
@@ -257,6 +319,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--bepinex-zip", type=Path, help="a local copy of the pinned BepInEx be.760 ZIP")
     parser.add_argument("--no-publish", action="store_true", help="use the desktop program already in dist/publish")
+    parser.add_argument("--signing-key", type=Path,
+                        default=Path(os.environ.get("REGENERATEFM_SIGNING_KEY") or DEFAULT_SIGNING_KEY),
+                        help="the release key that signs the self-update (default: $REGENERATEFM_SIGNING_KEY or %(default)s)")
+    parser.add_argument("--unsigned", action="store_true",
+                        help="make no self-update files; players update from the download page")
     args = parser.parse_args()
     version = plugin_version()
     # The same name in every release, so GitHub's releases/latest/download link
@@ -304,6 +371,12 @@ def main() -> None:
             write(archive, f"{top}/source/{name}", (ROOT / name).read_bytes(), file_mode(ROOT / name, modes))
     print(f"Created {target}: FM26 folder ({len(loader)} BepInEx files and the plugin), the FM24 companion, "
           f"the Linux installer and {len(public)} source files")
+    for stale in (UPDATE_MANIFEST, UPDATE_PLUGIN):
+        stale.unlink(missing_ok=True)
+    if args.unsigned:
+        print("No self-update files (--unsigned): players on an earlier release update from the download page")
+    else:
+        write_update(version, plugin, args.signing_key)
 
 
 if __name__ == "__main__":

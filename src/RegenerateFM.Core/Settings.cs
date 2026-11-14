@@ -20,6 +20,10 @@ namespace RegenerateFM
         public string Quality = DefaultQuality;
         public string ApiBaseUrl = DefaultApiBaseUrl;
         public string CreditsUrl = Credits.DefaultServiceUrl;
+        // Where SelfUpdate downloads a release from instead of GitHub, when
+        // testing ([Update] ReleaseUrl, not in the template). The signature is
+        // checked wherever it comes from.
+        public string UpdateUrl;
 
         public static string DefaultPath => Path.Combine(KeyStore.Folder, FileName);
 
@@ -71,6 +75,8 @@ namespace RegenerateFM
                     settings.ApiBaseUrl = value;
                 else if (section == "credits" && key == "serviceurl")
                     settings.CreditsUrl = value;
+                else if (section == "update" && key == "releaseurl")
+                    settings.UpdateUrl = value;
             }
             return settings;
         }
@@ -116,6 +122,9 @@ namespace RegenerateFM
 
         // The credits service's address, checked like ForKey's.
         public string CreditsServiceUrl => CheckedUrl(CreditsUrl, "ServiceUrl");
+
+        // UpdateUrl, checked like ForKey's addresses; null for GitHub.
+        public string UpdateReleaseUrl => string.IsNullOrWhiteSpace(UpdateUrl) ? null : CheckedUrl(UpdateUrl, "ReleaseUrl");
 
         // An https address, or plain http on this computer only, so a key or
         // token is never sent unencrypted.

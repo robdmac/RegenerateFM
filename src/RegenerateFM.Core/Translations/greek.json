@@ -314,5 +314,9 @@
   "No RegenerateFM face to remove": "Δεν υπάρχει πρόσωπο RegenerateFM για αφαίρεση",
   "RegenerateFM {0} is available.": "Το RegenerateFM {0} είναι διαθέσιμο.",
   "Download": "Λήψη",
-  "Open the download page?": "Άνοιγμα της σελίδας λήψης;"
+  "Open the download page?": "Άνοιγμα της σελίδας λήψης;",
+  "Update": "Ενημέρωση",
+  "Updating RegenerateFM…": "Ενημέρωση του RegenerateFM…",
+  "RegenerateFM {0} is installed. Restart FM26 to use it.": "Το RegenerateFM {0} εγκαταστάθηκε. Επανεκκινήστε το FM26 για να το χρησιμοποιήσετε.",
+  "RegenerateFM couldn't update itself. Download {0} instead.": "Το RegenerateFM δεν μπόρεσε να ενημερωθεί. Κατεβάστε το {0} αντί γι' αυτό."
 }

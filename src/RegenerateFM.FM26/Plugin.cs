@@ -66,7 +66,13 @@ namespace RegenerateFM.FM26
         private Task<string> _updateCheck;
         private VisualElement _updateNotice;
         private Label _updateMessage;
+        private Button _updateButton;
+        private Button _downloadButton;
         private bool _updateDismissed;
+        // The player's Update: the install (SelfUpdate) and how it went.
+        private enum UpdateState { Available, Installing, Installed, Failed }
+        private UpdateState _updateState;
+        private Task _updateInstall;
         private VisualElement _portraitMenu;
         private VisualElement _portraitDismissLayer;
         private SquadScan _squadScan;
@@ -123,6 +129,10 @@ namespace RegenerateFM.FM26
             if (!IdentifyGame())
                 return;
             Instance = this;
+            // The plugin an update renamed aside (SelfUpdate), no longer loaded.
+            string pluginFolder = System.IO.Path.GetDirectoryName(typeof(Plugin).Assembly.Location);
+            if (!string.IsNullOrEmpty(pluginFolder))
+                SelfUpdate.CleanUp(pluginFolder);
             _harmony = new Harmony("fm.regenerate");
             // Each part on its own: a game update that changed what one of them
             // uses turns off only that one.

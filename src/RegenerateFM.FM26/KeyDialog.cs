@@ -47,22 +47,75 @@ namespace RegenerateFM.FM26
         }
 
         // Asks GitHub once a session, then keeps a small notice on screen until
-        // it's dismissed, in the language FM is showing by then.
+        // it's dismissed, in the language FM is showing by then. Update installs
+        // the release (SelfUpdate) for the next start; Download opens its page.
         private void CheckUpdateNotice()
         {
             _updateCheck ??= UpdateCheck.NewerRelease();
             if (!_updateCheck.IsCompleted || _updateCheck.Result == null || _updateDismissed)
                 return;
+            string version = _updateCheck.Result;
             if (_updateNotice == null)
             {
-                Log.LogInfo("RegenerateFM " + _updateCheck.Result + " is available");
+                Log.LogInfo("RegenerateFM " + version + " is available");
                 BuildUpdateNotice();
             }
-            _updateMessage.text = Text.T("RegenerateFM {0} is available.", _updateCheck.Result);
-            // FM replaces its root as it starts, taking the notice with the old one.
+            if (_updateState == UpdateState.Installing && _updateInstall.IsCompleted)
+            {
+                if (_updateInstall.IsFaulted)
+                {
+                    _updateState = UpdateState.Failed;
+                    Log.LogWarning("RegenerateFM couldn't update itself to " + version + ": " + _updateInstall.Exception?.GetBaseException().Message);
+                }
+                else
+                {
+                    _updateState = UpdateState.Installed;
+                    Log.LogInfo("RegenerateFM " + version + " is installed; it loads when the game starts again");
+                }
+            }
+            _updateMessage.text = _updateState switch
+            {
+                UpdateState.Installing => Text.T("Updating RegenerateFM…"),
+                UpdateState.Installed => Text.T("RegenerateFM {0} is installed. Restart FM26 to use it.", version),
+                UpdateState.Failed => Text.T("RegenerateFM couldn't update itself. Download {0} instead.", version),
+                _ => Text.T("RegenerateFM {0} is available.", version),
+            };
+            _updateButton.text = Text.T("Update");
+            _updateButton.style.display = _updateState == UpdateState.Available ? DisplayStyle.Flex : DisplayStyle.None;
+            _downloadButton.text = Text.T("Download");
+            _downloadButton.style.display = _updateState == UpdateState.Available || _updateState == UpdateState.Failed
+                ? DisplayStyle.Flex : DisplayStyle.None;
+            // FM replaces its root as it starts, taking the notice with the old one,
+            // and adds its screens after it, which draw over it: keep it last.
             var root = CurrentRoot();
             if (root != null && !root.Contains(_updateNotice))
                 root.Add(_updateNotice);
+            if (root != null && root.IndexOf(_updateNotice) != root.childCount - 1)
+                _updateNotice.BringToFront();
+        }
+
+        // Once a session: a second update would have to replace the file the
+        // first one renamed aside, which is still loaded.
+        private void StartSelfUpdate()
+        {
+            if (_updateState != UpdateState.Available || _updateCheck?.Result == null)
+                return;
+            string version = _updateCheck.Result;
+            string releaseUrl = null;
+            try
+            {
+                releaseUrl = Settings.Load(Settings.DefaultPath).UpdateReleaseUrl;
+            }
+            catch (ArgumentException error)
+            {
+                Log.LogWarning(error.Message);
+            }
+            string plugin = typeof(Plugin).Assembly.Location;
+            // Read by name: its type is in an assembly the plugin doesn't reference.
+            string bepinex = typeof(Paths).GetProperty("BepInExVersion")?.GetValue(null)?.ToString();
+            Log.LogInfo("Updating RegenerateFM to " + version + " (BepInEx " + bepinex + ", " + plugin + ")");
+            _updateState = UpdateState.Installing;
+            _updateInstall = Task.Run(() => SelfUpdate.Install(version, Paths.BepInExRootPath, bepinex, plugin, releaseUrl));
         }
 
         private void BuildUpdateNotice()
@@ -83,12 +136,18 @@ namespace RegenerateFM.FM26
             _updateMessage.style.fontSize = 14;
             _updateMessage.style.marginRight = 10;
             notice.Add(_updateMessage);
-            var download = new Button((Il2CppSystem.Action)(System.Action)(() => Application.OpenURL(UpdateCheck.ReleasesPage)))
-            { text = Text.T("Download"), focusable = false };
-            download.style.height = 28;
-            download.style.color = Color.white;
-            download.style.backgroundColor = new Color(0.38f, 0.10f, 0.60f, 1f);
-            notice.Add(download);
+            _updateButton = new Button((Il2CppSystem.Action)(System.Action)StartSelfUpdate) { focusable = false };
+            _updateButton.style.height = 28;
+            _updateButton.style.color = Color.white;
+            _updateButton.style.backgroundColor = new Color(0.38f, 0.10f, 0.60f, 1f);
+            notice.Add(_updateButton);
+            _downloadButton = new Button((Il2CppSystem.Action)(System.Action)(() => Application.OpenURL(UpdateCheck.ReleasesPage)))
+            { focusable = false };
+            _downloadButton.style.height = 28;
+            _downloadButton.style.color = Color.white;
+            _downloadButton.style.backgroundColor = new Color(0.25f, 0.22f, 0.30f, 1f);
+            _downloadButton.style.marginLeft = 4;
+            notice.Add(_downloadButton);
             var close = new Button((Il2CppSystem.Action)(System.Action)(() =>
             {
                 _updateDismissed = true;

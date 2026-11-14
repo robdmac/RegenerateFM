@@ -314,5 +314,9 @@
  "No RegenerateFM face to remove": "Aucun visage RegenerateFM à supprimer",
  "RegenerateFM {0} is available.": "RegenerateFM {0} est disponible.",
  "Download": "Télécharger",
- "Open the download page?": "Ouvrir la page de téléchargement ?"
+ "Open the download page?": "Ouvrir la page de téléchargement ?",
+ "Update": "Mettre à jour",
+ "Updating RegenerateFM…": "Mise à jour de RegenerateFM…",
+ "RegenerateFM {0} is installed. Restart FM26 to use it.": "RegenerateFM {0} est installé. Redémarrez FM26 pour l'utiliser.",
+ "RegenerateFM couldn't update itself. Download {0} instead.": "RegenerateFM n'a pas pu se mettre à jour. Téléchargez plutôt la version {0}."
 }

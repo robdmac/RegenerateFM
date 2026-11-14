@@ -314,5 +314,9 @@
   "No RegenerateFM face to remove": "Нет лица RegenerateFM, которое можно убрать",
   "RegenerateFM {0} is available.": "Доступна версия RegenerateFM {0}.",
   "Download": "Скачать",
-  "Open the download page?": "Открыть страницу загрузки?"
+  "Open the download page?": "Открыть страницу загрузки?",
+  "Update": "Обновить",
+  "Updating RegenerateFM…": "Обновление RegenerateFM…",
+  "RegenerateFM {0} is installed. Restart FM26 to use it.": "RegenerateFM {0} установлен. Перезапустите FM26, чтобы им пользоваться.",
+  "RegenerateFM couldn't update itself. Download {0} instead.": "RegenerateFM не удалось обновиться самостоятельно. Скачайте {0} вручную."
 }
