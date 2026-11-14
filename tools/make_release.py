@@ -6,9 +6,12 @@
     python3 tools/make_release.py --unsigned   (no self-update files)
 
 Layout of dist/RegenerateFM-Windows-Linux.zip, in regeneratefm-<version>/:
-  FM26/        copy its contents into the "Football Manager 26" folder: BepInEx
-               (downloaded once and checked against its pinned SHA-256) and the
-               RegenerateFM plugin, so FM26 needs no installer or .NET
+  Copy into game folder/
+               its contents go into the game folder of FM27, FM26 or the FM26
+               Demo (and later ones): BepInEx (downloaded once and checked
+               against its pinned SHA-256) and the RegenerateFM plugin, so the
+               game needs no installer or .NET
+  HOW TO INSTALL.txt  the steps, for whoever opens the ZIP first
   FM24/        regeneratefm-fm24.exe, the FM24 companion, which sets FM24 up itself
   linux/       regeneratefm, the Linux installer install-linux.sh runs
   install-linux.sh  sets up FM26, the FM26 Demo and FM24 on Linux
@@ -46,6 +49,9 @@ ROOT = Path(__file__).resolve().parent.parent
 PLUGIN_SOURCE = ROOT / "src" / "RegenerateFM.FM26" / "Plugin.cs"
 PLUGIN_DLL = ROOT / "src" / "RegenerateFM.FM26" / "bin" / "Release" / "net6.0" / "RegenerateFM.dll"
 PLUGIN_FOLDER = "BepInEx/plugins/RegenerateFM"
+# The ZIP's folder for FM26 and later, named for what to do with it rather than
+# a year (LinuxInstaller.GameFolder looks for it by this name).
+GAME_FOLDER = "Copy into game folder"
 DESKTOP = ROOT / "src" / "RegenerateFM.Desktop"
 PUBLISHED = ROOT / "dist" / "publish"
 # The desktop program as each system's build: (runtime, the file it makes).
@@ -308,6 +314,35 @@ def write_update(version: str, plugin: bytes, key: Path) -> None:
           f"{', '.join(manifest['bepinex'])}: upload them to the release with the ZIP")
 
 
+def how_to_install(version: str) -> bytes:
+    """HOW TO INSTALL.txt at the top of the ZIP, with Windows line endings for Notepad."""
+    text = f"""RegenerateFM {version}
+
+FM27, FM26 or the FM26 Demo on Windows
+1. Close the game.
+2. Open its game folder.
+   Steam: right-click the game > Manage > Browse local files.
+   Epic Games Store: Library > the game's ... menu > Manage > the folder icon.
+3. Open the "{GAME_FOLDER}" folder here and copy everything inside it
+   (BepInEx, dotnet, winhttp.dll, doorstop_config.ini) into the game folder.
+   Copy what's inside it, not the folder itself. If Windows asks, replace the files.
+4. Start the game. The first start takes a few minutes longer.
+
+To check: BepInEx\\LogOutput.log in the game folder says "Loading [RegenerateFM {version}]".
+Later releases: when one is out, the game shows a notice; Update installs it
+for the next start. Or copy over the files from its ZIP the same way.
+
+FM24 on Windows: copy the FM24 folder somewhere of your own (not into the game
+folder) and run regeneratefm-fm24.exe in it, with FM24 closed.
+
+Linux: run ./install-linux.sh here, with Steam closed (Steam > Exit).
+macOS: use RegenerateFM-macOS.dmg from the release instead of this ZIP.
+
+More in README.md here, and at https://regenerate.fm
+"""
+    return text.replace("\n", "\r\n").encode("utf-8")
+
+
 def check_private(name: str, data: bytes) -> None:
     """Refuses a file that names this checkout's folder or holds a key."""
     home = str(Path.home()).encode()
@@ -362,14 +397,15 @@ def main() -> None:
         for name in TOP_LEVEL:
             write(archive, f"{top}/{name}", (ROOT / name).read_bytes(), file_mode(ROOT / name, modes))
         write(archive, f"{top}/install-linux.sh", (ROOT / "install-linux.sh").read_bytes(), 0o755)
+        write(archive, f"{top}/HOW TO INSTALL.txt", how_to_install(version), 0o644)
         for name, (data, mode) in loader.items():
-            write(archive, f"{top}/FM26/{name}", data, mode)
-        write(archive, f"{top}/FM26/{PLUGIN_FOLDER}/RegenerateFM.dll", plugin, 0o644)
+            write(archive, f"{top}/{GAME_FOLDER}/{name}", data, mode)
+        write(archive, f"{top}/{GAME_FOLDER}/{PLUGIN_FOLDER}/RegenerateFM.dll", plugin, 0o644)
         write(archive, f"{top}/FM24/{COMPANION[1]}", programs[COMPANION[0]], 0o755)
         write(archive, f"{top}/linux/{LINUX_INSTALLER[1]}", programs[LINUX_INSTALLER[0]], 0o755)
         for name in public:
             write(archive, f"{top}/source/{name}", (ROOT / name).read_bytes(), file_mode(ROOT / name, modes))
-    print(f"Created {target}: FM26 folder ({len(loader)} BepInEx files and the plugin), the FM24 companion, "
+    print(f"Created {target}: \"{GAME_FOLDER}\" ({len(loader)} BepInEx files and the plugin), the FM24 companion, "
           f"the Linux installer and {len(public)} source files")
     for stale in (UPDATE_MANIFEST, UPDATE_PLUGIN):
         stale.unlink(missing_ok=True)

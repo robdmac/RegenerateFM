@@ -27,6 +27,9 @@ namespace RegenerateFM.Desktop.Linux
     {
         public static readonly string[] AllGames = { "fm27", "fm26", "fm26demo", "fm24" };
         public const string Plugin = "BepInEx/plugins/RegenerateFM";
+        // The release ZIP's folder for FM26 and later: BepInEx and the plugin,
+        // copied into each game folder (tools/make_release.py's GAME_FOLDER).
+        public const string GameFolder = "Copy into game folder";
         // What the FM26 folder adds beside fm.exe. Faces and settings are in
         // the game's user-data folder, so removing these keeps them.
         public static readonly string[] Fm26Added = { "BepInEx", "dotnet", "winhttp.dll", "doorstop_config.ini", ".doorstop_version" };
@@ -93,9 +96,9 @@ namespace RegenerateFM.Desktop.Linux
 
         private static List<string> InstallFm26(string folder, string release)
         {
-            string payload = Path.Combine(release, "FM26");
+            string payload = Path.Combine(release, GameFolder);
             if (!File.Exists(Path.Combine(payload, Plugin, "RegenerateFM.dll")))
-                throw new SetupException("The release's FM26 folder is missing: " + payload);
+                throw new SetupException("The release's \"" + GameFolder + "\" folder is missing: " + payload);
             var lines = new List<string> { "Copied " + CopyTree(payload, folder) + " files into " + folder + "." };
             string libraries = UnityLibraries.Fetch(folder);
             if (libraries != null)
