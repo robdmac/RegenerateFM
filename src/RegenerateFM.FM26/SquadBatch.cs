@@ -1089,6 +1089,10 @@ namespace RegenerateFM.FM26
             if (Fm27 && (!asPlayer || IsNationCode(profile.Nationality)) && !NationById.ContainsKey(personId) &&
                 System.DateTime.UtcNow - batch.StageStartedUtc < GenderWait)
                 return;
+            // And a player's full position, when the compact header abbreviates it.
+            if (Fm27 && asPlayer && BoundText(header, Fm27PositionPath) == null && !PositionById.ContainsKey(personId) &&
+                System.DateTime.UtcNow - batch.StageStartedUtc < GenderWait)
+                return;
             if (profile.BiographyHeadline == null && _biographyCache.TryGetValue(personId, out string biography))
                 profile.BiographyHeadline = biography;
             // A silhouette is a real person, unless RegenerateFM saw them as a newgen.
