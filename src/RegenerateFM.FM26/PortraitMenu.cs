@@ -297,7 +297,7 @@ namespace RegenerateFM.FM26
                 {
                     var value = WebUtility.HtmlDecode(Tags.Replace(text.text ?? "", "")).Trim();
                     if (value.Length > 0)
-                        parts.Add(path + " = \"" + value + "\"");
+                        parts.Add(path + (BindingName(element) is string bound ? " [" + bound + "]" : "") + " = \"" + value + "\"");
                 }
                 for (int i = 0; i < element.hierarchy.childCount; i++)
                     Visit(element.hierarchy.ElementAt(i), path);

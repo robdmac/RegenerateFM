@@ -217,6 +217,25 @@ namespace RegenerateFM.FM26
             return false;
         }
 
+        // What a label's text is bound to, for diagnosis: its path, "function"
+        // for text FM makes from several values, or null.
+        private static string BindingName(VisualElement element)
+        {
+            var label = element?.TryCast<SIText>();
+            if (label == null)
+                return null;
+            try
+            {
+                var binding = label.m_textBinding;
+                return binding.Kind == BindingMethodKind.Direct ? binding.Direct?.Path.ToString()
+                     : binding.Kind == BindingMethodKind.VisualFunction ? "function" : null;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
         // The text of the first shown label under element that is bound straight
         // to this path, in the player's language, or null.
         private static string BoundText(VisualElement element, string path)
