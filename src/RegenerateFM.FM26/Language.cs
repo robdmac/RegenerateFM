@@ -14,7 +14,8 @@ namespace RegenerateFM.FM26
     // which FM26 translates into the player's language, so a label is found by
     // its English text or by FM26's translation of its ID. The IDs are those of
     // the checked 26.3.2 builds (GameBuild.cs). Values the prompt uses (nation,
-    // position, job, attribute names) stay in the player's language.
+    // position, job) stay in the player's language; attribute names are put
+    // into English (AttributeNames), which the prompt and appearance expect.
     public sealed partial class Plugin
     {
         internal const int HeightLabel = 20919;
@@ -41,6 +42,7 @@ namespace RegenerateFM.FM26
                 if (Text.Language != language)
                 {
                     GameTexts.Clear();
+                    _englishAttributes = null;
                     _gameFont = null;
                 }
             }
@@ -130,6 +132,14 @@ namespace RegenerateFM.FM26
                 RightToLeft(element.hierarchy.ElementAt(i));
             return element;
         }
+
+        // The attribute names in the player's language, to their English ones
+        // (AttributeNames), by FM's text for their IDs. Made again when the
+        // language changes.
+        private static Dictionary<string, string> _englishAttributes;
+
+        internal static IReadOnlyDictionary<string, string> EnglishAttributes() =>
+            _englishAttributes ??= AttributeNames.English(GameText);
 
         // Whether a label's text is this English one or FM26's text for its ID.
         private static bool IsLabel(string value, string english, int id) =>
