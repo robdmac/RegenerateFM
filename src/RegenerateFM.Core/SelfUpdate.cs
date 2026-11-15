@@ -105,18 +105,9 @@ namespace RegenerateFM
             {
                 throw new UpdateException("The update's manifest can't be read.");
             }
-            bool signed;
-            try
-            {
-                using var key = ECDsa.Create();
-                key.ImportSubjectPublicKeyInfo(Convert.FromBase64String(publicKey), out _);
-                signed = key.VerifyData(payload, signature, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence);
-            }
-            catch (CryptographicException error)
-            {
-                throw new UpdateException("The update's signature can't be checked here: " + error.Message);
-            }
-            if (!signed)
+            // Checked in plain C# (P256), not by .NET's ECDsa: Wine, which runs FM
+            // under Proton on Linux, doesn't implement ECDSA.
+            if (!P256.Verify(Convert.FromBase64String(publicKey), payload, signature))
                 throw new UpdateException("The update isn't signed with RegenerateFM's release key.");
             return ParseManifest(payload);
         }
