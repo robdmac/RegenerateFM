@@ -159,24 +159,12 @@ namespace RegenerateFM.FM26
                 if (!StatPattern.IsMatch(score))
                     continue;
                 object number = score.Contains("-") || score.Contains("–") ? score : (object)int.Parse(score);
-                if (PhysicalNames.Contains(stat))
-                    profile.Physical[stat] = number;
-                else if (MentalNames.Contains(stat))
-                    profile.Mental[stat] = number;
-                else if (GoalkeepingNames.Contains(stat))
-                    profile.Goalkeeping[stat] = number;
-                else if (!stat.Contains("Rating"))
-                {
-                    // In another language the attribute is put under its column's heading.
-                    headings ??= AttributeHeadings(attributes);
-                    switch (AttributeSection(row, headings))
-                    {
-                        case "Physical": profile.Physical[stat] = number; break;
-                        case "Mental": profile.Mental[stat] = number; break;
-                        case "Goalkeeping": profile.Goalkeeping[stat] = number; break;
-                        default: profile.Technical[stat] = number; break;
-                    }
-                }
+                // In another language, put into English (AttributeNames); a name
+                // not known goes under its column's heading.
+                if (!stat.Contains("Rating"))
+                    AttributeNames.Add(profile, EnglishAttributes(), stat, number,
+                                       () => AttributeSection(row, headings ??= AttributeHeadings(attributes)),
+                                       warning => Instance?.Log.LogWarning(warning));
             }
             // No position anywhere (a layout not seen yet) doesn't stop the face:
             // a goalkeeper is told by their goalkeeping attributes.

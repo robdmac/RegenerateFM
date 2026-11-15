@@ -218,10 +218,11 @@ namespace RegenerateFM
                 throw new ArgumentException("Player age is missing or invalid.");
             // Only the attributes known: a partly scouted player may have some hidden.
             var physical = Stats(profile.Physical ?? new Dictionary<string, object>(), "physical");
-            var unexpected = physical.Keys.Where(stat => !PhysicalStats.Contains(stat)).OrderBy(stat => stat, StringComparer.Ordinal).ToList();
-            if (unexpected.Count > 0)
-                throw new ArgumentException("Unknown physical stats: " + string.Join(", ", unexpected));
-            var knownPhysical = PhysicalStats.Where(physical.ContainsKey).ToList();
+            // FM's English names, in their usual order; any other (a name FM shows
+            // that the plugin couldn't put into English) after them, as shown.
+            var knownPhysical = PhysicalStats.Where(physical.ContainsKey)
+                .Concat(physical.Keys.Where(stat => !PhysicalStats.Contains(stat)).OrderBy(stat => stat, StringComparer.Ordinal))
+                .ToList();
             var other = new List<(string Section, string Stat, string Score, double Strength)>();
             foreach (var (section, values) in new[] { ("technical", profile.Technical), ("mental", profile.Mental), ("goalkeeping", profile.Goalkeeping) })
                 foreach (var stat in Stats(values ?? new Dictionary<string, object>(), section))

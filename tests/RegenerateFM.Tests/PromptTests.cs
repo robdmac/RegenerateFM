@@ -218,6 +218,22 @@ namespace RegenerateFM.Tests
             Assert.Equal(Squad(50, 27, "male", WithAttributes(null, ("Aggression", 10))), Squad(50, 27, "male", WithAttributes(null)));
         }
 
+        // A physical attribute the plugin couldn't put into English (FM in
+        // French: "Vitesse") is described as shown, after the English ones,
+        // rather than stopping the face.
+        [Fact]
+        public void APhysicalAttributeNotInEnglishIsDescribedAsShown()
+        {
+            var player = new ProfileSnapshot
+            {
+                Name = "Wes Houghton", Age = 15, Nationality = "Angleterre", Position = "Gardien de but", Club = "Leicester U18", Height = "186 cm",
+                Physical = new Dictionary<string, object> { ["Vitesse"] = 5, ["Strength"] = 4, ["Acceleration"] = 4 },
+                Goalkeeping = new Dictionary<string, object> { ["Communication"] = 7, ["Handling"] = 11, ["Reflexes"] = 11 },
+                Mental = new Dictionary<string, object> { ["Decisions"] = 12, ["Bravery"] = 8, ["Leadership"] = 11 },
+            };
+            Assert.Contains("Physical stats: Acceleration 4/20, Strength 4/20, Vitesse 5/20. ", Prompts.ProfilePrompt(player, "2002108127", null));
+        }
+
         [Fact]
         public void StrengthShowsInTheNeckAsItIsNow()
         {

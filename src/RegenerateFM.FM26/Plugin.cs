@@ -41,20 +41,6 @@ namespace RegenerateFM.FM26
         private static readonly Regex PositionPattern = new Regex("^" + OnePosition + @"(?:\s*,\s*" + OnePosition + ")*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         // The compact header's abbreviations: "M/AM (C)", "D (RL), DM".
         private static readonly Regex ShortPositionPattern = new Regex(@"^(?:GK|(?:D|WB|DM|M|AM|ST)(?:/(?:D|WB|DM|M|AM|ST))*(?: \([RLC]{1,3}\))?)(?:, (?:GK|(?:D|WB|DM|M|AM|ST)(?:/(?:D|WB|DM|M|AM|ST))*(?: \([RLC]{1,3}\))?))*$", RegexOptions.Compiled);
-        private static readonly HashSet<string> PhysicalNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "Acceleration", "Agility", "Balance", "Jumping Reach", "Natural Fitness", "Pace", "Stamina", "Strength"
-        };
-        private static readonly HashSet<string> MentalNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "Aggression", "Anticipation", "Bravery", "Composure", "Concentration", "Decisions", "Determination",
-            "Flair", "Leadership", "Off The Ball", "Positioning", "Teamwork", "Vision", "Work Rate"
-        };
-        private static readonly HashSet<string> GoalkeepingNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "Aerial Reach", "Command Of Area", "Communication", "Eccentricity", "Handling", "Kicking", "One On Ones",
-            "Punching (Tendency)", "Reflexes", "Rushing Out (Tendency)", "Throwing"
-        };
         private PendingGeneration _pending;
         private VisualElement _refreshOverlay;
         private Label _refreshMessage;
