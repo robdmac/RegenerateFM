@@ -134,11 +134,11 @@ namespace RegenerateFM.Desktop.FM24
                 return error.Message;
             }
             bool opened = OpenBrowser(signIn.Link);
-            tell(opened
+            tell((opened
                 ? Text.T("Your browser is open at RegenerateFM credits. Sign in with your email, buy credits if you need them, and confirm the code {0}. RegenerateFM carries on by itself once you've signed in.",
                          signIn.UserCode)
                 : Text.T("Open {0} in your browser. Sign in with your email, buy credits if you need them, and confirm the code {1}. RegenerateFM carries on by itself once you've signed in.",
-                         signIn.Link, signIn.UserCode));
+                         signIn.Link, signIn.UserCode)) + " " + Credits.SpamHint);
             Credits.Poll answer;
             try
             {

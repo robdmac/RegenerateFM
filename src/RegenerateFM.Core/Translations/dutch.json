@@ -318,5 +318,6 @@
  "Update": "Bijwerken",
  "Updating RegenerateFM…": "RegenerateFM wordt bijgewerkt…",
  "RegenerateFM {0} is installed. Restart FM26 to use it.": "RegenerateFM {0} is geïnstalleerd. Start FM26 opnieuw om het te gebruiken.",
- "RegenerateFM couldn't update itself. Download {0} instead.": "RegenerateFM kon zichzelf niet bijwerken. Download {0} in plaats daarvan."
+ "RegenerateFM couldn't update itself. Download {0} instead.": "RegenerateFM kon zichzelf niet bijwerken. Download {0} in plaats daarvan.",
+ "No email? Check your spam or junk folder.": "Geen e-mail? Kijk in je map met spam of ongewenste e-mail."
 }

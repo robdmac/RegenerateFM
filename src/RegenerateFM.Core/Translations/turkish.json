@@ -318,5 +318,6 @@
   "Update": "Güncelle",
   "Updating RegenerateFM…": "RegenerateFM güncelleniyor…",
   "RegenerateFM {0} is installed. Restart FM26 to use it.": "RegenerateFM {0} yüklendi. Kullanmak için FM26'yı yeniden başlatın.",
-  "RegenerateFM couldn't update itself. Download {0} instead.": "RegenerateFM kendini güncelleyemedi. Bunun yerine {0} sürümünü indirin."
+  "RegenerateFM couldn't update itself. Download {0} instead.": "RegenerateFM kendini güncelleyemedi. Bunun yerine {0} sürümünü indirin.",
+  "No email? Check your spam or junk folder.": "E-posta gelmedi mi? İstenmeyen e-posta (spam) klasörünü kontrol edin."
 }
