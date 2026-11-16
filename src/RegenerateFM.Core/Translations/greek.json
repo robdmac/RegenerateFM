@@ -318,5 +318,6 @@
   "Update": "Ενημέρωση",
   "Updating RegenerateFM…": "Ενημέρωση του RegenerateFM…",
   "RegenerateFM {0} is installed. Restart FM26 to use it.": "Το RegenerateFM {0} εγκαταστάθηκε. Επανεκκινήστε το FM26 για να το χρησιμοποιήσετε.",
-  "RegenerateFM couldn't update itself. Download {0} instead.": "Το RegenerateFM δεν μπόρεσε να ενημερωθεί. Κατεβάστε το {0} αντί γι' αυτό."
+  "RegenerateFM couldn't update itself. Download {0} instead.": "Το RegenerateFM δεν μπόρεσε να ενημερωθεί. Κατεβάστε το {0} αντί γι' αυτό.",
+  "No email? Check your spam or junk folder.": "Δεν ήρθε το email; Ελέγξτε τον φάκελο ανεπιθύμητης αλληλογραφίας."
 }

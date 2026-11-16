@@ -318,5 +318,6 @@
  "Update": "更新",
  "Updating RegenerateFM…": "RegenerateFM を更新しています…",
  "RegenerateFM {0} is installed. Restart FM26 to use it.": "RegenerateFM {0} をインストールしました。使うには FM26 を再起動してください。",
- "RegenerateFM couldn't update itself. Download {0} instead.": "RegenerateFM を自動で更新できませんでした。代わりに {0} をダウンロードしてください。"
+ "RegenerateFM couldn't update itself. Download {0} instead.": "RegenerateFM を自動で更新できませんでした。代わりに {0} をダウンロードしてください。",
+ "No email? Check your spam or junk folder.": "メールが届かない場合は、迷惑メールフォルダを確認してください。"
 }

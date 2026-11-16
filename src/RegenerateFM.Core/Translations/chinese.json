@@ -318,5 +318,6 @@
  "Update": "更新",
  "Updating RegenerateFM…": "正在更新 RegenerateFM…",
  "RegenerateFM {0} is installed. Restart FM26 to use it.": "RegenerateFM {0} 已安装。重新启动 FM26 即可使用。",
- "RegenerateFM couldn't update itself. Download {0} instead.": "RegenerateFM 无法自行更新。请改为下载 {0}。"
+ "RegenerateFM couldn't update itself. Download {0} instead.": "RegenerateFM 无法自行更新。请改为下载 {0}。",
+ "No email? Check your spam or junk folder.": "没有收到邮件？请查看垃圾邮件文件夹。"
 }

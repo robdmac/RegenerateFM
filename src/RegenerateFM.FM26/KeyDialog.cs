@@ -495,7 +495,8 @@ namespace RegenerateFM.FM26
                 Application.OpenURL(_creditsSignIn.Link);
                 _creditsNextPollUtc = System.DateTime.UtcNow.AddSeconds(_creditsSignIn.Interval);
                 if (_keyStatus != null)
-                    _keyStatus.text = Text.T("In your browser, sign in and confirm the code {0}. RegenerateFM is waiting…", _creditsSignIn.UserCode);
+                    _keyStatus.text = Text.T("In your browser, sign in and confirm the code {0}. RegenerateFM is waiting…", _creditsSignIn.UserCode) +
+                                      " " + Credits.SpamHint;
             }
             var signIn = _creditsSignIn;
             if (signIn == null)

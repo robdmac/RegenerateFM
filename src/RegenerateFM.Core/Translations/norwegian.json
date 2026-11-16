@@ -318,5 +318,6 @@
   "Update": "Oppdater",
   "Updating RegenerateFM…": "Oppdaterer RegenerateFM…",
   "RegenerateFM {0} is installed. Restart FM26 to use it.": "RegenerateFM {0} er installert. Start FM26 på nytt for å bruke den.",
-  "RegenerateFM couldn't update itself. Download {0} instead.": "RegenerateFM kunne ikke oppdatere seg selv. Last ned {0} i stedet."
+  "RegenerateFM couldn't update itself. Download {0} instead.": "RegenerateFM kunne ikke oppdatere seg selv. Last ned {0} i stedet.",
+  "No email? Check your spam or junk folder.": "Ingen e-post? Sjekk søppelpostmappen."
 }

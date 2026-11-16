@@ -30,6 +30,9 @@ namespace RegenerateFM
         public static string BuyText =>
             Text.T("Buy RegenerateFM credits: one credit makes or updates one face. Packs go from 75 credits for £2 / €2.50 / $2.50 to 1000 for £20 / €24 / $24. You sign in with your email in your browser; there's nothing to paste.");
 
+        // After "sign in in your browser": the sign-in email may be in spam.
+        public static string SpamHint => Text.T("No email? Check your spam or junk folder.");
+
         public static bool IsToken(string key) => key != null && key.StartsWith(Prefix, StringComparison.Ordinal);
 
         // The image API address for a key: the credits service's for a token.

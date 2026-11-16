@@ -318,5 +318,6 @@
   "Update": "Actualizar",
   "Updating RegenerateFM…": "Actualizando RegenerateFM…",
   "RegenerateFM {0} is installed. Restart FM26 to use it.": "RegenerateFM {0} está instalado. Reinicia FM26 para usarlo.",
-  "RegenerateFM couldn't update itself. Download {0} instead.": "RegenerateFM no ha podido actualizarse solo. Descarga la versión {0} en su lugar."
+  "RegenerateFM couldn't update itself. Download {0} instead.": "RegenerateFM no ha podido actualizarse solo. Descarga la versión {0} en su lugar.",
+  "No email? Check your spam or junk folder.": "¿No te ha llegado el correo? Mira en la carpeta de spam o correo no deseado."
 }
