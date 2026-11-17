@@ -79,15 +79,34 @@ namespace Doorstop
             string progress = Path.Combine(core, "regeneratefm-progress.exe");
             if (!File.Exists(progress))
                 return;
-            string game = Path.GetFileName(Path.GetDirectoryName(folder)) ?? "";
-            var info = new ProcessStartInfo(progress) { UseShellExecute = false, CreateNoWindow = true };
+            // Shell execution, so the window inherits none of FM's handles
+            // (UseShellExecute = false passes it every inheritable one).
+            var info = new ProcessStartInfo(progress) { UseShellExecute = true };
             info.ArgumentList.Add("--pid");
             info.ArgumentList.Add(Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
             info.ArgumentList.Add("--log");
             info.ArgumentList.Add(Path.Combine(folder, ProgressLog));
             info.ArgumentList.Add("--name");
-            info.ArgumentList.Add(game.IndexOf("Demo", StringComparison.OrdinalIgnoreCase) >= 0 ? "Football Manager 26 Demo" : "Football Manager 26");
+            info.ArgumentList.Add(UserDataName(Path.GetDirectoryName(folder)));
             Process.Start(info)?.Dispose();
+        }
+
+        // The game's user data folder's name ("Football Manager 27"), its
+        // product name in Unity's app.info; the game folder's name says
+        // which FM26 if app.info can't be read.
+        private static string UserDataName(string gameFolder)
+        {
+            try
+            {
+                string[] lines = File.ReadAllLines(Path.Combine(gameFolder, "fm_Data", "app.info"));
+                if (lines.Length > 1 && lines[1].Trim().StartsWith("Football Manager ", StringComparison.Ordinal))
+                    return lines[1].Trim();
+            }
+            catch (Exception error) when (error is IOException || error is UnauthorizedAccessException)
+            {
+            }
+            string game = Path.GetFileName(gameFolder) ?? "";
+            return game.IndexOf("Demo", StringComparison.OrdinalIgnoreCase) >= 0 ? "Football Manager 26 Demo" : "Football Manager 26";
         }
     }
 
