@@ -335,5 +335,7 @@
  "You've used all your RegenerateFM credits.": "RegenerateFM 크레딧을 모두 사용했습니다.",
  "You've used your 1 free face. Packs start at 75 faces for £2.": "무료 얼굴 사진 1장을 모두 사용했습니다. 팩은 75장 £2부터입니다.",
  "You've used your {0} free faces. Packs start at 75 faces for £2.": "무료 얼굴 사진 {0}장을 모두 사용했습니다. 팩은 75장 £2부터입니다.",
- "Your RegenerateFM credits sign-in has ended. Choose Buy credits / Sign in to sign in again.": "RegenerateFM 크레딧 로그인이 종료되었습니다. 다시 로그인하려면 '크레딧 구매 / 로그인'을 선택하세요."
+ "Your RegenerateFM credits sign-in has ended. Choose Buy credits / Sign in to sign in again.": "RegenerateFM 크레딧 로그인이 종료되었습니다. 다시 로그인하려면 '크레딧 구매 / 로그인'을 선택하세요.",
+ "Your OpenAI account has run out of credit. Add credit in your OpenAI account's billing settings (platform.openai.com), or use RegenerateFM credits instead.": "OpenAI 계정의 잔액이 모두 소진되었습니다. OpenAI 계정의 결제 설정(platform.openai.com)에서 잔액을 충전하거나, 대신 RegenerateFM 크레딧을 사용하세요.",
+ "Your OpenAI account has run out of credit. Add credit in your OpenAI account's billing settings (platform.openai.com), then choose the face command again.": "OpenAI 계정의 잔액이 모두 소진되었습니다. OpenAI 계정의 결제 설정(platform.openai.com)에서 잔액을 충전한 뒤 얼굴 사진 명령을 다시 선택하세요."
 }

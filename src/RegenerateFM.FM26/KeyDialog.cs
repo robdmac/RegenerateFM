@@ -456,6 +456,10 @@ namespace RegenerateFM.FM26
                 ShowKeyDialog(result.FreeFaces > 0 ? Credits.FreeUsedText(result.FreeFaces)
                                                    : Text.T("You've used all your RegenerateFM credits. Buy more to carry on."),
                               null, signedIn: Credits.IsToken(key));
+            // The key works, but its OpenAI account needs credit: where to add it,
+            // with Buy credits beside the key in case they'd rather switch.
+            else if (result.OpenAIBilling)
+                ShowKeyDialog(OpenAIBillingException.Advice, null);
             else if (result.KeyRejected)
                 ShowKeyDialog(Credits.IsToken(key)
                     ? Text.T("Your RegenerateFM sign-in isn't valid any more. Sign in again.")

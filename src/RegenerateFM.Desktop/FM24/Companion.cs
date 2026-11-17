@@ -182,6 +182,10 @@ namespace RegenerateFM.Desktop.FM24
                     CreditsRanOut = ranOut;
                 return ranOut.RanOutText + " " + Text.T("Buy more at {0}, then choose the face command again.", BuyPage());
             }
+            // The key works, but its OpenAI account needs credit.
+            if (error is OpenAIBillingException billing)
+                return Text.T("Your OpenAI account has run out of credit. Add credit in your OpenAI account's billing settings (platform.openai.com), then choose the face command again.") +
+                       " " + billing.Detail;
             if (!(error is ApiKeyRejectedException))
                 return error.Message;
             if (AsksInGame || AsksInWindow)
