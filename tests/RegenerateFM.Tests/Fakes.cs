@@ -255,6 +255,12 @@ namespace RegenerateFM.Tests
         public Func<Dictionary<string, object>, Dictionary<string, object>> StartAnswer = answer => answer;  // /device/start's, changed
         public string Token = "rfm_" + new string('t', 43);
         public Func<string, int?> Status = _ => null;  // an error status for a path, or null
+        public Func<string, object> ErrorBody;  // that error's JSON, or null for a plain one
+        // The credits service's: GET /v1/balance's answer, headers on a face's
+        // answer, and a 402's error in place of the face.
+        public Func<object> BalanceAnswer = () => new { email = "player@example.com", credits = 75, bought = true, free = 0, buy_url = "x" };
+        public Dictionary<string, string> ImageHeaders = new Dictionary<string, string>();
+        public object OutOfCredits;
 
         public StandIn(byte[] image = null)
         {
@@ -300,7 +306,9 @@ namespace RegenerateFM.Tests
                     var (status, value) = Handle(request.Value);
                     var body = JsonSerializer.SerializeToUtf8Bytes(value);
                     string reason = status switch { 200 => "OK", 401 => "Unauthorized", 404 => "Not Found", 410 => "Gone", _ => "Error" };
-                    stream.Write(Encoding.ASCII.GetBytes("HTTP/1.1 " + status + " " + reason + "\r\nContent-Type: application/json\r\n" +
+                    string extra = status == 200 && request.Value.Path.Contains("/images/")
+                        ? string.Concat(ImageHeaders.Select(header => header.Key + ": " + header.Value + "\r\n")) : "";
+                    stream.Write(Encoding.ASCII.GetBytes("HTTP/1.1 " + status + " " + reason + "\r\nContent-Type: application/json\r\n" + extra +
                                                          "Content-Length: " + body.Length + "\r\nConnection: close\r\n\r\n"));
                     stream.Write(body);
                 }
@@ -343,7 +351,7 @@ namespace RegenerateFM.Tests
             string path = request.Path;
             string auth = request.Authorization;
             if (Status(path) is int error)
-                return (error, new { error = new { message = "Stand-in error " + error + "." } });
+                return (error, ErrorBody?.Invoke(path) ?? new { error = new { message = "Stand-in error " + error + "." } });
             if (request.Method == "GET" && path.EndsWith("/models"))
             {
                 bool good = auth == "Bearer " + GoodKey || auth == "Bearer " + Token;
@@ -368,10 +376,15 @@ namespace RegenerateFM.Tests
                 }
                 return (200, new { status = "approved", token = Token, email = "player@example.com", credits = 75 });
             }
+            if (request.Method == "GET" && path == "/v1/balance")
+                return auth == "Bearer " + Token ? (200, BalanceAnswer())
+                    : (401, new { error = new { message = "This RegenerateFM sign-in isn't valid any more.", code = "invalid_api_key" } });
             if (path.EndsWith("/images/generations") || path.EndsWith("/images/edits"))
             {
                 if ((auth ?? "").Contains("bad-key"))
                     return (401, new { error = new { message = "Incorrect API key provided: sk-bad-key." } });
+                if (OutOfCredits != null)
+                    return (402, new { error = OutOfCredits });
                 return (200, new { data = new[] { new { b64_json = Convert.ToBase64String(Image) } } });
             }
             return (404, new { });

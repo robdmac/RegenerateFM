@@ -75,6 +75,11 @@ namespace RegenerateFM.FM26
             public List<SquadCandidate> OtherMissing;
             public int OtherCount;
             public string OtherProblem;  // why the other list couldn't be counted
+            // With RegenerateFM credits, the balance, read once for the
+            // confirmation (BalanceChecked); null when there's none to read
+            // or it couldn't be read, and the confirmation is as without credits.
+            public bool BalanceChecked;
+            public Credits.Account Balance;
         }
 
         private sealed class SquadBatch
@@ -116,6 +121,8 @@ namespace RegenerateFM.FM26
             // Clicks on the current staff member's name so far.
             public int StaffClicked;
             public System.DateTime NextStepUtc;
+            // After a face made with RegenerateFM credits: what's left, for the status.
+            public Credits.Account CreditsLeft;
             public ListKind Kind => Queue[Index].Kind;
         }
 
@@ -549,6 +556,12 @@ namespace RegenerateFM.FM26
             var missing = new List<SquadCandidate>(offer.Missing);
             if (include)
                 missing.AddRange(offer.OtherMissing);
+            // With RegenerateFM credits, the balance comes first, so a batch the
+            // credits don't cover says so before any face is requested.
+            if (missing.Count > 0 && !offer.BalanceChecked && StartSquadBalance(offer, include))
+                return;
+            // How many faces the credits cover, when that's fewer than are missing.
+            int? covered = offer.Balance != null && offer.Balance.Credits < missing.Count ? Math.Max(0, offer.Balance.Credits) : (int?)null;
             string text = MissingText(offer.Missing.Count, offer.Count, offer.Kind, false);
             if (include)
                 text += " " + MissingText(offer.OtherMissing.Count, offer.OtherCount, Other(offer.Kind), true);
@@ -557,6 +570,7 @@ namespace RegenerateFM.FM26
                     ? Text.T("Couldn't count the club's staff: {0}.", offer.OtherProblem)
                     : Text.T("Couldn't count the first team's players: {0}.", offer.OtherProblem));
             text += " " + (missing.Count == 0 ? Text.T("No images have been requested.")
+                : covered.HasValue ? Credits.ShortText(covered.Value, missing.Count)
                 : missing.Count == 1 ? Text.T("Generate {0} face? Each face makes one billed API request.", missing.Count)
                 : Text.T("Generate {0} faces? Each face makes one billed API request.", missing.Count));
             ShowDialog(text, Text.T("Cancel"), () => CancelSquadScan());
@@ -571,18 +585,84 @@ namespace RegenerateFM.FM26
                 else
                     CountOtherList(offer);
             }));
-            if (missing.Count > 0)
+            // Short of credits: as many faces as they cover, if any, or Buy credits.
+            int faces = covered ?? missing.Count;
+            if (faces > 0)
             {
-                var generate = new Button((Il2CppSystem.Action)(System.Action)(() => StartSquadBatch(missing, offer.Team)))
-                { text = missing.Count == 1 ? Text.T("Generate {0} face", missing.Count) : Text.T("Generate {0} faces", missing.Count), focusable = false };
+                var generate = new Button((Il2CppSystem.Action)(System.Action)(() => StartSquadBatch(missing, offer.Team, faces)))
+                { text = faces == 1 ? Text.T("Generate {0} face", faces) : Text.T("Generate {0} faces", faces), focusable = false };
                 generate.style.height = 34;
                 generate.style.marginTop = 10;
                 generate.style.color = Color.white;
                 generate.style.backgroundColor = new Color(0.38f, 0.10f, 0.60f, 1f);
-                _squadDialog.Insert(at, generate);
+                _squadDialog.Insert(at++, generate);
+            }
+            if (covered.HasValue)
+            {
+                string shortText = Credits.ShortText(covered.Value, missing.Count);
+                var buy = new Button((Il2CppSystem.Action)(System.Action)(() =>
+                {
+                    CancelSquadScan();
+                    ShowKeyDialog(shortText, null, signedIn: true, forBatch: true);
+                }))
+                { text = Text.T("Buy credits"), focusable = false };
+                buy.style.height = 34;
+                buy.style.marginTop = faces > 0 ? 6 : 10;
+                _squadDialog.Insert(at, buy);
             }
             Log.LogInfo("RegenerateFM confirmation ready: " + offer.Missing.Count + " " + Plural(offer.Kind) +
-                        (include ? " and " + offer.OtherMissing.Count + " " + other : "") + " missing portraits");
+                        (include ? " and " + offer.OtherMissing.Count + " " + other : "") + " missing portraits" +
+                        (offer.Balance != null ? "; " + offer.Balance.Credits + " RegenerateFM credits" : ""));
+        }
+
+        // Reads the RegenerateFM credits balance for a confirmation, off the main
+        // thread (PollSquadBalance shows the confirmation again once it's
+        // known). False, with nothing to read, for an OpenAI key.
+        private bool StartSquadBalance(SquadOffer offer, bool include)
+        {
+            offer.BalanceChecked = true;
+            string key = null;
+            try { key = KeyStore.Load(KeyStore.DefaultPath); } catch (Exception) { }
+            if (!Credits.IsToken(key))
+                return false;
+            string service;
+            try
+            {
+                service = CreditsServiceUrl();
+            }
+            catch (ArgumentException error)
+            {
+                Log.LogWarning(error.Message);
+                return false;
+            }
+            ShowDialog(Text.T("Checking your RegenerateFM credits…"), Text.T("Cancel"), () => CancelSquadScan());
+            _squadBalance = Task.Run(() => Credits.Balance(service, key));
+            _squadBalanceOffer = offer;
+            _squadBalanceInclude = include;
+            return true;
+        }
+
+        private void PollSquadBalance()
+        {
+            var balance = _squadBalance;
+            if (balance == null || !balance.IsCompleted)
+                return;
+            var offer = _squadBalanceOffer;
+            bool include = _squadBalanceInclude;
+            _squadBalance = null;
+            _squadBalanceOffer = null;
+            try
+            {
+                offer.Balance = balance.GetAwaiter().GetResult();
+            }
+            catch (Exception error)
+            {
+                // Without the balance, the confirmation is as it is with an OpenAI key.
+                Log.LogWarning("Could not read the RegenerateFM credits balance: " + error.Message);
+            }
+            if (_squadDialog == null || _squadDialog.parent == null)
+                return;
+            ShowSquadConfirmation(offer, include);
         }
 
         // "12 of 23 players have no portrait", "All of the club's 19 staff have portraits."
@@ -684,15 +764,18 @@ namespace RegenerateFM.FM26
             ShowSquadConfirmation(scan.Offer, false);
         }
 
-        private void StartSquadBatch(List<SquadCandidate> missing, string team)
+        // limit: the most faces to make (as many as the credits cover).
+        private void StartSquadBatch(List<SquadCandidate> missing, string team, int limit = int.MaxValue)
         {
-            if (missing.Count == 0 || _pending != null || WaitingForGraphics || _squadBatch != null)
+            if (missing.Count == 0 || limit <= 0 || _pending != null || WaitingForGraphics || _squadBatch != null)
                 return;
             var root = CurrentRoot();
             // The list on screen first, then the other.
             var shown = StaffScroll(root) != null ? ListKind.Staff : ListKind.Players;
             var queue = new List<SquadCandidate>(missing.FindAll(candidate => candidate.Kind == shown));
             queue.AddRange(missing.FindAll(candidate => candidate.Kind != shown));
+            if (queue.Count > limit)
+                queue.RemoveRange(limit, queue.Count - limit);
             var list = ListScroll(queue[0].Kind, root);
             ImageSettings settings;
             try
@@ -903,7 +986,7 @@ namespace RegenerateFM.FM26
                         if (batch.Index >= batch.Queue.Count)
                             StopSquadBatch((batch.Completed == 1
                                 ? Text.T("Finished: {0} face generated.", batch.Completed)
-                                : Text.T("Finished: {0} faces generated.", batch.Completed)) + ScoutingNote(batch));
+                                : Text.T("Finished: {0} faces generated.", batch.Completed)) + ScoutingNote(batch) + CreditsLeftNote(batch));
                         else if (batch.Kind != kind)
                         {
                             batch.NextStepUtc = System.DateTime.UtcNow;
@@ -927,7 +1010,7 @@ namespace RegenerateFM.FM26
             if (System.DateTime.UtcNow < batch.NextPlayerUtc)
             {
                 batch.Status.text = Text.T("{0} faces done. Next face in {1} seconds; you can stop the batch.", batch.Completed,
-                    Math.Ceiling((batch.NextPlayerUtc - System.DateTime.UtcNow).TotalSeconds));
+                    Math.Ceiling((batch.NextPlayerUtc - System.DateTime.UtcNow).TotalSeconds)) + CreditsLeftNote(batch);
                 return;
             }
             if (BatchList(batch) == null || batch.List?.parent == null)
@@ -1116,12 +1199,15 @@ namespace RegenerateFM.FM26
             var result = batch.Request.GetAwaiter().GetResult();
             if (!result.Success)
             {
-                StopSquadBatch(Text.T("Portrait request failed for {0}: {1}", batch.Queue[batch.Index].Name, result.Error));
+                // Free faces used up: the game's own words, with what a pack costs.
+                StopSquadBatch(Text.T("Portrait request failed for {0}: {1}", batch.Queue[batch.Index].Name,
+                    result.FreeFaces > 0 ? Credits.FreeUsedText(result.FreeFaces) : result.Error));
                 ShowKeyProblem(result);
                 return;
             }
             Log.LogInfo("Squad portrait saved for " + batch.Queue[batch.Index].Name + " to " + result.GraphicsDir);
-            batch.Status.text = Text.T("Loading {0} into FM26…", batch.Queue[batch.Index].Name);
+            batch.CreditsLeft = result.CreditsLeft;
+            batch.Status.text = Text.T("Loading {0} into FM26…", batch.Queue[batch.Index].Name) + CreditsLeftNote(batch);
             batch.GraphicsSerial = _graphicsLoadSerial;
             if (!Refresh())
             {
@@ -1232,6 +1318,10 @@ namespace RegenerateFM.FM26
                 ? Text.T("Skipped {0}: FM26's staff list doesn't link to their profile.", string.Join(", ", batch.Unopened))
                 : Text.T("Skipped {0}: FM26's staff list doesn't link to their profiles.", string.Join(", ", batch.Unopened))));
 
+        // " You have 12 credits left.", after the batch's last face made with credits; else "".
+        private static string CreditsLeftNote(SquadBatch batch) =>
+            batch.CreditsLeft == null ? "" : " " + Credits.LeftText(batch.CreditsLeft);
+
         private void StopSquadBatch(string message)
         {
             if (_squadBatch == null)
@@ -1275,6 +1365,9 @@ namespace RegenerateFM.FM26
             if (_squadScan != null && _squadScan.List?.parent != null)
                 _squadScan.List.scrollOffset = new Vector2(_squadScan.List.scrollOffset.x, _squadScan.OriginalY);
             _squadScan = null;
+            // A balance still being read is for the confirmation closed here.
+            _squadBalance = null;
+            _squadBalanceOffer = null;
             if (_squadDialog != null && _squadDialog.parent != null)
                 _squadDialog.RemoveFromHierarchy();
             _squadDialog = null;
