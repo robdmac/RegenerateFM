@@ -45,7 +45,7 @@ One credit makes or updates one face. Packs go from 75 credits for £2 / €2.50
 3. The page shows the code the game is showing: choose **Connect the game**, then choose a pack. Payment is by card through Stripe.
 4. Back in the game, you're signed in and the face you chose carries on. There's nothing to paste.
 
-To check your balance or buy more, sign in at [credits.regenerate.fm](https://credits.regenerate.fm/link); when your credits run out, the game's key dialog opens again. Your sign-in is saved where an OpenAI key would be (see below), so FM26 and FM24 on the same computer share it.
+To check your balance or buy more, sign in at [credits.regenerate.fm](https://credits.regenerate.fm/link). In FM26 and FM27, each face made with credits shows how many are left, and **Generate faces…** checks there are enough before it starts; when your credits run out, the game's key dialog opens again with your balance and **Buy credits**. Your sign-in is saved where an OpenAI key would be (see below), so FM26 and FM24 on the same computer share it.
 
 ### Your own OpenAI API key
 

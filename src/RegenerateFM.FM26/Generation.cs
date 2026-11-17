@@ -188,12 +188,15 @@ namespace RegenerateFM.FM26
                 _refreshOverlay = pending.Overlay;
                 _refreshMessage = pending.Message;
                 _refreshPersonId = pending.PersonId;
+                // Shown under the new face once it has loaded (GraphicsLoaded).
+                _creditsNotice = result.CreditsLeft == null ? null : (pending.PersonId, Credits.LeftText(result.CreditsLeft), (System.DateTime?)null);
                 if (!Refresh())
                 {
                     ShowPendingError(pending, Text.T("Portrait saved, but game refresh failed. Restart FM26 to load it."));
                     _refreshOverlay = null;
                     _refreshMessage = null;
                     _refreshPersonId = null;
+                    _creditsNotice = null;
                 }
             }
             catch (Exception error)
@@ -288,6 +291,55 @@ namespace RegenerateFM.FM26
             catch (Exception error)
             {
                 Log.LogWarning("Could not show face-generation status: " + error.Message);
+            }
+        }
+
+        // After a face made with RegenerateFM credits: what's left ("You have 2
+        // free faces left."), in a strip across the foot of the new face for a
+        // few seconds, so the face itself stays in view. Only on the profile
+        // the face was made for; gone if the player has moved on.
+        private static readonly TimeSpan CreditsNoticeDelay = TimeSpan.FromSeconds(0.5);
+        private const int CreditsNoticeMilliseconds = 6000;
+
+        private void PollCreditsNotice()
+        {
+            if (!(_creditsNotice is { } notice) || !notice.DueUtc.HasValue || System.DateTime.UtcNow < notice.DueUtc.Value)
+                return;
+            _creditsNotice = null;
+            Log.LogInfo(notice.Text);
+            try
+            {
+                var header = FindNamed(CurrentRoot(), "ReportHeader");
+                if (header == null || !HeaderId(header, out long personId) || personId != notice.PersonId)
+                    return;
+                var picture = FindNamed(header, "PersonPicture");
+                if (picture == null)
+                    return;
+                picture.Q<VisualElement>("regeneratefm-credits-notice")?.RemoveFromHierarchy();
+                var strip = new VisualElement { name = "regeneratefm-credits-notice", pickingMode = PickingMode.Ignore };
+                strip.style.position = Position.Absolute;
+                strip.style.left = 0;
+                strip.style.bottom = 0;
+                strip.style.width = Length.Percent(100);
+                strip.style.paddingTop = 3;
+                strip.style.paddingBottom = 3;
+                strip.style.backgroundColor = new Color(0.16f, 0.08f, 0.27f, 0.9f);
+                var label = new Label(notice.Text) { pickingMode = PickingMode.Ignore };
+                label.style.color = Color.white;
+                label.style.fontSize = 12;
+                label.style.unityTextAlign = TextAnchor.MiddleCenter;
+                label.style.whiteSpace = WhiteSpace.Normal;
+                strip.Add(label);
+                picture.Add(Directed(strip));
+                strip.schedule.Execute((Il2CppSystem.Action)(System.Action)(() =>
+                {
+                    if (strip.parent != null)
+                        strip.RemoveFromHierarchy();
+                })).StartingIn(CreditsNoticeMilliseconds);
+            }
+            catch (Exception error)
+            {
+                Log.LogWarning("Could not show the credits left: " + error.Message);
             }
         }
 
@@ -450,6 +502,10 @@ namespace RegenerateFM.FM26
             public string GraphicsDir;
             public bool KeyRejected;
             public bool OutOfCredits;
+            // When OutOfCredits: the free faces used up, for someone who has never bought; else 0.
+            public int FreeFaces;
+            // After a face made with RegenerateFM credits: what's left, if the service said.
+            public Credits.Account CreditsLeft;
         }
 
         private static async Task<GenerationResult> RequestPortrait(long playerId, ProfileSnapshot profile,
@@ -459,10 +515,13 @@ namespace RegenerateFM.FM26
             {
                 string folder = GraphicsFolder();
                 var timer = System.Diagnostics.Stopwatch.StartNew();
+                // The batch's settings are used again: what's left is this face's.
+                settings.CreditsLeft = null;
                 await Portraits.MakePortrait(settings, folder, playerId.ToString(System.Globalization.CultureInfo.InvariantCulture),
                                                  profile, mode == "update", shownPng, shownNewgen: shownNewgen).ConfigureAwait(false);
-                Instance?.Log.LogInfo("Image request and save took " + timer.Elapsed.TotalSeconds.ToString("0.0") + " s");
-                return new GenerationResult { Success = true, GraphicsDir = folder };
+                Instance?.Log.LogInfo("Image request and save took " + timer.Elapsed.TotalSeconds.ToString("0.0") + " s" +
+                                      (settings.CreditsLeft != null ? "; " + settings.CreditsLeft.Credits + " RegenerateFM credits left" : ""));
+                return new GenerationResult { Success = true, GraphicsDir = folder, CreditsLeft = settings.CreditsLeft };
             }
             catch (ApiKeyRejectedException error)
             {
@@ -470,7 +529,7 @@ namespace RegenerateFM.FM26
             }
             catch (OutOfCreditsException error)
             {
-                return new GenerationResult { Error = error.Message, OutOfCredits = true };
+                return new GenerationResult { Error = error.Message, OutOfCredits = true, FreeFaces = error.FreeFaces };
             }
             catch (Exception error)
             {
@@ -650,6 +709,7 @@ namespace RegenerateFM.FM26
             if (!WaitingForGraphics || System.DateTime.UtcNow - _refreshStartedUtc < GraphicsTimeout)
                 return;
             WaitingForGraphics = false;
+            _creditsNotice = null;
             ShowError(_refreshOverlay, _refreshMessage,
                 Text.T("Portrait saved, but graphics reload timed out. Restart FM26 to load it."));
             _refreshOverlay = null;
@@ -699,6 +759,10 @@ namespace RegenerateFM.FM26
                     _refillContentUtc = System.DateTime.UtcNow + RefillContentDelay;
                 if (_refreshOverlay != null && _refreshOverlay.parent != null)
                     _refreshOverlay.RemoveFromHierarchy();
+                // The panels are built again after this, so the credits left go
+                // on the new picture a moment later (PollCreditsNotice).
+                if (_creditsNotice is { } notice && notice.PersonId == _refreshPersonId)
+                    _creditsNotice = (notice.PersonId, notice.Text, System.DateTime.UtcNow + CreditsNoticeDelay);
                 Log.LogInfo("RegenerateFM graphics loaded and panels refreshed");
             }
             catch (Exception error)

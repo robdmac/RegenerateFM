@@ -132,6 +132,8 @@ namespace RegenerateFM.Desktop.FM24
         public bool PreviewOnly;
         public int? StartedByFm24;      // FM24's process ID when the DLL started this companion
         public volatile bool KeyRejected;
+        // The last face found the credits had run out (where FM24 asks for the key).
+        public volatile OutOfCreditsException CreditsRanOut;
 
         // Seams the tests replace.
         public Func<bool, (string PersonId, ProfileSnapshot Profile)> ReadProfile;
@@ -168,9 +170,19 @@ namespace RegenerateFM.Desktop.FM24
         }
 
         // The error for FM24's dialog; a rejected key says how to replace it.
+        // Credits that have run out aren't a key to replace: the sign-in still
+        // works once more are bought, so that's what the player is told, and
+        // where FM24 asks for the key, the next face command offers Buy
+        // credits if there still are none (StillOutOfCredits).
         private string ErrorText(Exception error)
         {
-            if (!(error is ApiKeyRejectedException) && !(error is OutOfCreditsException))
+            if (error is OutOfCreditsException ranOut)
+            {
+                if (AsksInGame || AsksInWindow)
+                    CreditsRanOut = ranOut;
+                return ranOut.RanOutText + " " + Text.T("Buy more at {0}, then choose the face command again.", BuyPage());
+            }
+            if (!(error is ApiKeyRejectedException))
                 return error.Message;
             if (AsksInGame || AsksInWindow)
             {
@@ -380,7 +392,7 @@ namespace RegenerateFM.Desktop.FM24
                 var settings = RequestSettings();
                 clock.Restart();
                 var png = (reference != null ? EditPng(settings, prompt, reference) : GeneratePng(settings, prompt)).GetAwaiter().GetResult();
-                Log("Image request took " + clock.Elapsed.TotalSeconds.ToString("0.0") + " s.");
+                Log("Image request took " + clock.Elapsed.TotalSeconds.ToString("0.0") + " s." + CreditsLeftNote(settings));
                 return SaveAndReload(playerId, png, progress, profile.Age);
             }
             catch (Exception error) when (Expected(error) || error is MissingApiKeyException)
@@ -417,6 +429,23 @@ namespace RegenerateFM.Desktop.FM24
             return new FaceResult { Ok = true, PlayerId = playerId, Refreshed = true };
         }
 
+        // " You have 12 credits left." after a face made with RegenerateFM credits; else "".
+        private static string CreditsLeftNote(ImageSettings settings) =>
+            settings.CreditsLeft == null ? "" : " " + Credits.LeftText(settings.CreditsLeft);
+
+        // The credits page, where a signed-in player buys more.
+        private static string BuyPage()
+        {
+            try
+            {
+                return RegenerateFM.Settings.Load(RegenerateFM.Settings.DefaultPath).CreditsServiceUrl + "/link";
+            }
+            catch (Exception error) when (error is ArgumentException || error is IOException || error is UnauthorizedAccessException)
+            {
+                return Credits.DefaultServiceUrl + "/link";
+            }
+        }
+
         // The settings for a request; MissingKey when there is no key at all.
         private ImageSettings RequestSettings()
         {
@@ -448,7 +477,12 @@ namespace RegenerateFM.Desktop.FM24
                 if (PreviewOnly)
                     return new FaceResult { Ok = true, Preview = true, PlayerId = playerId, Prompt = prompt };
                 Portraits.CheckGraphicsConfig(GraphicsDir);
-                return SaveAndReload(playerId, GeneratePng(RequestSettings(), prompt).GetAwaiter().GetResult(), null, profile.Age);
+                var settings = RequestSettings();
+                var png = GeneratePng(settings, prompt).GetAwaiter().GetResult();
+                string left = CreditsLeftNote(settings);
+                if (left.Length > 0)
+                    Log(left.Trim());
+                return SaveAndReload(playerId, png, null, profile.Age);
             }
             catch (Exception error) when (Expected(error) || error is MissingApiKeyException)
             {

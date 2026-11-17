@@ -23,6 +23,8 @@ namespace RegenerateFM.Desktop.FM24
         public Func<string, bool> OpenBrowser = Browser.Open;
         public Func<string, string> CheckKey = key =>
             ImageApi.CheckKey(RegenerateFM.Settings.Load(RegenerateFM.Settings.DefaultPath).ForKey(key), key).GetAwaiter().GetResult();
+        public Func<string, Credits.Account> FetchBalance = token =>
+            Credits.Balance(RegenerateFM.Settings.Load(RegenerateFM.Settings.DefaultPath).CreditsServiceUrl, token).GetAwaiter().GetResult();
 
         // FM24 for macOS asks in the game, like FM26.
         private bool AsksInGame => OperatingSystem.IsMacOS() && ReloadPort != 0;
@@ -33,11 +35,43 @@ namespace RegenerateFM.Desktop.FM24
 
         private string CreditsText => Credits.BuyText + " " + Text.T("Choose Buy credits / Sign in.");
 
-        // The key prompt's first line once the saved key or sign-in was refused.
-        private string RejectedText() =>
-            Credits.IsToken(SavedKey())
-                ? Text.T("Your RegenerateFM credits sign-in has ended or its credits have run out. Choose Buy credits / Sign in.")
+        // The key prompt's first line once the saved key or sign-in was refused
+        // (401), or the credits have run out (402).
+        private string RejectedText()
+        {
+            if (CreditsRanOut is OutOfCreditsException ranOut)
+                return ranOut.RanOutText + " " + Text.T("Choose Buy credits / Sign in to buy more.");
+            return Credits.IsToken(SavedKey())
+                ? Text.T("Your RegenerateFM credits sign-in has ended. Choose Buy credits / Sign in to sign in again.")
                 : Text.T("OpenAI didn't accept the saved key. Paste a new one.");
+        }
+
+        // After a face found the credits had run out: whether they still have,
+        // so the key prompt offers Buy credits. Credits bought since then mean
+        // no prompt; so does a balance that can't be read (the face's own
+        // request then says what's wrong). A sign-in that has ended is asked
+        // for again.
+        private bool StillOutOfCredits()
+        {
+            if (CreditsRanOut == null)
+                return false;
+            string token = SavedKey();
+            try
+            {
+                if (Credits.IsToken(token) && FetchBalance(token).Credits <= 0)
+                    return true;
+            }
+            catch (ApiKeyRejectedException)
+            {
+                KeyRejected = true;
+            }
+            catch (Exception error) when (error is InvalidOperationException || error is ArgumentException || error is IOException)
+            {
+                Log("Couldn't read the RegenerateFM credits balance (" + error.Message + ").");
+            }
+            CreditsRanOut = null;
+            return false;
+        }
 
         // A message in FM24's own dialog, or the log if FM24 can't show it.
         private void Tell(string text)
@@ -110,6 +144,7 @@ namespace RegenerateFM.Desktop.FM24
                 return Text.T("Could not save the key: {0}", error.Message);
             }
             KeyRejected = false;
+            CreditsRanOut = null;
             Log("OpenAI key checked and saved in " + KeyStore.Folder + ".");
             return null;
         }
@@ -161,6 +196,7 @@ namespace RegenerateFM.Desktop.FM24
                 return Text.T("Could not save the sign-in: {0}", error.Message);
             }
             KeyRejected = false;
+            CreditsRanOut = null;
             tell(answer.Credits == 1 ? Text.T("Signed in to RegenerateFM credits as {0}, with 1 credit.", answer.Email)
                  : answer.Credits > 0 ? Text.T("Signed in to RegenerateFM credits as {0}, with {1} credits.", answer.Email, answer.Credits)
                  : Text.T("Signed in to RegenerateFM credits as {0}, with {1} credits. Buy credits in the browser page, then choose the face command again.",
@@ -176,7 +212,7 @@ namespace RegenerateFM.Desktop.FM24
         {
             lock (_keyLock)
             {
-                if (SavedKey() != null && !KeyRejected)
+                if (SavedKey() != null && !StillOutOfCredits() && !KeyRejected)
                     return true;
                 if (tellFm24 && ReloadPort != 0)
                 {
@@ -190,7 +226,7 @@ namespace RegenerateFM.Desktop.FM24
                     }
                 }
                 bool unavailable = false;
-                bool saved = AskUntilSaved(KeyRejected ? RejectedText() : null,
+                bool saved = AskUntilSaved(KeyRejected || CreditsRanOut != null ? RejectedText() : null,
                     Text.T("Paste it (it starts with sk-) with Ctrl+V or type it, then choose Save key."),
                     Text.T("The key or sign-in is saved encrypted for your Windows user in {0}. Delete that folder to forget it.", KeyStore.Folder),
                     text =>
@@ -245,7 +281,7 @@ namespace RegenerateFM.Desktop.FM24
             string problem = null;
             if (SavedKey() != null)
             {
-                if (!KeyRejected)
+                if (!StillOutOfCredits() && !KeyRejected)
                     return true;
                 problem = RejectedText();
             }

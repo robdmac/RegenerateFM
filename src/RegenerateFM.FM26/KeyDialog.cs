@@ -161,10 +161,14 @@ namespace RegenerateFM.FM26
             _updateNotice = Directed(notice);
         }
 
-        private void ShowKeyDialog(string problem, Action next, bool signedIn = false)
+        // signedIn: the game is signed in to RegenerateFM credits, so the dialog
+        // shows the balance and what a face costs, and Buy credits opens the
+        // credits page. forBatch: opened from a batch's confirmation.
+        private void ShowKeyDialog(string problem, Action next, bool signedIn = false, bool forBatch = false)
         {
             CloseKeyDialog();
             _keyDialogSignedIn = signedIn;
+            _keyDialogForBatch = forBatch;
             var root = CurrentRoot();
             if (root == null)
                 return;
@@ -191,9 +195,17 @@ namespace RegenerateFM.FM26
             text(Text.T("RegenerateFM: paying for faces"), 18);
             if (problem != null)
                 text(problem, 14).style.color = new Color(1f, 0.82f, 0.45f, 1f);
-            text(Credits.BuyText, 14);
+            if (signedIn)
+            {
+                // Filled in when the balance arrives (PollKeyBalance).
+                _keyBalanceLabel = text(Text.T("Checking your RegenerateFM credits…"), 14);
+                text(Credits.PriceText, 14);
+                StartKeyBalance();
+            }
+            else
+                text(Credits.BuyText, 14);
             var buy = new Button((Il2CppSystem.Action)(System.Action)(() => BuyCredits()))
-            { text = Text.T("Buy credits / Sign in"), focusable = false };
+            { text = signedIn ? Text.T("Buy credits") : Text.T("Buy credits / Sign in"), focusable = false };
             buy.style.height = 34;
             buy.style.marginBottom = 14;
             buy.style.color = Color.white;
@@ -439,8 +451,11 @@ namespace RegenerateFM.FM26
         {
             string key = null;
             try { key = KeyStore.Load(KeyStore.DefaultPath); } catch (Exception) { }
+            // Someone who has never bought is told what the free faces were and what a pack costs.
             if (result.OutOfCredits)
-                ShowKeyDialog(Text.T("You've used all your RegenerateFM credits. Buy more to carry on."), null, signedIn: Credits.IsToken(key));
+                ShowKeyDialog(result.FreeFaces > 0 ? Credits.FreeUsedText(result.FreeFaces)
+                                                   : Text.T("You've used all your RegenerateFM credits. Buy more to carry on."),
+                              null, signedIn: Credits.IsToken(key));
             else if (result.KeyRejected)
                 ShowKeyDialog(Credits.IsToken(key)
                     ? Text.T("Your RegenerateFM sign-in isn't valid any more. Sign in again.")
@@ -467,12 +482,60 @@ namespace RegenerateFM.FM26
             if (_keyDialogSignedIn)
             {
                 Application.OpenURL(service + "/link");
-                _keyStatus.text = Text.T("The credits page is open in your browser. Your new credits work as soon as you've paid.");
+                // Nothing here notices the payment, so the player starts the face (or batch) again.
+                _keyStatus.text = _keyDialogForBatch
+                    ? Text.T("The credits page is open in your browser. Choose a pack, then choose Generate faces… again: your new credits work as soon as you've paid.")
+                    : Text.T("The credits page is open in your browser. Choose a pack, then choose the face again: your new credits work as soon as you've paid.");
                 return;
             }
             _keyStatus.text = Text.T("Opening your browser…");
             _creditsService = service;
             _creditsStart = Credits.Start(service);
+        }
+
+        // The signed-in key dialog's balance, fetched off the main thread and
+        // shown by PollKeyBalance; the line is hidden if it can't be had.
+        private void StartKeyBalance()
+        {
+            string key = null;
+            try { key = KeyStore.Load(KeyStore.DefaultPath); } catch (Exception) { }
+            string service;
+            try
+            {
+                service = CreditsServiceUrl();
+            }
+            catch (ArgumentException)
+            {
+                service = null;
+            }
+            if (!Credits.IsToken(key) || service == null)
+            {
+                _keyBalanceLabel.style.display = DisplayStyle.None;
+                return;
+            }
+            _keyBalance = Task.Run(() => Credits.Balance(service, key));
+        }
+
+        private void PollKeyBalance()
+        {
+            var balance = _keyBalance;
+            if (balance == null || !balance.IsCompleted)
+                return;
+            _keyBalance = null;
+            var label = _keyBalanceLabel;
+            if (label == null || label.panel == null)
+                return;
+            try
+            {
+                var account = balance.GetAwaiter().GetResult();
+                label.text = (string.IsNullOrEmpty(account.Email) ? "" : Text.T("Signed in to RegenerateFM credits as {0}.", account.Email) + " ") +
+                             Credits.LeftText(account);
+            }
+            catch (Exception error)
+            {
+                Log.LogWarning("Could not read the RegenerateFM credits balance: " + error.Message);
+                label.style.display = DisplayStyle.None;
+            }
         }
 
         private void PollCreditsSignIn()
@@ -576,6 +639,8 @@ namespace RegenerateFM.FM26
             _keyDialog = null;
             _keyField = null;
             _keyStatus = null;
+            _keyBalance = null;
+            _keyBalanceLabel = null;
             _afterKeySaved = null;
             PollKeyTyping();
         }

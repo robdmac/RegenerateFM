@@ -93,6 +93,19 @@ namespace RegenerateFM.FM26
         // The key dialog is open for a game already signed in to RegenerateFM credits
         // (out of credits), so Buy credits opens the credits page.
         private bool _keyDialogSignedIn;
+        // Whether the key dialog was opened from a batch's confirmation, whose
+        // Generate faces… the player chooses again after buying.
+        private bool _keyDialogForBatch;
+        // The signed-in key dialog's balance, being fetched, and its line.
+        private Task<Credits.Account> _keyBalance;
+        private Label _keyBalanceLabel;
+        // A batch confirmation's balance, being fetched (SquadOffer.Balance once known).
+        private Task<Credits.Account> _squadBalance;
+        private SquadOffer _squadBalanceOffer;
+        private bool _squadBalanceInclude;
+        // The credits left after a face, for its profile once the face has
+        // loaded (DueUtc is set then: PollCreditsNotice).
+        private (long PersonId, string Text, System.DateTime? DueUtc)? _creditsNotice;
         private static readonly TimeSpan GenerationTimeout = TimeSpan.FromMinutes(5);
         private static readonly TimeSpan GraphicsTimeout = TimeSpan.FromSeconds(30);
         // How long the squad batch waits for an opened profile to show all it reads

@@ -1054,7 +1054,11 @@ namespace RegenerateFM.FM26
             PollGeneration();
             PollKeyCheck();
             PollCreditsSignIn();
+            PollKeyBalance();
             PollKeyTyping();
+            PollCreditsNotice();
+            try { PollSquadBalance(); }
+            catch (Exception error) { Log.LogWarning("Credits check failed: " + error); CancelSquadScan(); }
             try { ReadMatchEthnicities(); }
             catch (Exception error) { Log.LogWarning("Match appearance scan failed: " + error.Message); }
             try { PollScoutingRetry(); }

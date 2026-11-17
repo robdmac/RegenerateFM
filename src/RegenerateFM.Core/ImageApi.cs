@@ -23,6 +23,11 @@ namespace RegenerateFM
         public string Model = "gpt-image-2.5-sunburst";
         public string Quality = "medium";
         public string BaseUrl = "https://api.openai.com/v1";
+        // Set by each face made with a RegenerateFM credits token with these
+        // settings: the credits its answer says are left, or null when it
+        // doesn't say. The plugin and the companion read it once the request
+        // has finished, to tell the player.
+        public Credits.Account CreditsLeft;
     }
 
     // OpenAI's image API (or the RegenerateFM credits service, which speaks it).
@@ -153,11 +158,20 @@ namespace RegenerateFM
                     string body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                     if (!response.IsSuccessStatusCode)
                     {
-                        string detail = "";
+                        string detail = "", code = null;
+                        int freeFaces = 0;
                         try
                         {
                             using (var json = JsonDocument.Parse(body))
-                                detail = json.RootElement.GetProperty("error").GetProperty("message").GetString() ?? "";
+                            {
+                                var error = json.RootElement.GetProperty("error");
+                                detail = error.GetProperty("message").GetString() ?? "";
+                                if (error.TryGetProperty("code", out var codeValue) && codeValue.ValueKind == JsonValueKind.String)
+                                    code = codeValue.GetString();
+                                if (error.TryGetProperty("free_credits", out var free) && free.ValueKind == JsonValueKind.Number &&
+                                    free.TryGetInt32(out int count))
+                                    freeFaces = count;
+                            }
                         }
                         catch (Exception) { }
                         if (detail.Length == 0)
@@ -169,7 +183,7 @@ namespace RegenerateFM
                         if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
                             throw new ApiKeyRejectedException(message);
                         if ((int)response.StatusCode == 402)
-                            throw new OutOfCreditsException(message);
+                            throw new OutOfCreditsException(message, code == "free_credits_used" ? freeFaces : 0);
                         throw new InvalidOperationException(message);
                     }
                     string image;
@@ -195,7 +209,9 @@ namespace RegenerateFM
                         throw new InvalidOperationException("Image API response did not contain an image.");
                     if (!Png.IsPng(png))
                         throw new InvalidOperationException("Image API returned data that is not a PNG.");
-                    return FitPortrait(png);
+                    var fitted = FitPortrait(png);
+                    settings.CreditsLeft = Credits.IsToken(key) ? Credits.FromHeaders(response) : null;
+                    return fitted;
                 }
             }
         }
@@ -233,6 +249,19 @@ namespace RegenerateFM
     // RegenerateFM credits ran out (HTTP 402 from the credits service).
     public sealed class OutOfCreditsException : InvalidOperationException
     {
-        public OutOfCreditsException(string message) : base(message) { }
+        // freeFaces: for someone who has never bought (free_credits_used), the
+        // free faces their account was given; 0 for a buyer.
+        public OutOfCreditsException(string message, int freeFaces = 0) : base(message)
+        {
+            FreeFaces = Math.Max(0, freeFaces);
+        }
+
+        // The free faces used up, when the credits that ran out were free ones; else 0.
+        public int FreeFaces { get; }
+        public bool Free => FreeFaces > 0;
+
+        // For the player: the free faces used and what a pack costs, or that
+        // the credits are all used.
+        public string RanOutText => Free ? Credits.FreeUsedText(FreeFaces) : Text.T("You've used all your RegenerateFM credits.");
     }
 }

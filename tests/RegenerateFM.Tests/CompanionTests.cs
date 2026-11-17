@@ -305,6 +305,71 @@ namespace RegenerateFM.Tests
         }
 
         [Fact]
+        public void CreditsThatRunOutAreBoughtNotReplacedWithANewKey()
+        {
+            _companion.PreviewOnly = false;
+            _companion.ReloadPort = 0;
+            _profile = new ProfileSnapshot
+            {
+                Type = "staff", Name = "Greg Vanney", Age = 49, Nationality = "United States", JobTitle = "Manager", Club = "LA Galaxy",
+            };
+            KeyStore.Save(KeyStore.DefaultPath, "rfm_" + new string('t', 43));
+            _companion.GeneratePng = (_, _) => throw new OutOfCreditsException(
+                "You've used your 3 free faces. Packs start at 75 faces for £2. Buy more at https://credits.regenerate.fm/link", 3);
+            var free = _companion.Generate(null, "generate");
+            Assert.Equal("You've used your 3 free faces. Packs start at 75 faces for £2. " +
+                         "Buy more at https://credits.regenerate.fm/link, then choose the face command again.", free.Error);
+            // A terminal companion has no key prompt to come back to.
+            Assert.Null(_companion.CreditsRanOut);
+            _companion.GeneratePng = (_, _) => throw new OutOfCreditsException(
+                "You have no RegenerateFM credits left. Buy more at https://credits.regenerate.fm/link");
+            Assert.Equal("You've used all your RegenerateFM credits. " +
+                         "Buy more at https://credits.regenerate.fm/link, then choose the face command again.",
+                         _companion.Generate(null, "generate").Error);
+            Assert.False(_companion.KeyRejected);
+            if (OperatingSystem.IsWindows())
+            {
+                // Started by FM24, which asks in the key window: the next face command offers Buy credits.
+                _companion.StartedByFm24 = 1;
+                _companion.AskInWindow = _ => throw new InvalidOperationException("no key window in tests");
+                Assert.DoesNotContain("new key", _companion.Generate(null, "generate").Error);
+                Assert.NotNull(_companion.CreditsRanOut);
+            }
+        }
+
+        [Fact]
+        public void TheKeyPromptOffersBuyCreditsOnlyWhileTheyHaveRunOut()
+        {
+            _companion.ReloadPort = 0;
+            KeyStore.Save(KeyStore.DefaultPath, "rfm_" + new string('t', 43));
+            var shown = new List<string>();
+            _companion.AskInWindow = text => { shown.Add(text); return null; };
+            _companion.CreditsRanOut = new OutOfCreditsException("x", 3);
+            _companion.FetchBalance = _ => new Credits.Account { Credits = 0, Bought = false, Free = 0 };
+            Assert.False(_companion.AskKeyInWindow());
+            Assert.StartsWith("You've used your 3 free faces. Packs start at 75 faces for £2. Choose Buy credits / Sign in to buy more.", shown[0]);
+            Assert.DoesNotContain("new key", shown[0]);
+            _companion.CreditsRanOut = new OutOfCreditsException("x");
+            Assert.False(_companion.AskKeyInWindow());
+            Assert.StartsWith("You've used all your RegenerateFM credits. Choose Buy credits / Sign in to buy more.", shown[1]);
+
+            // Credits bought since, or a balance that can't be read: the face command goes ahead.
+            _companion.FetchBalance = _ => new Credits.Account { Credits = 75 };
+            Assert.True(_companion.AskKeyInWindow());
+            Assert.Null(_companion.CreditsRanOut);
+            _companion.CreditsRanOut = new OutOfCreditsException("x");
+            _companion.FetchBalance = _ => throw new InvalidOperationException("Couldn't reach RegenerateFM credits.");
+            Assert.True(_companion.AskKeyInWindow());
+            Assert.Equal(2, shown.Count);
+
+            // A sign-in that has ended is its own message.
+            _companion.CreditsRanOut = new OutOfCreditsException("x");
+            _companion.FetchBalance = _ => throw new ApiKeyRejectedException(ImageApi.SignedOut);
+            Assert.False(_companion.AskKeyInWindow());
+            Assert.StartsWith("Your RegenerateFM credits sign-in has ended. Choose Buy credits / Sign in to sign in again.", shown[2]);
+        }
+
+        [Fact]
         public void BuyCreditsSignsInAndSavesTheTokenWhereTheKeyGoes()
         {
             using var credits = new StandIn();
