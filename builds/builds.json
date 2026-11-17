@@ -1,0 +1,103 @@
+{
+ "issued": "2026-11-17T12:16:01Z",
+ "builds": [
+  {
+   "name": "FM26 26.3.2 (Steam)",
+   "os": "macos",
+   "game_assembly": "7886b66692c18504de32ad3973fe4c9afc3edfe12a6941b44e83627cb9563e26",
+   "game_plugin": "de6b048ab1a95fd4ae683a7d751a33645183a9a570fa1c2fba32fd308ca87979",
+   "user_data": "Football Manager 26"
+  },
+  {
+   "name": "FM27 27.0.0 (Steam)",
+   "os": "macos",
+   "game_assembly": "266d02a57471b44f381b7b647828c58fd394e8222c3083613324a93a9db09dd7",
+   "game_plugin": "2e915b0f264920ae1205b111f45d50e354ac0e7d0b6e136b99189c24b265f431",
+   "user_data": "Football Manager 27"
+  },
+  {
+   "name": "FM27 27.0.0 (Steam build 26340721)",
+   "os": "macos",
+   "game_assembly": "d26f882851f26248bb56ca3575fc7759d74aebc21fb9722f44cab29b63c1e654",
+   "game_plugin": "774cacde63567fd3901c47719e7a6ed94cc3a0a62e9b94989dcac6b4890ec0e1",
+   "user_data": "Football Manager 27"
+  },
+  {
+   "name": "FM26 26.3.2 (Epic)",
+   "os": "macos",
+   "game_assembly": "a34a3cd631653867136eb8c7728242d73a64735f77dcc24b3bcf1f541d23d2e2",
+   "game_plugin": "e98ab747b32746c45e7bc1e2fc186eea9ace818c52b2519a5266539ee4814eed",
+   "user_data": "Football Manager 26"
+  },
+  {
+   "name": "FM26 Demo 26.3.2 (Steam)",
+   "os": "macos",
+   "game_assembly": "b3f86da82f7ef5b24d5a0cae4d4cccd4f904d0e8b971d3e7b92c78500a14eda5",
+   "game_plugin": "ef6fb6078a5dfceaa325799caf00bb635f3a7dbd8cc4aa3021aa7beeccf8cc4d",
+   "user_data": "Football Manager 26 Demo"
+  },
+  {
+   "name": "FM26 26.3.2 (Steam)",
+   "os": "windows",
+   "game_assembly": "7ce3eb474dc6093df633f979e869e55b2ec7953fde2e732392a694d379ff7a0c",
+   "game_plugin": "eb6c86fab56e051fe41482c7b93d8cb0af716a1cc2c6197ce1babbff68372bb8",
+   "user_data": "Football Manager 26"
+  },
+  {
+   "name": "FM27 27.0.0 (Steam)",
+   "os": "windows",
+   "game_assembly": "820d6618acafac7dffc1ef3b489582eddb84b0343d4f34d55fff9fb70881e00a",
+   "game_plugin": "bc940e472418fc5c214208d7cf30fecf600f689b6f9d71c11ba19a2df0fe057f",
+   "user_data": "Football Manager 27"
+  },
+  {
+   "name": "FM27 27.0.0 (Epic Launch Preview)",
+   "os": "windows",
+   "game_assembly": "820d6618acafac7dffc1ef3b489582eddb84b0343d4f34d55fff9fb70881e00a",
+   "game_plugin": "55725511227555e3950cd2a58dd86d9f70969cf6d7566140fa1a4af560485ba8",
+   "user_data": "Football Manager 27"
+  },
+  {
+   "name": "FM27 27.0.0+2493426 (Epic)",
+   "os": "windows",
+   "game_assembly": "4972a1a9ee485e9283bef073145282719e1730a23f104156bd5d0d64c089ea26",
+   "game_plugin": "36e6027b63605a227ce583452bf90b313adc48e819f74bbeb2bae1ed52c5a2ac",
+   "user_data": "Football Manager 27"
+  },
+  {
+   "name": "FM27 27.0.0 (Steam build 26340721)",
+   "os": "windows",
+   "game_assembly": "3f20a3829a1194c200d82bdc95b717cdeaf1b7a348eecbe6520bce7af9c0c588",
+   "game_plugin": "252ff8fb5b7a4a5a5464db6ba632e309eef9b6e65ffa992ae20575a189e66c6a",
+   "user_data": "Football Manager 27"
+  },
+  {
+   "name": "FM26 26.3.2 (Epic)",
+   "os": "windows",
+   "game_assembly": "1f2dbcce6deb7ca40eb1309d10c818e1217fe9e43c4c674d0fea90f1069f5982",
+   "game_plugin": "d86f511cec5a8de871ceedebf3eab05cec057bf2f82ee9ee0ef2e923e1a60944",
+   "user_data": "Football Manager 26"
+  },
+  {
+   "name": "FM26 Demo 26.3.2 (Steam)",
+   "os": "windows",
+   "game_assembly": "edcd74617b881817da1895f4272add8fcfcab9d15a4ab64d858d408f59c730f0",
+   "game_plugin": "a4181cf61a265058d0b447fd0d679d5ac282b08a7962f0f0d67dbd27bdf9aa26",
+   "user_data": "Football Manager 26 Demo"
+  },
+  {
+   "name": "FM26 Demo 26.3.2 (Epic)",
+   "os": "windows",
+   "game_assembly": "edcd74617b881817da1895f4272add8fcfcab9d15a4ab64d858d408f59c730f0",
+   "game_plugin": "26f292cf4b0af33a41f075d086537f3aadb3c14cbcee0e5206f2270e83809cad",
+   "user_data": "Football Manager 26 Demo"
+  },
+  {
+   "name": "FM27 27.0.1 (Steam build 26577676)",
+   "os": "windows",
+   "game_assembly": "1152df80de0ae35bff4945cb9196c58e5ec5b53de2138a006c0597522b558303",
+   "game_plugin": "8c6971ce0b1c8afe6529ea3f46205a5175aea988a97d7421a980da42e23fe340",
+   "user_data": "Football Manager 27"
+  }
+ ]
+}

@@ -29,7 +29,7 @@ namespace RegenerateFM
         // The release key's public half (SubjectPublicKeyInfo, ECDSA P-256).
         // tools/make_release.py signs with the private half, which never
         // leaves the computer releases are made on.
-        private const string ReleaseKey =
+        internal const string ReleaseKey =
             "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEO5XKQemui+GQiGmpMzCYs478xBFdnkmyyAa9LZ0EtGyom80z+RQoz6ud86H9l9LnJtpTwvrBI+HM87pNNoLSvg==";
 
         // The old copy of a replaced file, deleted at the next start (Windows
@@ -93,21 +93,10 @@ namespace RegenerateFM
 
         public static Manifest Verify(byte[] signedJson, string publicKey)
         {
-            byte[] payload, signature;
-            try
-            {
-                using var document = JsonDocument.Parse(signedJson);
-                payload = Convert.FromBase64String(document.RootElement.GetProperty("payload").GetString() ?? "");
-                signature = Convert.FromBase64String(document.RootElement.GetProperty("signature").GetString() ?? "");
-            }
-            catch (Exception error) when (error is JsonException || error is FormatException || error is KeyNotFoundException ||
-                                          error is InvalidOperationException)
-            {
+            byte[] payload = Signed.Payload(signedJson, publicKey, out var problem);
+            if (problem == Signed.Problem.Unreadable)
                 throw new UpdateException("The update's manifest can't be read.");
-            }
-            // Checked in plain C# (P256), not by .NET's ECDsa: Wine, which runs FM
-            // under Proton on Linux, doesn't implement ECDSA.
-            if (!P256.Verify(Convert.FromBase64String(publicKey), payload, signature))
+            if (problem == Signed.Problem.NotSigned)
                 throw new UpdateException("The update isn't signed with RegenerateFM's release key.");
             return ParseManifest(payload);
         }

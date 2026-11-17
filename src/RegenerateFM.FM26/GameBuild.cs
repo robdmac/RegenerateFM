@@ -23,8 +23,10 @@ using UnityEngine.UIElements;
 
 namespace RegenerateFM.FM26
 {
-    // The builds RegenerateFM was checked against, by their binaries' hashes.
-    // Any other build of FM26 or later runs too, named by Unity's app.info
+    // The builds RegenerateFM was checked against, by their binaries' hashes:
+    // those below, and those in the signed list it downloads (CheckedBuilds),
+    // so a game update can be marked as checked without a new release. Any
+    // other build of FM26 or later runs too, named by Unity's app.info
     // (GameInfo): the patches it needs are applied one by one (Plugin.Load),
     // so a game update that changes what RegenerateFM uses turns off only
     // that part, and the log says which.
@@ -32,8 +34,8 @@ namespace RegenerateFM.FM26
     {
         // FM27 or later rather than FM26, whose few changed APIs Profiles.cs calls by name.
         internal static bool Fm27;
-        // A build in the list below, rather than one named by app.info.
-        internal static bool TestedBuild;
+        // A build in the list below or the downloaded one, rather than one named by app.info.
+        internal static volatile bool TestedBuild;
 
         // Sets Fm27, the game's name in RegenerateFM's text and its user data
         // folder; false for anything that isn't FM26 or later.
@@ -44,6 +46,15 @@ namespace RegenerateFM.FM26
                 if (TestedGameBuild())
                 {
                     TestedBuild = true;
+                    RefreshCheckedBuilds();
+                    return true;
+                }
+                if (ListedBuild(CheckedBuilds.Cached(CheckedBuilds.CachePath)) is CheckedBuilds.Build listed)
+                {
+                    UseGame(listed.Game);
+                    TestedBuild = true;
+                    Log.LogInfo("RegenerateFM has been checked on this build: " + listed.Name);
+                    RefreshCheckedBuilds();
                     return true;
                 }
                 string appInfo = OperatingSystem.IsMacOS()
@@ -55,11 +66,10 @@ namespace RegenerateFM.FM26
                     Log.LogWarning("RegenerateFM couldn't tell which Football Manager this is (" + appInfo + "); buttons disabled");
                     return false;
                 }
-                Fm27 = game.Number >= 27;
-                Text.GameName = game.ShortName;
-                UserDataName = game.UserDataName;
+                UseGame(game);
                 Log.LogWarning("RegenerateFM hasn't been checked on this " + game.UserDataName + " build yet; it runs, " +
                                "and turns off anything a game update changed");
+                RefreshCheckedBuilds();
                 return true;
             }
             catch (Exception error)
@@ -69,13 +79,64 @@ namespace RegenerateFM.FM26
             }
         }
 
-        private bool TestedGameBuild()
+        private static void UseGame(RegenerateFM.GameInfo game)
+        {
+            Fm27 = game.Number >= 27;
+            Text.GameName = game.ShortName;
+            UserDataName = game.UserDataName;
+        }
+
+        // The game's two binaries the builds are known by, for this system.
+        private static (string Os, string GameAssembly, string GamePlugin) GameBinaries()
         {
             if (OperatingSystem.IsMacOS())
             {
                 string contents = Path.Combine(Paths.GameRootPath, "fm.app", "Contents");
-                string macAssembly = Path.Combine(contents, "Frameworks", "GameAssembly.dylib");
-                string macPlugin = Path.Combine(contents, "PlugIns", "game_plugin.bundle", "Contents", "MacOS", "game_plugin");
+                return (CheckedBuilds.MacOS, Path.Combine(contents, "Frameworks", "GameAssembly.dylib"),
+                        Path.Combine(contents, "PlugIns", "game_plugin.bundle", "Contents", "MacOS", "game_plugin"));
+            }
+            return (CheckedBuilds.Windows, Path.Combine(Paths.GameRootPath, "GameAssembly.dll"),
+                    Path.Combine(Paths.GameRootPath, "fm_Data", "Plugins", "x86_64", "game_plugin.dll"));
+        }
+
+        // This build in a downloaded list, or null.
+        private static CheckedBuilds.Build ListedBuild(CheckedBuilds.BuildList list)
+        {
+            if (list == null || list.Builds.Count == 0)
+                return null;
+            var (os, gameAssembly, gamePlugin) = GameBinaries();
+            string assemblyHash = Hash(gameAssembly);
+            string pluginHash = assemblyHash == null ? null : Hash(gamePlugin);
+            return pluginHash == null ? null : list.Find(os, assemblyHash, pluginHash);
+        }
+
+        // Fetches the latest list in the background, for this start (an
+        // unchecked build it now covers is marked as checked) and the next.
+        private void RefreshCheckedBuilds()
+        {
+            Task.Run(async () =>
+            {
+                try
+                {
+                    var list = await CheckedBuilds.Refresh(CheckedBuilds.CachePath).ConfigureAwait(false);
+                    if (!TestedBuild && ListedBuild(list) is CheckedBuilds.Build listed)
+                    {
+                        TestedBuild = true;
+                        Log.LogInfo("RegenerateFM's list of checked builds now includes this one: " + listed.Name);
+                    }
+                }
+                catch (Exception error)
+                {
+                    Log.LogWarning("Could not check RegenerateFM's list of checked builds: " + error.Message);
+                }
+            });
+        }
+
+        private bool TestedGameBuild()
+        {
+            if (OperatingSystem.IsMacOS())
+            {
+                var (_, macAssembly, macPlugin) = GameBinaries();
                 if (HasHash(macAssembly, "7886b66692c18504de32ad3973fe4c9afc3edfe12a6941b44e83627cb9563e26")
                     && HasHash(macPlugin, "de6b048ab1a95fd4ae683a7d751a33645183a9a570fa1c2fba32fd308ca87979"))
                     return true;
@@ -105,8 +166,7 @@ namespace RegenerateFM.FM26
                 }
                 return false;
             }
-            string gameAssembly = Path.Combine(Paths.GameRootPath, "GameAssembly.dll");
-            string gamePlugin = Path.Combine(Paths.GameRootPath, "fm_Data", "Plugins", "x86_64", "game_plugin.dll");
+            var (_, gameAssembly, gamePlugin) = GameBinaries();
             if (HasHash(gameAssembly, "7ce3eb474dc6093df633f979e869e55b2ec7953fde2e732392a694d379ff7a0c")
                 && HasHash(gamePlugin, "eb6c86fab56e051fe41482c7b93d8cb0af716a1cc2c6197ce1babbff68372bb8"))
                 return true;
@@ -149,14 +209,27 @@ namespace RegenerateFM.FM26
             return false;
         }
 
-        private static bool HasHash(string path, string expected)
+        private static bool HasHash(string path, string expected) =>
+            string.Equals(Hash(path), expected, StringComparison.OrdinalIgnoreCase);
+
+        // Each binary is hashed once (game_plugin.dll is 400 MB), whichever
+        // check asks first.
+        private static readonly Dictionary<string, string> Hashes = new Dictionary<string, string>();
+
+        private static string Hash(string path)
         {
-            if (!File.Exists(path))
-                return false;
-            using (var stream = File.OpenRead(path))
-            using (var sha = SHA256.Create())
-                return string.Equals(Convert.ToHexString(sha.ComputeHash(stream)), expected,
-                                     StringComparison.OrdinalIgnoreCase);
+            lock (Hashes)
+            {
+                if (Hashes.TryGetValue(path, out string known))
+                    return known;
+                string hash = null;
+                if (File.Exists(path))
+                    using (var stream = File.OpenRead(path))
+                    using (var sha = SHA256.Create())
+                        hash = Convert.ToHexString(sha.ComputeHash(stream)).ToLowerInvariant();
+                Hashes[path] = hash;
+                return hash;
+            }
         }
     }
 }
