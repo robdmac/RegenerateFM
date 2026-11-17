@@ -1,5 +1,5 @@
 {
- "issued": "2026-11-17T12:16:01Z",
+ "issued": "2026-11-17T14:43:55Z",
  "builds": [
   {
    "name": "FM26 26.3.2 (Steam)",
@@ -97,6 +97,13 @@
    "os": "windows",
    "game_assembly": "1152df80de0ae35bff4945cb9196c58e5ec5b53de2138a006c0597522b558303",
    "game_plugin": "8c6971ce0b1c8afe6529ea3f46205a5175aea988a97d7421a980da42e23fe340",
+   "user_data": "Football Manager 27"
+  },
+  {
+   "name": "FM27 27.1.0 (Steam build 26620374)",
+   "os": "windows",
+   "game_assembly": "3f4a26c4869d6429d2e73c276adc64bdfaf6f3c86ce44fe0de93d14683a5d7e9",
+   "game_plugin": "d12202dd01c3911d4c4e55e778f37b2251ffb10f9cf8cecc3b9ec08ece622c6b",
    "user_data": "Football Manager 27"
   }
  ]
