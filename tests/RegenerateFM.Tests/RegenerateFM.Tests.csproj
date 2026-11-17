@@ -20,5 +20,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="Fixtures/**" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The signed list of checked game builds (CheckedBuildsTests). -->
+    <None Include="../../builds/*.json" LinkBase="builds" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
