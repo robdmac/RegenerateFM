@@ -109,9 +109,9 @@ def sign(listing: dict, key: Path) -> None:
         signature = subprocess.run([make_release.openssl(), "dgst", "-sha256", "-sign", str(key), str(payload_file)],
                                    check=True, capture_output=True).stdout
     BUILDS.write_bytes(payload)
-    SIGNED.write_text(json.dumps({"payload": base64.b64encode(payload).decode("ascii"),
-                                  "signature": base64.b64encode(signature).decode("ascii")}, indent=1) + "\n",
-                      encoding="utf-8")
+    # Bytes, so Windows' text mode doesn't give it CRLF line endings.
+    SIGNED.write_bytes((json.dumps({"payload": base64.b64encode(payload).decode("ascii"),
+                                    "signature": base64.b64encode(signature).decode("ascii")}, indent=1) + "\n").encode("utf-8"))
     print(f"Signed {len(listing['builds'])} builds, issued {listing['issued']}: merge builds/ to main to publish them.")
 
 
