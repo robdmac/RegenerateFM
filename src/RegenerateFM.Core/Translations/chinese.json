@@ -337,5 +337,19 @@
  "You've used your {0} free faces. Packs start at 75 faces for £2.": "你已用完 {0} 张免费头像。点数包最低 75 张头像 £2。",
  "Your RegenerateFM credits sign-in has ended. Choose Buy credits / Sign in to sign in again.": "你的 RegenerateFM 点数登录已过期。请选择“购买点数 / 登录”重新登录。",
  "Your OpenAI account has run out of credit. Add credit in your OpenAI account's billing settings (platform.openai.com), or use RegenerateFM credits instead.": "你的 OpenAI 账户余额已用完。请在 OpenAI 账户的账单设置（platform.openai.com）中充值，或改用 RegenerateFM 点数。",
- "Your OpenAI account has run out of credit. Add credit in your OpenAI account's billing settings (platform.openai.com), then choose the face command again.": "你的 OpenAI 账户余额已用完。请在 OpenAI 账户的账单设置（platform.openai.com）中充值，然后再次选择头像命令。"
+ "Your OpenAI account has run out of credit. Add credit in your OpenAI account's billing settings (platform.openai.com), then choose the face command again.": "你的 OpenAI 账户余额已用完。请在 OpenAI 账户的账单设置（platform.openai.com）中充值，然后再次选择头像命令。",
+ "Update aged faces…": "更新过时头像…",
+ "Looking for faces made two or more years ago…": "正在查找两年或更早之前生成的头像…",
+ "A new season:": "新赛季：",
+ "{0} of {1} players has a face made two or more years ago, when they were younger.": "{1} 名球员中有 {0} 名的头像是在两年或更早之前生成的，当时他们更年轻。",
+ "{0} of {1} players have faces made two or more years ago, when they were younger.": "{1} 名球员中有 {0} 名的头像是在两年或更早之前生成的，当时他们更年轻。",
+ "None of the {0} players has a face made two or more years ago. No images have been requested.": "{0} 名球员中没有人的头像是在两年或更早之前生成的。尚未请求任何图像。",
+ "Update {0} face? Each face makes one billed API request.": "是否更新 {0} 张头像？每张头像会产生一次计费的 API 请求。",
+ "Update {0} faces? Each face makes one billed API request.": "是否更新 {0} 张头像？每张头像会产生一次计费的 API 请求。",
+ "Update {0} face": "更新 {0} 张头像",
+ "Update {0} faces": "更新 {0} 张头像",
+ "Opening the first player…": "正在打开第一位球员…",
+ "Updating {0} ({1}/{2})…": "正在更新 {0}（{1}/{2}）…",
+ "Finished: {0} face updated.": "完成：已更新 {0} 张头像。",
+ "Finished: {0} faces updated.": "完成：已更新 {0} 张头像。"
 }

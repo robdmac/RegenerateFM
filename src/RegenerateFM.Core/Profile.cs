@@ -24,6 +24,9 @@ namespace RegenerateFM
         public string Type = "player";
         public string Name;
         public int Age;
+        // The in-game year the profile was read in (FM's date), so a face made
+        // from it can tell when it is out of date (AgedFaces); null if not known.
+        public int? GameYear;
         public string Nationality;
         public string JobTitle;
         public string Position;

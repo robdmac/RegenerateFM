@@ -337,5 +337,19 @@
  "You've used your {0} free faces. Packs start at 75 faces for £2.": "Vous avez utilisé vos {0} visages gratuits. Les packs commencent à 75 visages pour £2.",
  "Your RegenerateFM credits sign-in has ended. Choose Buy credits / Sign in to sign in again.": "Votre connexion aux crédits RegenerateFM a pris fin. Choisissez « Acheter des crédits / Se connecter » pour vous reconnecter.",
  "Your OpenAI account has run out of credit. Add credit in your OpenAI account's billing settings (platform.openai.com), or use RegenerateFM credits instead.": "Votre compte OpenAI n'a plus de crédit. Ajoutez du crédit dans les paramètres de facturation de votre compte OpenAI (platform.openai.com), ou utilisez plutôt les crédits RegenerateFM.",
- "Your OpenAI account has run out of credit. Add credit in your OpenAI account's billing settings (platform.openai.com), then choose the face command again.": "Votre compte OpenAI n'a plus de crédit. Ajoutez du crédit dans les paramètres de facturation de votre compte OpenAI (platform.openai.com), puis choisissez à nouveau la commande de visage."
+ "Your OpenAI account has run out of credit. Add credit in your OpenAI account's billing settings (platform.openai.com), then choose the face command again.": "Votre compte OpenAI n'a plus de crédit. Ajoutez du crédit dans les paramètres de facturation de votre compte OpenAI (platform.openai.com), puis choisissez à nouveau la commande de visage.",
+ "Update aged faces…": "Mettre à jour les visages anciens…",
+ "Looking for faces made two or more years ago…": "Recherche des visages générés il y a deux ans ou plus…",
+ "A new season:": "Nouvelle saison :",
+ "{0} of {1} players has a face made two or more years ago, when they were younger.": "{0} joueur sur {1} a un visage généré il y a deux ans ou plus, quand il était plus jeune.",
+ "{0} of {1} players have faces made two or more years ago, when they were younger.": "{0} joueurs sur {1} ont un visage généré il y a deux ans ou plus, quand ils étaient plus jeunes.",
+ "None of the {0} players has a face made two or more years ago. No images have been requested.": "Aucun des {0} joueurs n'a de visage généré il y a deux ans ou plus. Aucune image n'a été demandée.",
+ "Update {0} face? Each face makes one billed API request.": "Mettre à jour {0} visage ? Chaque visage entraîne une requête API facturée.",
+ "Update {0} faces? Each face makes one billed API request.": "Mettre à jour {0} visages ? Chaque visage entraîne une requête API facturée.",
+ "Update {0} face": "Mettre à jour {0} visage",
+ "Update {0} faces": "Mettre à jour {0} visages",
+ "Opening the first player…": "Ouverture du premier joueur…",
+ "Updating {0} ({1}/{2})…": "Mise à jour de {0} ({1}/{2})…",
+ "Finished: {0} face updated.": "Terminé : {0} visage mis à jour.",
+ "Finished: {0} faces updated.": "Terminé : {0} visages mis à jour."
 }

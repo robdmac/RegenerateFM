@@ -337,5 +337,19 @@
   "You've used your {0} free faces. Packs start at 75 faces for £2.": "Du har använt dina {0} gratis ansikten. Paketen börjar på 75 ansikten för £2.",
   "Your RegenerateFM credits sign-in has ended. Choose Buy credits / Sign in to sign in again.": "Din RegenerateFM-kreditinloggning har upphört. Välj Köp krediter / Logga in för att logga in igen.",
   "Your OpenAI account has run out of credit. Add credit in your OpenAI account's billing settings (platform.openai.com), or use RegenerateFM credits instead.": "Det finns inget saldo kvar på ditt OpenAI-konto. Fyll på saldot i faktureringsinställningarna för ditt OpenAI-konto (platform.openai.com), eller använd RegenerateFM-krediter i stället.",
-  "Your OpenAI account has run out of credit. Add credit in your OpenAI account's billing settings (platform.openai.com), then choose the face command again.": "Det finns inget saldo kvar på ditt OpenAI-konto. Fyll på saldot i faktureringsinställningarna för ditt OpenAI-konto (platform.openai.com) och välj sedan ansiktskommandot igen."
+  "Your OpenAI account has run out of credit. Add credit in your OpenAI account's billing settings (platform.openai.com), then choose the face command again.": "Det finns inget saldo kvar på ditt OpenAI-konto. Fyll på saldot i faktureringsinställningarna för ditt OpenAI-konto (platform.openai.com) och välj sedan ansiktskommandot igen.",
+  "Update aged faces…": "Uppdatera föråldrade ansikten…",
+  "Looking for faces made two or more years ago…": "Letar efter ansikten som genererades för två eller fler år sedan…",
+  "A new season:": "Ny säsong:",
+  "{0} of {1} players has a face made two or more years ago, when they were younger.": "{0} av {1} spelare har ett ansikte som genererades för två eller fler år sedan, när han var yngre.",
+  "{0} of {1} players have faces made two or more years ago, when they were younger.": "{0} av {1} spelare har ansikten som genererades för två eller fler år sedan, när de var yngre.",
+  "None of the {0} players has a face made two or more years ago. No images have been requested.": "Ingen av de {0} spelarna har ett ansikte som genererades för två eller fler år sedan. Inga bilder har begärts.",
+  "Update {0} face? Each face makes one billed API request.": "Uppdatera {0} ansikte? Varje ansikte ger ett debiterat API-anrop.",
+  "Update {0} faces? Each face makes one billed API request.": "Uppdatera {0} ansikten? Varje ansikte ger ett debiterat API-anrop.",
+  "Update {0} face": "Uppdatera {0} ansikte",
+  "Update {0} faces": "Uppdatera {0} ansikten",
+  "Opening the first player…": "Öppnar den första spelaren…",
+  "Updating {0} ({1}/{2})…": "Uppdaterar {0} ({1}/{2})…",
+  "Finished: {0} face updated.": "Klart: {0} ansikte uppdaterat.",
+  "Finished: {0} faces updated.": "Klart: {0} ansikten uppdaterade."
 }

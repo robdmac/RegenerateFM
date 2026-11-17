@@ -337,5 +337,19 @@
   "You've used your {0} free faces. Packs start at 75 faces for £2.": "لقد استخدمت وجوهك المجانية ({0}). تبدأ الباقات من 75 وجهاً مقابل £2.",
   "Your RegenerateFM credits sign-in has ended. Choose Buy credits / Sign in to sign in again.": "انتهى تسجيل دخولك إلى أرصدة RegenerateFM. اختر «شراء أرصدة / تسجيل الدخول» لتسجيل الدخول مرة أخرى.",
   "Your OpenAI account has run out of credit. Add credit in your OpenAI account's billing settings (platform.openai.com), or use RegenerateFM credits instead.": "نفد رصيد حسابك في OpenAI. أضف رصيداً من إعدادات الفوترة في حسابك على OpenAI (platform.openai.com)، أو استخدم أرصدة RegenerateFM بدلاً من ذلك.",
-  "Your OpenAI account has run out of credit. Add credit in your OpenAI account's billing settings (platform.openai.com), then choose the face command again.": "نفد رصيد حسابك في OpenAI. أضف رصيداً من إعدادات الفوترة في حسابك على OpenAI (platform.openai.com)، ثم اختر أمر الوجه مرة أخرى."
+  "Your OpenAI account has run out of credit. Add credit in your OpenAI account's billing settings (platform.openai.com), then choose the face command again.": "نفد رصيد حسابك في OpenAI. أضف رصيداً من إعدادات الفوترة في حسابك على OpenAI (platform.openai.com)، ثم اختر أمر الوجه مرة أخرى.",
+  "Update aged faces…": "تحديث الوجوه القديمة…",
+  "Looking for faces made two or more years ago…": "جارٍ البحث عن وجوه أُنشئت قبل عامين أو أكثر…",
+  "A new season:": "موسم جديد:",
+  "{0} of {1} players has a face made two or more years ago, when they were younger.": "{0} من أصل {1} من اللاعبين لديه وجه أُنشئ قبل عامين أو أكثر، عندما كان أصغر سناً.",
+  "{0} of {1} players have faces made two or more years ago, when they were younger.": "{0} من أصل {1} من اللاعبين لديهم وجوه أُنشئت قبل عامين أو أكثر، عندما كانوا أصغر سناً.",
+  "None of the {0} players has a face made two or more years ago. No images have been requested.": "لا يملك أي من اللاعبين ({0}) وجهاً أُنشئ قبل عامين أو أكثر. لم تُطلب أي صور.",
+  "Update {0} face? Each face makes one billed API request.": "تحديث وجه ({0})؟ كل وجه يُرسل طلب API واحداً مدفوعاً.",
+  "Update {0} faces? Each face makes one billed API request.": "تحديث الوجوه ({0})؟ كل وجه يُرسل طلب API واحداً مدفوعاً.",
+  "Update {0} face": "تحديث وجه ({0})",
+  "Update {0} faces": "تحديث الوجوه ({0})",
+  "Opening the first player…": "جارٍ فتح أول لاعب…",
+  "Updating {0} ({1}/{2})…": "جارٍ تحديث وجه {0} ({1}/{2})…",
+  "Finished: {0} face updated.": "اكتمل: عدد الوجوه المُحدَّثة: {0}.",
+  "Finished: {0} faces updated.": "اكتمل: عدد الوجوه المُحدَّثة: {0}."
 }

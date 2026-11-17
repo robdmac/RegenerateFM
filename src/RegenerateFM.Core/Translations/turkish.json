@@ -337,5 +337,19 @@
   "You've used your {0} free faces. Packs start at 75 faces for £2.": "{0} ücretsiz yüzünüzü kullandınız. Paketler £2 karşılığında 75 yüzden başlıyor.",
   "Your RegenerateFM credits sign-in has ended. Choose Buy credits / Sign in to sign in again.": "RegenerateFM kredi girişinizin süresi doldu. Yeniden giriş yapmak için “Kredi al / Giriş yap” seçeneğini seçin.",
   "Your OpenAI account has run out of credit. Add credit in your OpenAI account's billing settings (platform.openai.com), or use RegenerateFM credits instead.": "OpenAI hesabınızın bakiyesi bitti. OpenAI hesabınızın faturalandırma ayarlarından (platform.openai.com) bakiye ekleyin ya da bunun yerine RegenerateFM kredilerini kullanın.",
-  "Your OpenAI account has run out of credit. Add credit in your OpenAI account's billing settings (platform.openai.com), then choose the face command again.": "OpenAI hesabınızın bakiyesi bitti. OpenAI hesabınızın faturalandırma ayarlarından (platform.openai.com) bakiye ekleyin, ardından yüz komutunu yeniden seçin."
+  "Your OpenAI account has run out of credit. Add credit in your OpenAI account's billing settings (platform.openai.com), then choose the face command again.": "OpenAI hesabınızın bakiyesi bitti. OpenAI hesabınızın faturalandırma ayarlarından (platform.openai.com) bakiye ekleyin, ardından yüz komutunu yeniden seçin.",
+  "Update aged faces…": "Eskimiş yüzleri güncelle…",
+  "Looking for faces made two or more years ago…": "En az iki yıl önce oluşturulan yüzler aranıyor…",
+  "A new season:": "Yeni sezon:",
+  "{0} of {1} players has a face made two or more years ago, when they were younger.": "{1} oyuncudan {0} kişinin yüzü en az iki yıl önce, daha gençken oluşturuldu.",
+  "{0} of {1} players have faces made two or more years ago, when they were younger.": "{1} oyuncudan {0} kişinin yüzü en az iki yıl önce, daha gençken oluşturuldu.",
+  "None of the {0} players has a face made two or more years ago. No images have been requested.": "{0} oyuncunun hiçbirinin yüzü en az iki yıl önce oluşturulmadı. Hiç görsel istenmedi.",
+  "Update {0} face? Each face makes one billed API request.": "Yüz güncellensin mi ({0})? Her yüz, ücretlendirilen bir API isteği yapar.",
+  "Update {0} faces? Each face makes one billed API request.": "Yüzler güncellensin mi ({0})? Her yüz, ücretlendirilen bir API isteği yapar.",
+  "Update {0} face": "Yüzü güncelle ({0})",
+  "Update {0} faces": "Yüzleri güncelle ({0})",
+  "Opening the first player…": "İlk oyuncu açılıyor…",
+  "Updating {0} ({1}/{2})…": "Güncelleniyor: {0} ({1}/{2})…",
+  "Finished: {0} face updated.": "Tamamlandı. Güncellenen yüz sayısı: {0}.",
+  "Finished: {0} faces updated.": "Tamamlandı. Güncellenen yüz sayısı: {0}."
 }

@@ -51,6 +51,10 @@ namespace RegenerateFM.FM26
             public readonly Dictionary<string, SquadCandidate> Portraits = new Dictionary<string, SquadCandidate>(StringComparer.Ordinal);
             public readonly HashSet<string> Missing = new HashSet<string>(StringComparer.Ordinal);
             public Label Status;
+            // Update aged faces… (AgedFaces) rather than Generate faces…; Quiet
+            // when the plugin offered it itself, so finding none says nothing.
+            public bool Ageing;
+            public bool Quiet;
         }
 
         private sealed class SquadCandidate
@@ -80,6 +84,10 @@ namespace RegenerateFM.FM26
             // or it couldn't be read, and the confirmation is as without credits.
             public bool BalanceChecked;
             public Credits.Account Balance;
+            // Missing are faces to update (Update aged faces…), not faces to make.
+            public bool Ageing;
+            // Offered by the plugin itself, once a season (CheckAgedFacesOffer).
+            public bool Seasonal;
         }
 
         private sealed class SquadBatch
@@ -123,6 +131,8 @@ namespace RegenerateFM.FM26
             public System.DateTime NextStepUtc;
             // After a face made with RegenerateFM credits: what's left, for the status.
             public Credits.Account CreditsLeft;
+            // Update face for each (aged faces), rather than Generate face.
+            public bool Update;
             public ListKind Kind => Queue[Index].Kind;
         }
 
@@ -175,8 +185,14 @@ namespace RegenerateFM.FM26
                 string label = Text.T("Generate faces…");
                 if (_squadMenuButton.text != label)
                     _squadMenuButton.text = label;
+                if (_agedMenuButton != null && _agedMenuButton.text != Text.T("Update aged faces…"))
+                    _agedMenuButton.text = Text.T("Update aged faces…");
                 if (_squadMenuButton.parent == root)
-                    PositionSquadMenuButton(_squadMenuButton, scroll, root);
+                {
+                    PositionSquadMenuButton(_squadMenuButton, scroll, root, 0);
+                    if (_agedMenuButton != null)
+                        PositionSquadMenuButton(_agedMenuButton, scroll, root, 38);
+                }
                 return;
             }
             RemoveSquadMenuButton();
@@ -184,24 +200,33 @@ namespace RegenerateFM.FM26
             {
                 name = "regeneratefm-squad-command", text = Text.T("Generate faces…"), focusable = false
             };
-            button.style.height = 36;
-            button.style.flexShrink = 0;
-            button.style.color = Color.white;
-            button.style.backgroundColor = new Color(0.18f, 0.13f, 0.24f, 1f);
-            button.style.unityTextAlign = TextAnchor.MiddleLeft;
-            button.style.paddingLeft = 12;
-            if (dropdown != null)
+            // Update aged faces… below it: faces made two or more years ago (AgedFaces).
+            var aged = new Button((Il2CppSystem.Action)(System.Action)(() => StartSquadScan(ListKind.Players, ageing: true)))
             {
-                dropdown.Add(button);
-            }
-            else
+                name = "regeneratefm-aged-command", text = Text.T("Update aged faces…"), focusable = false
+            };
+            foreach (var item in new[] { button, aged })
             {
-                button.style.position = Position.Absolute;
-                PositionSquadMenuButton(button, scroll, root);
-                root.Add(button);
+                item.style.height = 36;
+                item.style.flexShrink = 0;
+                item.style.color = Color.white;
+                item.style.backgroundColor = new Color(0.18f, 0.13f, 0.24f, 1f);
+                item.style.unityTextAlign = TextAnchor.MiddleLeft;
+                item.style.paddingLeft = 12;
+                if (dropdown != null)
+                {
+                    dropdown.Add(item);
+                }
+                else
+                {
+                    item.style.position = Position.Absolute;
+                    PositionSquadMenuButton(item, scroll, root, item == aged ? 38 : 0);
+                    root.Add(item);
+                }
+                Directed(item);
             }
-            Directed(button);
             _squadMenuButton = button;
+            _agedMenuButton = aged;
             _squadMenuList = menuList;
             var chain = new List<string>();
             for (VisualElement element = scroll; element != null && chain.Count < 6; element = element.parent)
@@ -210,11 +235,11 @@ namespace RegenerateFM.FM26
                         "; dropdown: " + string.Join(" < ", chain));
         }
 
-        private static void PositionSquadMenuButton(VisualElement button, ScrollView scroll, VisualElement root)
+        private static void PositionSquadMenuButton(VisualElement button, ScrollView scroll, VisualElement root, float below)
         {
             button.style.width = scroll.worldBound.width;
             button.style.left = scroll.worldBound.x - root.worldBound.x;
-            button.style.top = scroll.worldBound.yMax - root.worldBound.y + 2;
+            button.style.top = scroll.worldBound.yMax - root.worldBound.y + 2 + below;
         }
 
         // Why the squad dropdown has (or hasn't) the command, logged when it changes,
@@ -241,9 +266,68 @@ namespace RegenerateFM.FM26
         {
             if (_squadMenuButton != null && _squadMenuButton.parent != null)
                 _squadMenuButton.RemoveFromHierarchy();
+            if (_agedMenuButton != null && _agedMenuButton.parent != null)
+                _agedMenuButton.RemoveFromHierarchy();
             _squadMenuButton = null;
+            _agedMenuButton = null;
             _squadMenuList = null;
         }
+
+        private Button _agedMenuButton;
+
+        // The players whose RegenerateFM face was made two or more years ago,
+        // by the age FaceHistory noted (a face whose age wasn't noted, or that
+        // was made for someone else with the same ID, isn't counted).
+        private List<SquadCandidate> AgedCandidates(IEnumerable<SquadCandidate> candidates)
+        {
+            var aged = new List<SquadCandidate>();
+            string folder = GraphicsFolder();
+            int? year = GameYear(CurrentRoot());
+            foreach (var candidate in candidates)
+            {
+                if (!candidate.Address.StartsWith("person_", StringComparison.Ordinal) || !RowPersonId(candidate.Address, out long id))
+                    continue;
+                string personId = IdText(id);
+                string owner = FaceHistory.Owner(folder, personId);
+                if (owner != null && !FaceHistory.SameOwner(owner, candidate.Name) && !SameName(candidate.Name, owner))
+                    continue;
+                if (AgedFaces.IsAged(FaceHistory.Age(folder, personId), candidate.Age, FaceHistory.GameYear(folder, personId), year))
+                    aged.Add(candidate);
+            }
+            aged.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
+            return aged;
+        }
+
+        // An Update aged faces… scan has read the list: the confirmation, or why there's nothing to do.
+        private void FinishAgeingScan(SquadScan scan, bool complete)
+        {
+            if (!complete)
+            {
+                if (scan.Quiet)
+                    CancelSquadScan();
+                else if (scan.Status != null)
+                    scan.Status.text = Text.T("Scan incomplete ({0} of {1} players). No images have been requested.", scan.Portraits.Count, scan.ExpectedCount);
+                return;
+            }
+            var aged = AgedCandidates(scan.Portraits.Values);
+            Log.LogInfo("RegenerateFM aged faces: " + aged.Count + " of " + scan.Portraits.Count + " players" +
+                        (aged.Count > 0 ? " (" + string.Join(", ", aged.ConvertAll(candidate => candidate.Name)) + ")" : ""));
+            if (aged.Count == 0)
+            {
+                if (scan.Quiet)
+                    CancelSquadScan();
+                else if (scan.Status != null)
+                    scan.Status.text = Text.T("None of the {0} players has a face made two or more years ago. No images have been requested.", scan.Portraits.Count);
+                return;
+            }
+            ShowSquadConfirmation(new SquadOffer { Kind = ListKind.Players, Missing = aged, Count = scan.Portraits.Count, Team = scan.Team,
+                                                   Ageing = true, Seasonal = scan.Quiet }, false);
+        }
+
+        // "3 of 24 players have faces made two or more years ago."
+        private static string AgedText(int aged, int count) =>
+            aged == 1 ? Text.T("{0} of {1} players has a face made two or more years ago, when they were younger.", aged, count)
+                      : Text.T("{0} of {1} players have faces made two or more years ago, when they were younger.", aged, count);
 
         // The squad's player table. FM26 26.3.2 shows it on Squad > Overview
         // (SquadScreen > PlayerTableContainer). The Demo's Overview is a tile
@@ -306,14 +390,14 @@ namespace RegenerateFM.FM26
             return null;
         }
 
-        private void StartSquadScan(ListKind kind)
+        private void StartSquadScan(ListKind kind, bool ageing = false, bool quiet = false)
         {
             if (_pending != null || WaitingForGraphics || _squadScan != null || _squadBatch != null)
             {
                 Log.LogWarning("Squad scan cannot start while another RegenerateFM operation is active");
                 return;
             }
-            if (!KeyReady(() => StartSquadScan(kind)))
+            if (!KeyReady(() => StartSquadScan(kind, ageing, quiet)))
                 return;
             try
             {
@@ -331,9 +415,11 @@ namespace RegenerateFM.FM26
                 Log.LogWarning("The " + Plural(kind) + " list was not found; no image request was made");
                 return;
             }
-            var status = ShowDialog(kind == ListKind.Staff ? Text.T("Scanning staff portraits…") : Text.T("Scanning squad portraits…"),
+            var status = ShowDialog(ageing ? Text.T("Looking for faces made two or more years ago…")
+                : kind == ListKind.Staff ? Text.T("Scanning staff portraits…") : Text.T("Scanning squad portraits…"),
                 Text.T("Cancel"), () => CancelSquadScan());
-            _squadScan = new SquadScan { Kind = kind, Status = status, Team = kind == ListKind.Players ? ListTeam(list) : null };
+            _squadScan = new SquadScan { Kind = kind, Status = status, Team = kind == ListKind.Players ? ListTeam(list) : null,
+                                         Ageing = ageing, Quiet = quiet };
             BeginScan(_squadScan, list);
         }
 
@@ -463,6 +549,11 @@ namespace RegenerateFM.FM26
                 foreach (var key in scan.Missing)
                     missing.Add(scan.Portraits[key]);
                 missing.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
+                if (scan.Ageing)
+                {
+                    FinishAgeingScan(scan, complete);
+                    return;
+                }
                 if (scan.Offer != null)
                 {
                     if (!complete)
@@ -562,8 +653,13 @@ namespace RegenerateFM.FM26
                 return;
             // How many faces the credits cover, when that's fewer than are missing.
             int? covered = offer.Balance != null && offer.Balance.Credits < missing.Count ? Math.Max(0, offer.Balance.Credits) : (int?)null;
-            string text = MissingText(offer.Missing.Count, offer.Count, offer.Kind, false);
-            if (include)
+            string text = offer.Seasonal ? Text.T("A new season:") + " " + AgedText(offer.Missing.Count, offer.Count)
+                        : offer.Ageing ? AgedText(offer.Missing.Count, offer.Count)
+                                       : MissingText(offer.Missing.Count, offer.Count, offer.Kind, false);
+            if (offer.Ageing)
+            {
+            }
+            else if (include)
                 text += " " + MissingText(offer.OtherMissing.Count, offer.OtherCount, Other(offer.Kind), true);
             else if (offer.OtherProblem != null)
                 text += " " + (Other(offer.Kind) == ListKind.Staff
@@ -571,12 +667,15 @@ namespace RegenerateFM.FM26
                     : Text.T("Couldn't count the first team's players: {0}.", offer.OtherProblem));
             text += " " + (missing.Count == 0 ? Text.T("No images have been requested.")
                 : covered.HasValue ? Credits.ShortText(covered.Value, missing.Count)
+                : offer.Ageing ? (missing.Count == 1 ? Text.T("Update {0} face? Each face makes one billed API request.", missing.Count)
+                                                     : Text.T("Update {0} faces? Each face makes one billed API request.", missing.Count))
                 : missing.Count == 1 ? Text.T("Generate {0} face? Each face makes one billed API request.", missing.Count)
                 : Text.T("Generate {0} faces? Each face makes one billed API request.", missing.Count));
             ShowDialog(text, Text.T("Cancel"), () => CancelSquadScan());
             int at = 1;
             var other = Plural(Other(offer.Kind));
-            _squadDialog.Insert(at++, TickBox(IncludeText(Other(offer.Kind), include ? null : offer.OtherMissing?.Count), include, () =>
+            if (!offer.Ageing)
+                _squadDialog.Insert(at++, TickBox(IncludeText(Other(offer.Kind), include ? null : offer.OtherMissing?.Count), include, () =>
             {
                 if (include)
                     ShowSquadConfirmation(offer, false);
@@ -589,8 +688,12 @@ namespace RegenerateFM.FM26
             int faces = covered ?? missing.Count;
             if (faces > 0)
             {
-                var generate = new Button((Il2CppSystem.Action)(System.Action)(() => StartSquadBatch(missing, offer.Team, faces)))
-                { text = faces == 1 ? Text.T("Generate {0} face", faces) : Text.T("Generate {0} faces", faces), focusable = false };
+                var generate = new Button((Il2CppSystem.Action)(System.Action)(() => StartSquadBatch(missing, offer.Team, faces, offer.Ageing)))
+                {
+                    text = offer.Ageing ? (faces == 1 ? Text.T("Update {0} face", faces) : Text.T("Update {0} faces", faces))
+                                        : faces == 1 ? Text.T("Generate {0} face", faces) : Text.T("Generate {0} faces", faces),
+                    focusable = false
+                };
                 generate.style.height = 34;
                 generate.style.marginTop = 10;
                 generate.style.color = Color.white;
@@ -765,7 +868,7 @@ namespace RegenerateFM.FM26
         }
 
         // limit: the most faces to make (as many as the credits cover).
-        private void StartSquadBatch(List<SquadCandidate> missing, string team, int limit = int.MaxValue)
+        private void StartSquadBatch(List<SquadCandidate> missing, string team, int limit = int.MaxValue, bool update = false)
         {
             if (missing.Count == 0 || limit <= 0 || _pending != null || WaitingForGraphics || _squadBatch != null)
                 return;
@@ -788,9 +891,10 @@ namespace RegenerateFM.FM26
                 ShowDialog(error.Message, Text.T("Close"), () => CancelSquadScan());
                 return;
             }
-            var status = ShowDialog(queue[0].Kind == ListKind.Staff ? Text.T("Opening the first missing member of staff…") : Text.T("Opening the first missing player…"),
+            var status = ShowDialog(update ? Text.T("Opening the first player…")
+                : queue[0].Kind == ListKind.Staff ? Text.T("Opening the first missing member of staff…") : Text.T("Opening the first missing player…"),
                 Text.T("Stop after current face"), () => RequestStopSquadBatch());
-            var batch = new SquadBatch { Status = status, Settings = settings, Team = team };
+            var batch = new SquadBatch { Status = status, Settings = settings, Team = team, Update = update };
             batch.Queue.AddRange(queue);
             _squadBatch = batch;
             if (list == null)
@@ -984,8 +1088,9 @@ namespace RegenerateFM.FM26
                         batch.Index++;
                         batch.StaffClicked = 0;
                         if (batch.Index >= batch.Queue.Count)
-                            StopSquadBatch((batch.Completed == 1
-                                ? Text.T("Finished: {0} face generated.", batch.Completed)
+                            StopSquadBatch((batch.Update
+                                ? batch.Completed == 1 ? Text.T("Finished: {0} face updated.", batch.Completed) : Text.T("Finished: {0} faces updated.", batch.Completed)
+                                : batch.Completed == 1 ? Text.T("Finished: {0} face generated.", batch.Completed)
                                 : Text.T("Finished: {0} faces generated.", batch.Completed)) + ScoutingNote(batch) + CreditsLeftNote(batch));
                         else if (batch.Kind != kind)
                         {
@@ -1027,7 +1132,8 @@ namespace RegenerateFM.FM26
                     readable++;
                 if (candidate == null || candidate.Key != target.Key)
                     continue;
-                if (!IsDefaultPortrait(candidate.Address))
+                // A face to make that has appeared meanwhile; a face to update is there.
+                if (!batch.Update && !IsDefaultPortrait(candidate.Address))
                 {
                     Log.LogInfo("Skipping " + target.Name + ": portrait now exists");
                     SetBatchStage(batch, SquadStage.ReturnToSquad);
@@ -1157,9 +1263,10 @@ namespace RegenerateFM.FM26
             // The picture's address can arrive after the rest of the profile.
             if (string.IsNullOrEmpty(address) && System.DateTime.UtcNow - batch.StageStartedUtc < ProfileBindTimeout)
                 return;
-            if (!IsDefaultPortrait(address))
+            if (batch.Update ? !HasFace(picture) : !IsDefaultPortrait(address))
             {
-                Log.LogInfo("Skipping " + target.Name + ": profile portrait is not missing (" + address + ")");
+                Log.LogInfo("Skipping " + target.Name + ": " + (batch.Update ? "no face to update" : "profile portrait is not missing") +
+                            " (" + address + ")");
                 SetBatchStage(batch, SquadStage.ReturnToSquad);
                 return;
             }
@@ -1178,10 +1285,29 @@ namespace RegenerateFM.FM26
                 return;
             if (profile.BiographyHeadline == null && _biographyCache.TryGetValue(personId, out string biography))
                 profile.BiographyHeadline = biography;
+            batch.PersonId = personId;
+            if (batch.Update)
+            {
+                // The face shown, as Update face sends it; its texture can load
+                // after the rest of the profile.
+                byte[] reference;
+                try
+                {
+                    reference = CaptureReferencePng(picture);
+                }
+                catch (Exception) when (retry)
+                {
+                    return;
+                }
+                batch.Status.text = Text.T("Updating {0} ({1}/{2})…", target.Name, batch.Index + 1, batch.Queue.Count);
+                batch.Request = RequestPortrait(personId, profile, batch.Settings, "update", reference, IsNewgenPortrait(picture));
+                SetBatchStage(batch, SquadStage.Request);
+                Log.LogInfo("Player face update started for " + target.Name + " (" + personId + ")");
+                return;
+            }
             // A silhouette is a real person, unless RegenerateFM saw them as a newgen.
             FindKnownEthnicity(personId, null, profile, out bool newgen);
             profile.Likeness = !newgen;
-            batch.PersonId = personId;
             batch.Status.text = Text.T("Generating {0} ({1}/{2})…", target.Name, batch.Index + 1, batch.Queue.Count);
             batch.Request = RequestPortrait(personId, profile, batch.Settings);
             SetBatchStage(batch, SquadStage.Request);

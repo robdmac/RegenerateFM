@@ -20,6 +20,8 @@ namespace RegenerateFM
         public string Quality = DefaultQuality;
         public string ApiBaseUrl = DefaultApiBaseUrl;
         public string CreditsUrl = Credits.DefaultServiceUrl;
+        // [Faces] OfferAgedFaces: once a season, offer to update faces made two or more years ago (AgedFaces).
+        public bool OfferAgedFaces = true;
         // Where SelfUpdate downloads a release from instead of GitHub, when
         // testing ([Update] ReleaseUrl, not in the template). The signature is
         // checked wherever it comes from.
@@ -41,7 +43,11 @@ namespace RegenerateFM
             "\n" +
             "[Credits]\n" +
             "; The RegenerateFM credits service, used when you buy credits instead of using an OpenAI key.\n" +
-            "ServiceUrl = " + Credits.DefaultServiceUrl + "\n";
+            "ServiceUrl = " + Credits.DefaultServiceUrl + "\n" +
+            "\n" +
+            "[Faces]\n" +
+            "; Once a season, offer to update the faces of players whose face was made two or more years ago.\n" +
+            "OfferAgedFaces = true\n";
 
         // The settings in ``path``; the defaults when it doesn't exist, and then
         // the file is written for the player to edit (if it can be).
@@ -77,6 +83,9 @@ namespace RegenerateFM
                     settings.CreditsUrl = value;
                 else if (section == "update" && key == "releaseurl")
                     settings.UpdateUrl = value;
+                else if (section == "faces" && key == "offeragedfaces")
+                    settings.OfferAgedFaces = !(value.Equals("false", StringComparison.OrdinalIgnoreCase) || value == "0" ||
+                                                value.Equals("no", StringComparison.OrdinalIgnoreCase));
             }
             return settings;
         }
