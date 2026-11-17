@@ -1087,6 +1087,8 @@ namespace RegenerateFM.FM26
             catch (Exception error) { Log.LogWarning("Squad scan failed: " + error); CancelSquadScan(); }
             try { PollSquadBatch(); }
             catch (Exception error) { StopSquadBatch(Text.T("Squad generation stopped: {0}", error.Message)); }
+            try { CheckAgedFacesOffer(); }
+            catch (Exception error) { Log.LogWarning("Aged faces offer failed: " + error.Message); }
         }
 
         public sealed class StaffWatcher : MonoBehaviour

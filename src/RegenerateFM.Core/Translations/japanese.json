@@ -335,5 +335,19 @@
  "You've used all your RegenerateFM credits.": "RegenerateFM クレジットを使い切りました。",
  "You've used your 1 free face. Packs start at 75 faces for £2.": "無料の顔写真1枚を使い切りました。パックは75枚 £2 からです。",
  "You've used your {0} free faces. Packs start at 75 faces for £2.": "無料の顔写真{0}枚を使い切りました。パックは75枚 £2 からです。",
- "Your RegenerateFM credits sign-in has ended. Choose Buy credits / Sign in to sign in again.": "RegenerateFM クレジットのサインインが終了しました。もう一度サインインするには「クレジット購入 / サインイン」を選んでください。"
+ "Your RegenerateFM credits sign-in has ended. Choose Buy credits / Sign in to sign in again.": "RegenerateFM クレジットのサインインが終了しました。もう一度サインインするには「クレジット購入 / サインイン」を選んでください。",
+ "Update aged faces…": "古い顔写真を更新…",
+ "Looking for faces made two or more years ago…": "2年以上前に生成された顔写真を探しています…",
+ "A new season:": "新しいシーズン：",
+ "{0} of {1} players has a face made two or more years ago, when they were younger.": "選手{1}人のうち{0}人の顔写真は、2年以上前の若い頃に生成されたものです。",
+ "{0} of {1} players have faces made two or more years ago, when they were younger.": "選手{1}人のうち{0}人の顔写真は、2年以上前の若い頃に生成されたものです。",
+ "None of the {0} players has a face made two or more years ago. No images have been requested.": "選手{0}人のうち、2年以上前に生成された顔写真を持つ選手はいません。画像はリクエストしていません。",
+ "Update {0} face? Each face makes one billed API request.": "顔写真を{0}枚更新しますか？顔写真1枚ごとに課金対象の API リクエストが1回発生します。",
+ "Update {0} faces? Each face makes one billed API request.": "顔写真を{0}枚更新しますか？顔写真1枚ごとに課金対象の API リクエストが1回発生します。",
+ "Update {0} face": "顔写真を{0}枚更新",
+ "Update {0} faces": "顔写真を{0}枚更新",
+ "Opening the first player…": "最初の選手を開いています…",
+ "Updating {0} ({1}/{2})…": "{0}を更新中（{1}/{2}）…",
+ "Finished: {0} face updated.": "完了：顔写真を{0}枚更新しました。",
+ "Finished: {0} faces updated.": "完了：顔写真を{0}枚更新しました。"
 }

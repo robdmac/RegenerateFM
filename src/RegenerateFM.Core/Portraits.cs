@@ -63,7 +63,7 @@ namespace RegenerateFM
                     ? await ImageApi.EditPng(settings, Prompts.RelativePrompt(profile, relation, personId, folder), relativeFace, cancel).ConfigureAwait(false)
                     : await ImageApi.GeneratePng(settings, Prompts.ProfilePrompt(profile, personId, folder), cancel).ConfigureAwait(false);
             }
-            return SavePortrait(folder, personId, png, owner: profile.Name, age: profile.Age);
+            return SavePortrait(folder, personId, png, owner: profile.Name, age: profile.Age, gameYear: profile.GameYear);
         }
 
         // ---- Saving into FM26's graphics folder ----------------------------
@@ -152,7 +152,7 @@ namespace RegenerateFM
         // with the face, ``made`` when it was first made, ``age`` the person's
         // age in it.
         public static string SavePortrait(string directory, string personId, byte[] png, bool removeEarlier = true,
-                                          string owner = null, DateTime? made = null, int? age = null)
+                                          string owner = null, DateTime? made = null, int? age = null, int? gameYear = null)
         {
             ValidateId(personId);
             if (!Png.IsPng(png))
@@ -188,7 +188,7 @@ namespace RegenerateFM
                     }
                     throw;
                 }
-                FaceHistory.Added(directory, personId, stem, owner, made ?? DateTime.UtcNow, age);
+                FaceHistory.Added(directory, personId, stem, owner, made ?? DateTime.UtcNow, age, gameYear);
                 if (removeEarlier)
                     RemoveEarlier(imagePath, personId);
                 return imagePath;

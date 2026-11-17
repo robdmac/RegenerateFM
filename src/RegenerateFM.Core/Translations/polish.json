@@ -335,5 +335,19 @@
   "You've used all your RegenerateFM credits.": "Wykorzystano wszystkie kredyty RegenerateFM.",
   "You've used your 1 free face. Packs start at 75 faces for £2.": "Wykorzystano darmową twarz. Pakiety zaczynają się od 75 twarzy za £2.",
   "You've used your {0} free faces. Packs start at 75 faces for £2.": "Wykorzystano wszystkie darmowe twarze ({0}). Pakiety zaczynają się od 75 twarzy za £2.",
-  "Your RegenerateFM credits sign-in has ended. Choose Buy credits / Sign in to sign in again.": "Logowanie do kredytów RegenerateFM wygasło. Wybierz „Kup kredyty / Zaloguj się”, aby zalogować się ponownie."
+  "Your RegenerateFM credits sign-in has ended. Choose Buy credits / Sign in to sign in again.": "Logowanie do kredytów RegenerateFM wygasło. Wybierz „Kup kredyty / Zaloguj się”, aby zalogować się ponownie.",
+  "Update aged faces…": "Aktualizuj przestarzałe twarze…",
+  "Looking for faces made two or more years ago…": "Wyszukiwanie twarzy wygenerowanych co najmniej dwa lata temu…",
+  "A new season:": "Nowy sezon:",
+  "{0} of {1} players has a face made two or more years ago, when they were younger.": "{0} z {1} zawodników ma twarz wygenerowaną co najmniej dwa lata temu, gdy był młodszy.",
+  "{0} of {1} players have faces made two or more years ago, when they were younger.": "Zawodnicy z twarzą wygenerowaną co najmniej dwa lata temu, gdy byli młodsi: {0} z {1}.",
+  "None of the {0} players has a face made two or more years ago. No images have been requested.": "Żaden z {0} zawodników nie ma twarzy wygenerowanej co najmniej dwa lata temu. Nie zlecono żadnych obrazów.",
+  "Update {0} face? Each face makes one billed API request.": "Zaktualizować {0} twarz? Każda twarz to jedno płatne żądanie API.",
+  "Update {0} faces? Each face makes one billed API request.": "Zaktualizować twarze ({0})? Każda twarz to jedno płatne żądanie API.",
+  "Update {0} face": "Aktualizuj {0} twarz",
+  "Update {0} faces": "Aktualizuj twarze: {0}",
+  "Opening the first player…": "Otwieranie pierwszego zawodnika…",
+  "Updating {0} ({1}/{2})…": "Aktualizowanie: {0} ({1}/{2})…",
+  "Finished: {0} face updated.": "Gotowe: zaktualizowano {0} twarz.",
+  "Finished: {0} faces updated.": "Gotowe. Zaktualizowane twarze: {0}."
 }

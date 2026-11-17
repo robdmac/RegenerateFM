@@ -33,6 +33,8 @@ namespace RegenerateFM
             public DateTime Made;
             // The person's age when it was made, so Update face knows how far to age it.
             public int? Age;
+            // The in-game year it was made in, so a long save knows it has aged (AgedFaces).
+            public int? GameYear;
             // Taken off by the user (Remove face): Claim doesn't bring it back.
             public bool Removed;
         }
@@ -93,6 +95,9 @@ namespace RegenerateFM
                     if (item.TryGetProperty("age", out var age) && age.ValueKind == JsonValueKind.Number && age.TryGetInt32(out int years) &&
                         years >= 14 && years <= 100)
                         face.Age = years;
+                    if (item.TryGetProperty("gameYear", out var gameYear) && gameYear.ValueKind == JsonValueKind.Number &&
+                        gameYear.TryGetInt32(out int year) && year >= 1900 && year <= 2200)
+                        face.GameYear = year;
                     face.Removed = item.TryGetProperty("removed", out var removed) && removed.ValueKind == JsonValueKind.True;
                     faces.Add(face);
                 }
@@ -155,6 +160,8 @@ namespace RegenerateFM
                     json.WriteString("made", face.Made.ToString("o", CultureInfo.InvariantCulture));
                     if (face.Age.HasValue)
                         json.WriteNumber("age", face.Age.Value);
+                    if (face.GameYear.HasValue)
+                        json.WriteNumber("gameYear", face.GameYear.Value);
                     if (face.Removed)
                         json.WriteBoolean("removed", true);
                     json.WriteEndObject();
@@ -174,11 +181,12 @@ namespace RegenerateFM
         // A face SavePortrait has just mapped: ``owner`` is the name shown with
         // it, ``made`` when it was first made and ``age`` the person's age then
         // (a face brought back keeps its own).
-        internal static void Added(string directory, string personId, string stem, string owner, DateTime made, int? age = null)
+        internal static void Added(string directory, string personId, string stem, string owner, DateTime made, int? age = null,
+                                   int? gameYear = null)
         {
             var faces = Load(directory, personId);
             faces.RemoveAll(face => face.Stem == stem);
-            faces.Add(new Face { Stem = stem, Owner = owner, Made = made, Age = age });
+            faces.Add(new Face { Stem = stem, Owner = owner, Made = made, Age = age, GameYear = gameYear });
             Store(directory, personId, faces, stem);
         }
 
@@ -220,6 +228,17 @@ namespace RegenerateFM
             {
                 string stem = MappedStem(directory, personId);
                 return stem == null ? null : Load(directory, personId).FirstOrDefault(face => face.Stem == stem)?.Owner;
+            }
+        }
+
+        // The in-game year the person's mapped face was made in, or null (none,
+        // or made before RegenerateFM noted it).
+        public static int? GameYear(string directory, string personId)
+        {
+            lock (Portraits.SaveLock)
+            {
+                string stem = MappedStem(directory, personId);
+                return stem == null ? null : Load(directory, personId).FirstOrDefault(face => face.Stem == stem)?.GameYear;
             }
         }
 
@@ -276,7 +295,8 @@ namespace RegenerateFM
         {
             string file = Earlier(directory, personId, face.Stem);
             var png = File.ReadAllBytes(file);
-            string saved = Portraits.SavePortrait(directory, personId, png, owner: face.Owner, made: face.Made, age: face.Age);
+            string saved = Portraits.SavePortrait(directory, personId, png, owner: face.Owner, made: face.Made, age: face.Age,
+                                                  gameYear: face.GameYear);
             TryDelete(file);
             Store(directory, personId, Load(directory, personId), Path.GetFileNameWithoutExtension(saved));
             return saved;

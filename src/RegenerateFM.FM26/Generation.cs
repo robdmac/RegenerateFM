@@ -514,6 +514,9 @@ namespace RegenerateFM.FM26
             try
             {
                 string folder = GraphicsFolder();
+                // Called on the game's thread: FM's date, read before the request,
+                // goes into the face's history (AgedFaces).
+                profile.GameYear ??= Instance?.GameYear(CurrentRoot());
                 var timer = System.Diagnostics.Stopwatch.StartNew();
                 // The batch's settings are used again: what's left is this face's.
                 settings.CreditsLeft = null;
