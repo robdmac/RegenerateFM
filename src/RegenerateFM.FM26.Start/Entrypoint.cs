@@ -33,9 +33,14 @@ namespace Doorstop
             string folder = Path.GetDirectoryName(core);
             try
             {
-                CopyLog(core, Path.Combine(folder, ProgressLog));
-                if (OperatingSystem.IsWindows())
-                    StartProgress(core, folder);
+                // Not checked yet with Epic's games or under Proton, so those start
+                // BepInEx as they did without this (see ShowsProgress).
+                if (ShowsProgress())
+                {
+                    CopyLog(core, Path.Combine(folder, ProgressLog));
+                    if (OperatingSystem.IsWindows())
+                        StartProgress(core, folder);
+                }
             }
             catch (Exception)
             {
@@ -70,6 +75,42 @@ namespace Doorstop
             ((LogCopy)listener).Writer = writer;
             listeners.GetType().GetMethods().First(method => method.Name == "Add" && method.GetParameters().Length == 1)
                      .Invoke(listeners, new[] { listener });
+        }
+
+        // Where the window has been checked: the Mac, and Steam's games on
+        // Windows (FM27 27.0.1 on Windows 10, with online play after it). Epic's
+        // FM26 Demo in a Windows VM kept saying "The server is not reachable"
+        // when started this way, before the window was started without FM's
+        // handles; Epic starts its games with -epicapp=..., and that hasn't been
+        // checked since. Under Proton (Wine) it hasn't been checked at all.
+        private static bool ShowsProgress()
+        {
+            if (!OperatingSystem.IsWindows())
+                return true;
+            if (Environment.GetCommandLineArgs().Any(argument => argument.StartsWith("-epicapp", StringComparison.OrdinalIgnoreCase) ||
+                                                                 argument.Equals("-EpicPortal", StringComparison.OrdinalIgnoreCase)))
+                return false;
+            return !UnderWine();
+        }
+
+        [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Ansi)]
+        private static extern IntPtr GetModuleHandleA(string module);
+
+        [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Ansi)]
+        private static extern IntPtr GetProcAddress(IntPtr module, string name);
+
+        // Wine's ntdll has wine_get_version; Windows' doesn't.
+        private static bool UnderWine()
+        {
+            try
+            {
+                IntPtr ntdll = GetModuleHandleA("ntdll.dll");
+                return ntdll != IntPtr.Zero && GetProcAddress(ntdll, "wine_get_version") != IntPtr.Zero;
+            }
+            catch (Exception)
+            {
+                return true;
+            }
         }
 
         // regeneratefm-progress.exe for this FM26: the process to wait for, the
