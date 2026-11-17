@@ -76,11 +76,13 @@ PROGRESS_BUILD = ROOT / "native" / "fm26progress" / "build"
 START_PROJECT = ROOT / "src" / "RegenerateFM.FM26.Start"
 START_DLL = START_PROJECT / "bin" / "Release" / "net6.0" / "RegenerateFM.Start.dll"
 START_TARGET = "target_assembly = BepInEx\\core\\RegenerateFM.Start.dll"
-# Not on Windows yet: Epic's FM26 Demo in a Windows VM, started through
-# RegenerateFM.Start.dll, kept saying "The server is not reachable" (TODO.md,
-# "Progress window on Windows"), so Doorstop starts BepInEx directly there,
-# as before. The Mac's window is shipped.
-WINDOWS_PROGRESS = False
+# Windows' progress window, through RegenerateFM.Start.dll: checked with
+# Steam's FM27 on Windows 10 (the window, then online play). Epic's FM26 Demo
+# in a Windows VM kept saying "The server is not reachable" when started this
+# way (TODO.md, "Progress window on Windows"), so under Epic, and under Proton,
+# which hasn't been checked, RegenerateFM.Start.dll starts BepInEx straight
+# away, as Doorstop did (Entrypoint.ShowsProgress).
+WINDOWS_PROGRESS = True
 MACOS_NATIVE = {"BepInEx/core/libfunchook.dylib": "libfunchook.dylib",
                 "BepInEx/core/Il2CppInterop.Runtime.dll": "Il2CppInterop.Runtime.dll",
                 "BepInEx/core/Il2CppInterop.Common.dll": "Il2CppInterop.Common.dll",

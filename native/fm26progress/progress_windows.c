@@ -10,7 +10,8 @@
    started its chainloader. It closes when RegenerateFM's plugin has loaded,
    when FM26 exits, or if BepInEx reports it failed. The text is in FM26's
    language, from current_language.xml in its user-data folder
-   (USER_DATA_NAME, "Football Manager 26" or "... Demo"). --demo shows the
+   (USER_DATA_NAME, "Football Manager 27", "Football Manager 26" or "...
+   Demo"), and names that game: FM27's says FM27 where the texts say FM26. --demo shows the
    window at a fixed point, for checking its layout. progress_macos.swift is
    the same window on the Mac. */
 
@@ -23,6 +24,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <wchar.h>
+#include <wctype.h>
 #include "progress_strings.h"
 
 enum { HEADING, NOTE, STAGE_DOWNLOAD, STAGE_READ, STAGE_BUILD, STAGE_START };
@@ -110,6 +112,30 @@ static void choose_texts(const char *language)
                 right_to_left = !strcmp(base, "arabic");
                 return;
             }
+}
+
+/* The texts name FM26; another game's user data folder ("Football Manager
+   27") puts its own name ("FM27") in their place, as the Mac's window does. */
+static wchar_t *renamed[STAGE_START + 1];
+
+static void name_game(const wchar_t *user_data)
+{
+    static const wchar_t prefix[] = L"Football Manager ";
+    size_t length = wcslen(prefix);
+    if (wcsncmp(user_data, prefix, length) || !iswdigit(user_data[length]) || !iswdigit(user_data[length + 1])) return;
+    wchar_t number[3] = {user_data[length], user_data[length + 1], 0};
+    if (!wcscmp(number, L"26")) return;
+    for (int i = 0; i <= STAGE_START; i++) {
+        size_t size = wcslen(texts[i]) + 1;
+        renamed[i] = malloc(size * sizeof(wchar_t));
+        if (!renamed[i]) return;
+        memcpy(renamed[i], texts[i], size * sizeof(wchar_t));
+        for (wchar_t *found = renamed[i]; (found = wcsstr(found, L"FM26")); found += 4) {
+            found[2] = number[0];
+            found[3] = number[1];
+        }
+    }
+    texts = (const wchar_t *const *)renamed;
 }
 
 /* The log if BepInEx has written it since this started, else NULL. */
@@ -292,6 +318,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR command_line, 
     if (!demo && !log_path) return 2;
     if (!demo) read_language(user_data, language, sizeof(language));
     choose_texts(language);
+    name_game(user_data);
     if (pid) game = OpenProcess(SYNCHRONIZE, FALSE, pid);
     GetSystemTimeAsFileTime(&started);
     started_ticks = GetTickCount();
