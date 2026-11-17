@@ -571,10 +571,11 @@ namespace RegenerateFM.FM26
         // The game's folder under Sports Interactive; SupportedGameBuild sets it for the Demo.
         private static string UserDataName = "Football Manager 26";
 
-        // ``purge``: a face was taken off, not replaced. FM27 keeps the folder's
-        // old entries when it is registered again, so a removed face's name
-        // still points at its missing file (a newgen then shows a blank instead
-        // of FM's 3D face); the folder's entries are dropped first.
+        // ``purge``: a face was taken off, not replaced. FM27 27.0 keeps the
+        // folder's old entries when it is registered again, so a removed face's
+        // name still points at its missing file (a newgen then shows a blank
+        // instead of FM's 3D face); the folder's entries are dropped first. From
+        // 27.1 the folders holding ours are scanned again instead (FolderScan).
         private bool Refresh(bool purge = false)
         {
             if (WaitingForGraphics)
@@ -601,8 +602,11 @@ namespace RegenerateFM.FM26
                 WaitingForGraphics = true;
                 _lastLocatorUtc = null;
                 _refreshStartedUtc = System.DateTime.UtcNow;
+                var scans = FolderScans(resources[0]);
+                _scanResources = resources[0];
+                _scansBefore = scans?.ToDictionary(scan => scan.Pointer, scan => scan.Generation);
                 // By name: FM26 has no PurgeLocalPath.
-                if (purge && typeof(ResourcesSubsystem).GetMethod("PurgeLocalPath") is System.Reflection.MethodInfo purgePath)
+                if (purge && scans == null && typeof(ResourcesSubsystem).GetMethod("PurgeLocalPath") is System.Reflection.MethodInfo purgePath)
                 {
                     purgePath.Invoke(resources[0], new object[] { folder });
                     int putBack = PutBackReplaced(resources[0]);
@@ -611,29 +615,150 @@ namespace RegenerateFM.FM26
                     Log.LogInfo("Dropped FM's entries for the RegenerateFM graphics folder" +
                                 (putBack > 0 ? "; put back " + putBack + " from other graphics folders" : ""));
                 }
-                else if (purge)
+                else if (purge && scans == null)
                 {
                     var (dropped, putBack) = DropLocalKeys(resources[0], folder);
                     Log.LogInfo("Dropped FM26's entries for " + dropped + " pictures in the RegenerateFM graphics folder" +
                                 (putBack > 0 ? "; put back " + putBack + " from other graphics folders" : ""));
                 }
-                // By name: FM27's returns a LocalPathScan, FM26's nothing, so a call
-                // compiled against FM26's is a missing method in FM27.
-                typeof(ResourcesSubsystem).GetMethod(nameof(ResourcesSubsystem.RegisterLocalPath))
-                    .Invoke(resources[0], new object[] { folder, null });
-                // With the folder's last face removed, FM registers nothing, so
-                // the wait for its registrations to settle starts now.
-                if (!Directory.EnumerateFiles(folder, "*.png").Any())
+                if (scans == null || !RescanFolder(resources[0], scans, purge))
+                    // By name: FM27's returns a LocalPathScan, FM26's nothing, so a call
+                    // compiled against FM26's is a missing method in FM27.
+                    typeof(ResourcesSubsystem).GetMethod(nameof(ResourcesSubsystem.RegisterLocalPath))
+                        .Invoke(resources[0], new object[] { folder, null });
+                // With the folder's last face removed, FM26 and FM27 27.0 register
+                // nothing, so the wait for their registrations to settle starts now.
+                if (scans == null && !Directory.EnumerateFiles(folder, "*.png").Any())
                     _lastLocatorUtc = System.DateTime.UtcNow;
                 Log.LogInfo("Requested RegenerateFM graphics reload from " + folder);
+                if (scans != null && FolderScans(resources[0]) is { } after)
+                {
+                    if (after.Count == 0)
+                        Log.LogWarning("FM27 has no graphics folder holding ours; it has " +
+                                       string.Join(", ", LocalPathScans(resources[0]).Select(scan => scan.Folder)));
+                    else if (after.Any(scan => scan.Scanning))
+                        Log.LogInfo("FM27 is scanning " + string.Join(", ", after.Where(scan => scan.Scanning).Select(scan => scan.Folder)));
+                }
                 return true;
             }
             catch (Exception error)
             {
                 WaitingForGraphics = false;
+                _scansBefore = null;
                 Log.LogError("Could not register RegenerateFM graphics: " + error);
                 return false;
             }
+        }
+
+        // FM27 from 27.1 reads each graphics folder registered with it into an
+        // index (a LocalPathRegistration, which FM26 and FM27 27.0 don't have) and
+        // looks pictures up there, instead of calling RegisterResourceLocator for
+        // each one, so LocatorPatch hears nothing of a reload. So:
+        // - RegisterLocalPath adds a registration each time, with an index of its
+        //   own, and a face taken off would still be found in the earlier ones:
+        //   once our folder has one it is scanned again instead (StartLocalPathScan,
+        //   which FM's Tick finishes);
+        // - FM's own registration of the whole graphics folder holds our faces as
+        //   they were when it was scanned, at startup, so after a face is taken off
+        //   (purge) it is scanned again too. FM then drops what it had looked up
+        //   and no longer finds; a facepack's picture of the person shows again;
+        // - the reload is in when one of these registrations is new or its
+        //   ScanGeneration went up, and none IsScanning.
+        // By name: the plugin builds against FM26.
+        private sealed class FolderScan
+        {
+            public readonly object Registration;
+            public readonly IntPtr Pointer;
+            public readonly string Folder;
+            public readonly int Generation;
+            public readonly bool Scanning;
+
+            public FolderScan(object registration, IntPtr pointer, string folder, int generation, bool scanning)
+            {
+                Registration = registration;
+                Pointer = pointer;
+                Folder = folder;
+                Generation = generation;
+                Scanning = scanning;
+            }
+
+            public bool Ours => Folder != null && string.Equals(FolderPrefix(Folder), _ourFolder, StringComparison.OrdinalIgnoreCase);
+            public bool HoldsOurs => Folder != null && InFolder(_ourFolder, FolderPrefix(Folder));
+        }
+
+        private static ResourcesSubsystem _scanResources;
+        private static Dictionary<IntPtr, int> _scansBefore;
+        private static bool _scansUnreadable;
+        // A facepack can make FM's graphics folder slow to scan.
+        private static readonly TimeSpan GraphicsScanTimeout = TimeSpan.FromMinutes(2);
+
+        // Every graphics folder registered with FM; null without LocalPathRegistration.
+        private static List<FolderScan> LocalPathScans(ResourcesSubsystem resources)
+        {
+            if (_scansUnreadable || resources == null)
+                return null;
+            try
+            {
+                var paths = typeof(ResourcesSubsystem).GetProperty("m_localPaths")?.GetValue(resources);
+                var count = paths?.GetType().GetProperty("Count");
+                var item = paths?.GetType().GetProperty("Item");
+                // By the list's type, so an empty list in an earlier FM isn't taken for 27.1's.
+                var type = item?.PropertyType;
+                var folder = type?.GetProperty("Path");
+                var generation = type?.GetProperty("ScanGeneration");
+                var scanning = type?.GetProperty("IsScanning");
+                if (count == null || folder == null || generation == null || scanning == null)
+                    return null;
+                var scans = new List<FolderScan>();
+                for (int i = 0, n = (int)count.GetValue(paths); i < n; i++)
+                {
+                    var registration = item.GetValue(paths, new object[] { i });
+                    if (registration != null)
+                        scans.Add(new FolderScan(registration, ((Il2CppInterop.Runtime.InteropTypes.Il2CppObjectBase)registration).Pointer,
+                                                 folder.GetValue(registration) as string,
+                                                 (int)generation.GetValue(registration), (bool)scanning.GetValue(registration)));
+                }
+                return scans;
+            }
+            catch (Exception error)
+            {
+                _scansUnreadable = true;
+                Instance.Log.LogWarning("Could not read FM27's graphics folder scans: " + error);
+                return null;
+            }
+        }
+
+        // Our folder's registrations and those of folders holding it.
+        private static List<FolderScan> FolderScans(ResourcesSubsystem resources) =>
+            LocalPathScans(resources)?.Where(scan => scan.HoldsOurs).ToList();
+
+        // Scans our folder's registration again and, with ``purge``, those of the
+        // folders holding it. False when our folder has no registration yet (or FM
+        // no StartLocalPathScan), for RegisterLocalPath to add it.
+        private static bool RescanFolder(ResourcesSubsystem resources, List<FolderScan> scans, bool purge)
+        {
+            var start = typeof(ResourcesSubsystem).GetMethod("StartLocalPathScan");
+            if (start == null)
+                return false;
+            bool ours = false;
+            foreach (var scan in scans.Where(scan => scan.Ours || purge))
+            {
+                start.Invoke(resources, new[] { scan.Registration });
+                ours |= scan.Ours;
+            }
+            return ours;
+        }
+
+        private static bool FolderScanning() => FolderScans(_scanResources)?.Any(scan => scan.Scanning) == true;
+
+        private static bool FolderScanApplied()
+        {
+            if (_scansBefore == null)
+                return false;
+            var scans = FolderScans(_scanResources);
+            return scans != null &&
+                   scans.Any(scan => !_scansBefore.TryGetValue(scan.Pointer, out int before) || scan.Generation > before) &&
+                   !scans.Any(scan => scan.Scanning);
         }
 
         // A picture from another graphics folder that our face replaced in
@@ -718,26 +843,32 @@ namespace RegenerateFM.FM26
 
         private void CheckRefreshTimeout()
         {
+            // FM27 27.1: its scan of our folder is in, so the panels refresh as after LocatorPatch.
+            if (WaitingForGraphics && !_lastLocatorUtc.HasValue && FolderScanApplied())
+                _lastLocatorUtc = System.DateTime.UtcNow;
             if (WaitingForGraphics && _lastLocatorUtc.HasValue &&
                 System.DateTime.UtcNow - _lastLocatorUtc.Value >= LocatorsSettled)
             {
                 WaitingForGraphics = false;
                 _lastLocatorUtc = null;
+                _scansBefore = null;
                 Log.LogInfo("RegenerateFM graphics registered after " +
                             (System.DateTime.UtcNow - _refreshStartedUtc).TotalSeconds.ToString("0.0") + " s");
                 GraphicsLoaded();
                 return;
             }
-            if (!WaitingForGraphics || System.DateTime.UtcNow - _refreshStartedUtc < GraphicsTimeout)
+            var waited = System.DateTime.UtcNow - _refreshStartedUtc;
+            if (!WaitingForGraphics || waited < GraphicsTimeout || (waited < GraphicsScanTimeout && _scansBefore != null && FolderScanning()))
                 return;
             WaitingForGraphics = false;
+            _scansBefore = null;
             _creditsNotice = null;
             ShowError(_refreshOverlay, _refreshMessage,
                 Text.T("Portrait saved, but graphics reload timed out. Restart FM26 to load it."));
             _refreshOverlay = null;
             _refreshMessage = null;
             _refreshPersonId = null;
-            Log.LogWarning("RegenerateFM graphics reload timed out after 30 seconds; refresh lock released");
+            Log.LogWarning("RegenerateFM graphics reload timed out after " + waited.TotalSeconds.ToString("0") + " seconds; refresh lock released");
         }
 
         // FM27's ReloadPanels leaves a profile's attributes block (an ExpandableContentElement,
