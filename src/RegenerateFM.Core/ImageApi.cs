@@ -158,7 +158,7 @@ namespace RegenerateFM
                     string body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                     if (!response.IsSuccessStatusCode)
                     {
-                        string detail = "", code = null;
+                        string detail = "", code = null, type = null;
                         int freeFaces = 0;
                         try
                         {
@@ -168,6 +168,8 @@ namespace RegenerateFM
                                 detail = error.GetProperty("message").GetString() ?? "";
                                 if (error.TryGetProperty("code", out var codeValue) && codeValue.ValueKind == JsonValueKind.String)
                                     code = codeValue.GetString();
+                                if (error.TryGetProperty("type", out var typeValue) && typeValue.ValueKind == JsonValueKind.String)
+                                    type = typeValue.GetString();
                                 if (error.TryGetProperty("free_credits", out var free) && free.ValueKind == JsonValueKind.Number &&
                                     free.TryGetInt32(out int count))
                                     freeFaces = count;
@@ -184,6 +186,10 @@ namespace RegenerateFM
                             throw new ApiKeyRejectedException(message);
                         if ((int)response.StatusCode == 402)
                             throw new OutOfCreditsException(message, code == "free_credits_used" ? freeFaces : 0);
+                        // An OpenAI account with no credit left: OpenAI's own
+                        // words don't say where to go, so the player is told.
+                        if (!Credits.IsToken(key) && (OpenAIBillingException.IsBilling(code) || OpenAIBillingException.IsBilling(type)))
+                            throw new OpenAIBillingException(message);
                         throw new InvalidOperationException(message);
                     }
                     string image;
@@ -244,6 +250,27 @@ namespace RegenerateFM
     public sealed class ApiKeyRejectedException : InvalidOperationException
     {
         public ApiKeyRejectedException(string message) : base(message) { }
+    }
+
+    // The OpenAI account behind the key has run out of credit or hit its
+    // spending limit (HTTP 429 insufficient_quota, or 400
+    // billing_hard_limit_reached): the key is fine, the account needs paying.
+    // Message is for the player, then OpenAI's own (Detail).
+    public sealed class OpenAIBillingException : InvalidOperationException
+    {
+        public OpenAIBillingException(string detail) : base(Advice + " " + detail)
+        {
+            Detail = detail;
+        }
+
+        public string Detail { get; }
+
+        public static string Advice =>
+            Text.T("Your OpenAI account has run out of credit. Add credit in your OpenAI account's billing settings (platform.openai.com), or use RegenerateFM credits instead.");
+
+        // OpenAI's error codes (and types) for an account that can't be billed.
+        public static bool IsBilling(string code) =>
+            code == "insufficient_quota" || code == "billing_hard_limit_reached" || code == "billing_not_active";
     }
 
     // RegenerateFM credits ran out (HTTP 402 from the credits service).

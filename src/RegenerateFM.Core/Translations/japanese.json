@@ -336,6 +336,8 @@
  "You've used your 1 free face. Packs start at 75 faces for £2.": "無料の顔写真1枚を使い切りました。パックは75枚 £2 からです。",
  "You've used your {0} free faces. Packs start at 75 faces for £2.": "無料の顔写真{0}枚を使い切りました。パックは75枚 £2 からです。",
  "Your RegenerateFM credits sign-in has ended. Choose Buy credits / Sign in to sign in again.": "RegenerateFM クレジットのサインインが終了しました。もう一度サインインするには「クレジット購入 / サインイン」を選んでください。",
+ "Your OpenAI account has run out of credit. Add credit in your OpenAI account's billing settings (platform.openai.com), or use RegenerateFM credits instead.": "OpenAI アカウントの残高がなくなりました。OpenAI アカウントの請求設定（platform.openai.com）で残高を追加するか、代わりに RegenerateFM クレジットを使ってください。",
+ "Your OpenAI account has run out of credit. Add credit in your OpenAI account's billing settings (platform.openai.com), then choose the face command again.": "OpenAI アカウントの残高がなくなりました。OpenAI アカウントの請求設定（platform.openai.com）で残高を追加してから、もう一度顔写真のコマンドを選んでください。",
  "Update aged faces…": "古い顔写真を更新…",
  "Looking for faces made two or more years ago…": "2年以上前に生成された顔写真を探しています…",
  "A new season:": "新しいシーズン：",

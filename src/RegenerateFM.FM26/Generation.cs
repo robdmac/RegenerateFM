@@ -490,9 +490,22 @@ namespace RegenerateFM.FM26
         {
             if (overlay == null || message == null)
                 return;
-            message.text = Text.T("Face generation failed");
+            // Why, on the picture itself (its first sentence; the tooltip has it all).
+            string reason = FirstSentence(error);
+            message.text = Text.T("Face generation failed") + (reason.Length > 0 ? "\n" + reason : "");
+            message.style.fontSize = reason.Length > 0 ? 11 : 14;
             overlay.tooltip = error ?? Text.T("Unknown error");
             overlay.style.backgroundColor = new Color(0.4f, 0f, 0f, 0.82f);
+        }
+
+        // An error's first sentence, cut to fit under a portrait.
+        private static string FirstSentence(string error)
+        {
+            string text = (error ?? "").Trim();
+            int end = text.IndexOf(". ", StringComparison.Ordinal);
+            if (end > 0)
+                text = text.Substring(0, end + 1);
+            return text.Length <= 120 ? text : text.Substring(0, 117).TrimEnd() + "…";
         }
 
         private sealed class GenerationResult
@@ -502,6 +515,8 @@ namespace RegenerateFM.FM26
             public string GraphicsDir;
             public bool KeyRejected;
             public bool OutOfCredits;
+            // The OpenAI account has no credit left (OpenAIBillingException).
+            public bool OpenAIBilling;
             // When OutOfCredits: the free faces used up, for someone who has never bought; else 0.
             public int FreeFaces;
             // After a face made with RegenerateFM credits: what's left, if the service said.
@@ -533,6 +548,10 @@ namespace RegenerateFM.FM26
             catch (OutOfCreditsException error)
             {
                 return new GenerationResult { Error = error.Message, OutOfCredits = true, FreeFaces = error.FreeFaces };
+            }
+            catch (OpenAIBillingException error)
+            {
+                return new GenerationResult { Error = error.Message, OpenAIBilling = true };
             }
             catch (Exception error)
             {

@@ -336,6 +336,8 @@
   "You've used your 1 free face. Packs start at 75 faces for £2.": "Il volto gratuito è stato usato. I pacchetti partono da 75 volti per £2.",
   "You've used your {0} free faces. Packs start at 75 faces for £2.": "I {0} volti gratuiti sono stati usati. I pacchetti partono da 75 volti per £2.",
   "Your RegenerateFM credits sign-in has ended. Choose Buy credits / Sign in to sign in again.": "L'accesso ai crediti RegenerateFM è terminato. Scegliere «Acquista crediti / Accedi» per accedere di nuovo.",
+  "Your OpenAI account has run out of credit. Add credit in your OpenAI account's billing settings (platform.openai.com), or use RegenerateFM credits instead.": "Il credito dell'account OpenAI è esaurito. Aggiungere credito nelle impostazioni di fatturazione dell'account OpenAI (platform.openai.com), oppure usare invece i crediti RegenerateFM.",
+  "Your OpenAI account has run out of credit. Add credit in your OpenAI account's billing settings (platform.openai.com), then choose the face command again.": "Il credito dell'account OpenAI è esaurito. Aggiungere credito nelle impostazioni di fatturazione dell'account OpenAI (platform.openai.com), poi scegliere di nuovo il comando del volto.",
   "Update aged faces…": "Aggiorna volti datati…",
   "Looking for faces made two or more years ago…": "Ricerca dei volti generati due o più anni fa…",
   "A new season:": "Nuova stagione:",

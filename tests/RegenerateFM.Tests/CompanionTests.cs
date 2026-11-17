@@ -337,6 +337,26 @@ namespace RegenerateFM.Tests
             }
         }
 
+        // An OpenAI account with no credit left is told where to add it, not to change the key.
+        [Fact]
+        public void AnOpenAIAccountWithNoCreditIsToldToAddCredit()
+        {
+            _companion.PreviewOnly = false;
+            _companion.ReloadPort = 0;
+            _profile = new ProfileSnapshot
+            {
+                Type = "staff", Name = "Greg Vanney", Age = 49, Nationality = "United States", JobTitle = "Manager", Club = "LA Galaxy",
+            };
+            KeyStore.Save(KeyStore.DefaultPath, "sk-test-key-0123456789abcdef");
+            _companion.GeneratePng = (_, _) => throw new OpenAIBillingException(
+                "OpenAI image API returned HTTP 429: You exceeded your current quota, please check your plan and billing details.");
+            string error = _companion.Generate(null, "generate").Error;
+            Assert.StartsWith("Your OpenAI account has run out of credit. Add credit in your OpenAI account's billing settings " +
+                              "(platform.openai.com), then choose the face command again. OpenAI image API returned HTTP 429", error);
+            Assert.DoesNotContain("new key", error);
+            Assert.False(_companion.KeyRejected);
+        }
+
         [Fact]
         public void TheKeyPromptOffersBuyCreditsOnlyWhileTheyHaveRunOut()
         {

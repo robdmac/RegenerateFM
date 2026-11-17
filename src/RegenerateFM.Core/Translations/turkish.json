@@ -336,6 +336,8 @@
   "You've used your 1 free face. Packs start at 75 faces for £2.": "1 ücretsiz yüzünüzü kullandınız. Paketler £2 karşılığında 75 yüzden başlıyor.",
   "You've used your {0} free faces. Packs start at 75 faces for £2.": "{0} ücretsiz yüzünüzü kullandınız. Paketler £2 karşılığında 75 yüzden başlıyor.",
   "Your RegenerateFM credits sign-in has ended. Choose Buy credits / Sign in to sign in again.": "RegenerateFM kredi girişinizin süresi doldu. Yeniden giriş yapmak için “Kredi al / Giriş yap” seçeneğini seçin.",
+  "Your OpenAI account has run out of credit. Add credit in your OpenAI account's billing settings (platform.openai.com), or use RegenerateFM credits instead.": "OpenAI hesabınızın bakiyesi bitti. OpenAI hesabınızın faturalandırma ayarlarından (platform.openai.com) bakiye ekleyin ya da bunun yerine RegenerateFM kredilerini kullanın.",
+  "Your OpenAI account has run out of credit. Add credit in your OpenAI account's billing settings (platform.openai.com), then choose the face command again.": "OpenAI hesabınızın bakiyesi bitti. OpenAI hesabınızın faturalandırma ayarlarından (platform.openai.com) bakiye ekleyin, ardından yüz komutunu yeniden seçin.",
   "Update aged faces…": "Eskimiş yüzleri güncelle…",
   "Looking for faces made two or more years ago…": "En az iki yıl önce oluşturulan yüzler aranıyor…",
   "A new season:": "Yeni sezon:",

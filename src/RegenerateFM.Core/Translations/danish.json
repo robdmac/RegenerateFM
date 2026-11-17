@@ -336,6 +336,8 @@
   "You've used your 1 free face. Packs start at 75 faces for £2.": "Du har brugt dit 1 gratis ansigt. Pakkerne starter ved 75 ansigter for £2.",
   "You've used your {0} free faces. Packs start at 75 faces for £2.": "Du har brugt dine {0} gratis ansigter. Pakkerne starter ved 75 ansigter for £2.",
   "Your RegenerateFM credits sign-in has ended. Choose Buy credits / Sign in to sign in again.": "Dit RegenerateFM-kreditlogin er udløbet. Vælg Køb kreditter / Log ind for at logge ind igen.",
+  "Your OpenAI account has run out of credit. Add credit in your OpenAI account's billing settings (platform.openai.com), or use RegenerateFM credits instead.": "Der er ikke mere saldo på din OpenAI-konto. Fyld saldoen op under betalingsindstillingerne på din OpenAI-konto (platform.openai.com), eller brug RegenerateFM-kreditter i stedet.",
+  "Your OpenAI account has run out of credit. Add credit in your OpenAI account's billing settings (platform.openai.com), then choose the face command again.": "Der er ikke mere saldo på din OpenAI-konto. Fyld saldoen op under betalingsindstillingerne på din OpenAI-konto (platform.openai.com), og vælg derefter ansigtskommandoen igen.",
   "Update aged faces…": "Opdater forældede ansigter…",
   "Looking for faces made two or more years ago…": "Leder efter ansigter genereret for to eller flere år siden…",
   "A new season:": "Ny sæson:",
