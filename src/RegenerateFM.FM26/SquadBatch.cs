@@ -48,6 +48,8 @@ namespace RegenerateFM.FM26
             public int Steps;
             public int ExpectedCount;
             public int Passes = 1;
+            // How many had been read when this pass began.
+            public int ReadBeforePass;
             public readonly Dictionary<string, SquadCandidate> Portraits = new Dictionary<string, SquadCandidate>(StringComparer.Ordinal);
             public readonly HashSet<string> Missing = new HashSet<string>(StringComparer.Ordinal);
             public Label Status;
@@ -527,24 +529,31 @@ namespace RegenerateFM.FM26
                 throw new InvalidOperationException("Squad scan exceeded 200 steps");
             if (currentY >= maxY - 2f || (scan.LastY >= 0 && Math.Abs(currentY - scan.LastY) < 1f))
             {
+                // A squad's filter can add another team's players (its U19s) that
+                // the count above the table leaves out. The list is then read again
+                // until a pass finds no one new, rather than to that count.
+                bool beyondCount = scan.ExpectedCount > 0 && scan.Portraits.Count > scan.ExpectedCount;
+                bool foundMore = scan.Portraits.Count > scan.ReadBeforePass;
                 // Rows that were still blank (names arrive after the rows on the
                 // Demo) were skipped; another pass from the top picks them up.
-                if (scan.ExpectedCount > 0 && scan.Portraits.Count < scan.ExpectedCount && scan.Passes < 3)
+                if (beyondCount ? foundMore && scan.Passes < 4
+                                : scan.ExpectedCount > 0 && scan.Portraits.Count < scan.ExpectedCount && scan.Passes < 3)
                 {
                     scan.Passes++;
+                    scan.ReadBeforePass = scan.Portraits.Count;
                     scan.LastY = -1;
                     scan.AwaitTop = true;
                     scan.TopReadyUtc = System.DateTime.UtcNow.AddSeconds(1);
                     scan.List.scrollOffset = new Vector2(scan.List.scrollOffset.x, 0);
-                    Log.LogInfo("Scan read " + scan.Portraits.Count + " of " + scan.ExpectedCount + " " +
-                                Plural(scan.Kind) + "; scanning again (pass " + scan.Passes + ")");
+                    Log.LogInfo("Scan read " + scan.Portraits.Count + " of " + scan.ExpectedCount + " " + Plural(scan.Kind) +
+                                (beyondCount ? " (more than counted)" : "") + "; scanning again (pass " + scan.Passes + ")");
                     return;
                 }
                 scan.List.scrollOffset = new Vector2(scan.List.scrollOffset.x, scan.OriginalY);
                 _squadScan = null;
                 Log.LogInfo("RegenerateFM " + Plural(scan.Kind) + " scan finished: " + scan.Portraits.Count +
                             " of " + scan.ExpectedCount + ", " + scan.Missing.Count + " missing portraits");
-                bool complete = scan.ExpectedCount > 0 && scan.Portraits.Count == scan.ExpectedCount;
+                bool complete = scan.ExpectedCount > 0 && (scan.Portraits.Count == scan.ExpectedCount || beyondCount && !foundMore);
                 var missing = new List<SquadCandidate>();
                 foreach (var key in scan.Missing)
                     missing.Add(scan.Portraits[key]);
