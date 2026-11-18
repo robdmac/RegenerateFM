@@ -412,12 +412,25 @@ namespace RegenerateFM.FM26
         // The UI document FM draws its screens in: FM26's, then FM27's.
         private static readonly string[] MainDocumentNames = { "PanelManager", "MainUIDocument" };
 
+        // FM's main UIDocument, kept once found: finding it searches every
+        // object Unity has loaded, which took 7-20 ms in FM27, and the checks
+        // ask for it several times every half second.
+        private static UIDocument _mainDocument;
+
         private static VisualElement CurrentRoot()
         {
-            foreach (var document in Resources.FindObjectsOfTypeAll<UIDocument>())
-                if (Array.IndexOf(MainDocumentNames, document.name) >= 0)
-                    return document.rootVisualElement;
-            return null;
+            // Unity's == is also true once FM has destroyed the document.
+            if (_mainDocument == null || _mainDocument.rootVisualElement == null)
+            {
+                _mainDocument = null;
+                foreach (var document in Resources.FindObjectsOfTypeAll<UIDocument>())
+                    if (Array.IndexOf(MainDocumentNames, document.name) >= 0 && document.rootVisualElement != null)
+                    {
+                        _mainDocument = document;
+                        break;
+                    }
+            }
+            return _mainDocument == null ? null : _mainDocument.rootVisualElement;
         }
 
         private static bool IsPlayerOverview(VisualElement root)
