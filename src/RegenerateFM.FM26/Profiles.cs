@@ -90,9 +90,9 @@ namespace RegenerateFM.FM26
                 FirstText(FindNamed(header, "Frame 1000003767")) is string contract && Prompts.NoClub(contract))
                 profile.Club = contract.Trim();
             // FM27 says so where the club would be, in the player's language
-            // (a player with a club has their league there instead).
-            if (Fm27 && string.IsNullOrWhiteSpace(profile.Club) && FindNamed(header, "PlayingTeam") == null &&
-                FirstText(FindNamed(header, "FreeAgentCheck")) != null)
+            // (a player with a club has their league there instead): FM's
+            // "Free Agent" text, the same ID in every language.
+            if (Fm27 && string.IsNullOrWhiteSpace(profile.Club) && IsFreeAgent(header))
                 profile.Club = "Free Agent";
             profile.Nationality = FirstText(FindNamed(header, "Frame 1000003766")) ?? CompactNation(header) ?? HeaderNation(header);
             // FM27's compact header shows only the nation's code ("SCO"): its
@@ -281,6 +281,56 @@ namespace RegenerateFM.FM26
                     nation = name;
             }
             return nation;
+        }
+
+        // FM27's text ID for "Free Agent" ("Libre de tout contrat", "Vereinslos"…)
+        // where a player's club would be.
+        private const int FreeAgentTextId = 25764;
+
+        // Whether FM27's header says the player has no club: the text beside
+        // the empty club is FM's "Free Agent" (by its ID, or its text in the
+        // player's language), or, as FM27 27.0 showed it, there is no club
+        // at all and only that text. The compact header hides that text, so
+        // there it is found by its ID alone.
+        private static bool IsFreeAgent(VisualElement header)
+        {
+            var check = FindNamed(header, "FreeAgentCheck");
+            string shown = FirstText(check);
+            if (shown == null)
+            {
+                // A compact header (a smaller window) may hide it while FM still
+                // fills it in.
+                if (HasLabelId(header, FreeAgentTextId))
+                    return true;
+                // FM27's smallest header (report-player-banner-min) has no such
+                // text: it shows a player's club when there is one, and a free
+                // agent's status badge ("FrA", "Lib.") where it isn't.
+                return FindNamed(header, "report-player-banner-min") != null && FindNamed(header, "PlayingTeam") == null &&
+                       FirstText(FindNamed(header, "StatusFlagsWidget")) != null;
+            }
+            if (WithLabelId(check, FreeAgentTextId) != null)
+                return true;
+            string freeAgent = GameText(FreeAgentTextId);
+            if (freeAgent != null && string.Equals(shown.Trim(), freeAgent, StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (FindNamed(header, "PlayingTeam") == null)
+                return true;
+            Instance?.Log.LogInfo("Not read as a free agent: the club is empty, and beside it is \"" + shown + "\" (FM's Free Agent is \"" +
+                                  (freeAgent ?? "unknown") + "\")");
+            return false;
+        }
+
+        // Whether any text under ``element``, shown or not, is FM's ``id``.
+        private static bool HasLabelId(VisualElement element, int id)
+        {
+            if (element == null)
+                return false;
+            if (LabelId(element) == id)
+                return true;
+            for (int i = 0; i < element.hierarchy.childCount; i++)
+                if (HasLabelId(element.hierarchy.ElementAt(i), id))
+                    return true;
+            return false;
         }
 
         // FM27's staff header has no numbered frames: its texts are the name, the

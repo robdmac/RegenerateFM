@@ -298,6 +298,19 @@ namespace RegenerateFM.FM26
         }
 
         // The translation ID of the text an FM26 label shows, or 0.
+        // The first shown element under ``element`` whose text is FM's ``id``, or null.
+        private static VisualElement WithLabelId(VisualElement element, int id)
+        {
+            if (element == null || element.worldBound.width <= 0 || element.worldBound.height <= 0)
+                return null;
+            if (LabelId(element) == id)
+                return element;
+            for (int i = 0; i < element.hierarchy.childCount; i++)
+                if (WithLabelId(element.hierarchy.ElementAt(i), id) is VisualElement found)
+                    return found;
+            return null;
+        }
+
         private static int LabelId(VisualElement element)
         {
             var label = element?.TryCast<SIText>();
