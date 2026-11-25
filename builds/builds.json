@@ -1,5 +1,5 @@
 {
- "issued": "2026-11-17T15:05:58Z",
+ "issued": "2026-11-25T00:16:49Z",
  "builds": [
   {
    "name": "FM26 26.3.2 (Steam)",
@@ -118,6 +118,13 @@
    "os": "macos",
    "game_assembly": "cb9eaa7142a7a7a0ad86700d0ede37b50dcd230fa2231f7fdb57e829e500c193",
    "game_plugin": "68adfde2e0588458c1830cb7e688855d9c61237973a7eb7a105af5ac4ed112a4",
+   "user_data": "Football Manager 27"
+  },
+  {
+   "name": "FM27 27.1.1 (Steam build 26797085)",
+   "os": "macos",
+   "game_assembly": "2476b592cc340fbd10cdf32fb32d73bcdc8c120cecbb73aab097e6209233cead",
+   "game_plugin": "eaaecdabeedb9fa6085b63e9709bc62ef1386e1e6346454a2d4c18fe4409e790",
    "user_data": "Football Manager 27"
   }
  ]
